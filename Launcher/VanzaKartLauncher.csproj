@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<ApplicationIcon>Assets/app.ico</ApplicationIcon>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>VanzaKart Launcher</AssemblyName>
+    <RootNamespace>VanzaKartLauncher</RootNamespace>
+    <Version>2.0.1</Version>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Assets\app.ico" />
+    <None Remove="Assets\discord.png" />
+    <None Remove="Assets\logo-cerchio.png" />
+    <None Remove="Assets\logo-quadrato.png" />
+    <None Remove="Assets\logo.png" />
+    <None Remove="Assets\website.png" />
+    <None Remove="logo.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\logo-cerchio.png" />
+    <Resource Include="Assets\logo-quadrato.png" />
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="DiscordRichPresence" Version="1.143.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\discord.png" />
+    <Resource Include="Assets\website.png" />
+    <Resource Include="logo.png" />
+  </ItemGroup>
+</Project>

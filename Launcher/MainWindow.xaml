@@ -1,0 +1,746 @@
+<Window x:Class="VanzaKartLauncher.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VanzaKart Launcher"
+        Width="1220"
+        Height="980"
+        MinWidth="1080"
+        MinHeight="820"
+        WindowStartupLocation="CenterScreen"
+        Background="#0B1020"
+        Icon="/Assets/app.ico">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="CardBgBrush" Color="#0b101c"/>
+        <SolidColorBrush x:Key="CardBgAltBrush" Color="#101727"/>
+        <SolidColorBrush x:Key="TextMainBrush" Color="#F3F6FF"/>
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#A9B4C8"/>
+        <SolidColorBrush x:Key="InputBgBrush" Color="#090e1a"/>
+        <SolidColorBrush x:Key="InputBorderBrush" Color="#263246"/>
+
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBgBrush}"/>
+            <Setter Property="CornerRadius" Value="22"/>
+            <Setter Property="Padding" Value="22"/>
+            <Setter Property="BorderThickness" Value="1.2"/>
+            <Setter Property="BorderBrush" Value="#2A344A"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+        </Style>
+
+        <Style x:Key="HintTextStyle" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource TextMutedBrush}"/>
+            <Setter Property="FontSize" Value="13"/>
+        </Style>
+
+        <Style x:Key="ModernTextBox" TargetType="TextBox">
+            <Setter Property="Foreground" Value="{StaticResource TextMainBrush}"/>
+            <Setter Property="Background" Value="{StaticResource InputBgBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource InputBorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="14"
+                            SnapsToDevicePixels="True">
+                            <ScrollViewer x:Name="PART_ContentHost"
+                                      Margin="0"/>
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#3b4f7a"/>
+                            </Trigger>
+
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#47E9E2"/>
+                                <Setter TargetName="Root" Property="BorderThickness" Value="1.4"/>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.55"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernButton" TargetType="Button">
+            <Setter Property="Foreground" Value="#0B1020"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                        Background="{TemplateBinding Background}"
+                        CornerRadius="14"
+                        SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.95"/>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.02" ScaleY="1.02"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.82"/>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.985" ScaleY="0.985"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="SecondaryButton" TargetType="Button">
+            <Setter Property="Background" Value="#061426"/>
+            <Setter Property="Foreground" Value="{StaticResource TextMainBrush}"/>
+            <Setter Property="BorderBrush" Value="#31405A"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                        Background="{TemplateBinding Background}"
+                        BorderBrush="{TemplateBinding BorderBrush}"
+                        BorderThickness="{TemplateBinding BorderThickness}"
+                        CornerRadius="14"
+                        SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center"
+                                      VerticalAlignment="Center"/>
+                        </Border>
+
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#0a1a31"/>
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#4b6185"/>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.018" ScaleY="1.018"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="Background" Value="#08111f"/>
+                                <Setter Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.985" ScaleY="0.985"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="PathButton" TargetType="Button" BasedOn="{StaticResource SecondaryButton}">
+            <Setter Property="Background" Value="#0a101a"/>
+            <Setter Property="BorderBrush" Value="#2c3648"/>
+        </Style>
+
+    </Window.Resources>
+
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Offset="0" Color="#030405"/>
+                <GradientStop Offset="0.22" Color="#06080B"/>
+                <GradientStop Offset="0.5" Color="#080A0D"/>
+                <GradientStop Offset="0.78" Color="#05070A"/>
+                <GradientStop Offset="1" Color="#020304"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <Border Width="500"
+                Height="500"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,-170,-130,0"
+                CornerRadius="999"
+                Opacity="0.18">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55A855F7"/>
+                    <GradientStop Offset="0.28" Color="#44FF3B5C"/>
+                    <GradientStop Offset="0.55" Color="#3347E9E2"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Border Width="420"
+        Height="420"
+        HorizontalAlignment="Left"
+        VerticalAlignment="Top"
+        Margin="-120,-90,0,0"
+        CornerRadius="999"
+        Opacity="0.12">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55FF3B5C"/>
+                    <GradientStop Offset="0.28" Color="#44FF8A3D"/>
+                    <GradientStop Offset="0.55" Color="#44FF8A3D"/>
+                    <GradientStop Offset="1" Color="#22F5E74F"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Border Width="340"
+        Height="340"
+        HorizontalAlignment="Right"
+        VerticalAlignment="Center"
+        Margin="0,0,-110,0"
+        CornerRadius="999"
+        Opacity="0.11">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#5547E9E2"/>
+                    <GradientStop Offset="0.42" Color="#443B6BFF"/>
+                    <GradientStop Offset="0.75" Color="#22A855F7"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Border Width="300"
+        Height="300"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Top"
+        Margin="0,-120,0,0"
+        CornerRadius="999"
+        Opacity="0.09">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55A855F7"/>
+                    <GradientStop Offset="0.4" Color="#4447E9E2"/>
+                    <GradientStop Offset="0.78" Color="#2252F36C"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Border Width="360"
+        Height="360"
+        HorizontalAlignment="Center"
+        VerticalAlignment="Bottom"
+        Margin="0,0,0,-150"
+        CornerRadius="999"
+        Opacity="0.1">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55FF8A3D"/>
+                    <GradientStop Offset="0.36" Color="#44F5E74F"/>
+                    <GradientStop Offset="0.68" Color="#2252F36C"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Border Width="390"
+                Height="390"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Bottom"
+                Margin="-80,0,0,-80"
+                CornerRadius="999"
+                Opacity="0.14">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55F5E74F"/>
+                    <GradientStop Offset="0.35" Color="#4452F36C"/>
+                    <GradientStop Offset="0.7" Color="#333B6BFF"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <Grid Margin="36">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="24"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="24"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="24"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+
+                <!-- HERO -->
+                <Border Grid.Row="0" Style="{StaticResource CardStyle}" Padding="28">
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Offset="0" Color="#66FF3B5C"/>
+                            <GradientStop Offset="0.18" Color="#66FF8A3D"/>
+                            <GradientStop Offset="0.36" Color="#66F5E74F"/>
+                            <GradientStop Offset="0.54" Color="#6652F36C"/>
+                            <GradientStop Offset="0.74" Color="#6647E9E2"/>
+                            <GradientStop Offset="1" Color="#66A855F7"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="320"/>
+                        </Grid.ColumnDefinitions>
+
+                        <StackPanel>
+                            <TextBlock Text="VanzaKart Launcher"
+                                       FontSize="34"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource TextMainBrush}"/>
+
+                            <TextBlock Margin="0,10,0,0"
+                                       Text="Clean launcher, easier setup and quick access to updates."
+                                       Style="{StaticResource HintTextStyle}"
+                                       TextWrapping="Wrap"/>
+
+                            <StackPanel Orientation="Horizontal" Margin="0,18,0,0">
+                                <Border CornerRadius="999" Padding="12,6" Margin="0,0,10,0">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#1FFF3B5C"/>
+                                            <GradientStop Offset="1" Color="#1FA855F7"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <TextBlock x:Name="VersionBadgeText"
+                                               Text="Launcher v2.0.0"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMainBrush}"/>
+                                </Border>
+
+                                <Border CornerRadius="999" Padding="12,6">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#1F52F36C"/>
+                                            <GradientStop Offset="1" Color="#1F47E9E2"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <TextBlock x:Name="InstallStateBadgeText"
+                                               Text="Checking status..."
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMainBrush}"/>
+                                </Border>
+                            </StackPanel>
+                        </StackPanel>
+
+                        <Grid Grid.Column="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Grid Width="220" Height="220">
+                                <Ellipse Width="190"
+                                         Height="190"
+                                         Opacity="0.18"
+                                         HorizontalAlignment="Center"
+                                         VerticalAlignment="Center">
+                                    <Ellipse.Fill>
+                                        <RadialGradientBrush>
+                                            <GradientStop Offset="0" Color="#55A855F7"/>
+                                            <GradientStop Offset="0.35" Color="#3347E9E2"/>
+                                            <GradientStop Offset="0.7" Color="#22FF3B5C"/>
+                                            <GradientStop Offset="1" Color="#00FFFFFF"/>
+                                        </RadialGradientBrush>
+                                    </Ellipse.Fill>
+                                </Ellipse>
+
+                                <Image Source="/logo.png"
+                                       Width="220"
+                                       Height="220"
+                                       Stretch="Uniform"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+                            </Grid>
+                        </Grid>
+                    </Grid>
+                </Border>
+
+                <!-- PATHS + ACTIONS -->
+                <Grid Grid.Row="2">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="2.3*"/>
+                        <ColumnDefinition Width="18"/>
+                        <ColumnDefinition Width="1.1*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <Border Grid.Column="0" Style="{StaticResource CardStyle}">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Offset="0" Color="#44FF3B5C"/>
+                                <GradientStop Offset="0.5" Color="#4447E9E2"/>
+                                <GradientStop Offset="1" Color="#44A855F7"/>
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+
+                        <StackPanel>
+                            <TextBlock Text="Paths" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextMainBrush}"/>
+                            <TextBlock Margin="0,8,0,20"
+                                       Text="The launcher will try to detect Dolphin's user folder automatically."
+                                       Style="{StaticResource HintTextStyle}"
+                                       TextWrapping="Wrap"/>
+
+                            <TextBlock Text="Dolphin.exe" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextMainBrush}"/>
+                            <Grid Margin="0,8,0,18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="130"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="DolphinPathTextBox" Style="{StaticResource ModernTextBox}"/>
+                                <Button Grid.Column="2"
+                                        x:Name="BrowseDolphinButton"
+                                        Content="Browse"
+                                        Style="{StaticResource PathButton}"
+                                        Click="BrowseDolphinButton_OnClick"/>
+                            </Grid>
+
+                            <TextBlock Text="User Folder" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextMainBrush}"/>
+                            <Grid Margin="0,8,0,18">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="130"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="UserFolderTextBox" Style="{StaticResource ModernTextBox}"/>
+                                <Button Grid.Column="2"
+                                        x:Name="BrowseUserFolderButton"
+                                        Content="Browse"
+                                        Style="{StaticResource PathButton}"
+                                        Click="BrowseUserFolderButton_OnClick"/>
+                            </Grid>
+
+                            <TextBlock Text="Game ROM" FontSize="14" FontWeight="SemiBold" Foreground="{StaticResource TextMainBrush}"/>
+                            <Grid Margin="0,8,0,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="12"/>
+                                    <ColumnDefinition Width="130"/>
+                                </Grid.ColumnDefinitions>
+                                <TextBox x:Name="RomPathTextBox" Style="{StaticResource ModernTextBox}"/>
+                                <Button Grid.Column="2"
+                                        x:Name="BrowseRomButton"
+                                        Content="Browse"
+                                        Style="{StaticResource PathButton}"
+                                        Click="BrowseRomButton_OnClick"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Grid.Column="2" Style="{StaticResource CardStyle}">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                <GradientStop Offset="0" Color="#4452F36C"/>
+                                <GradientStop Offset="0.5" Color="#4447E9E2"/>
+                                <GradientStop Offset="1" Color="#44F5E74F"/>
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+
+                        <StackPanel>
+                            <TextBlock Text="Actions" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextMainBrush}"/>
+                            <TextBlock Margin="0,8,0,20"
+                                       Text="Install, update and launch VanzaKart."
+                                       Style="{StaticResource HintTextStyle}"
+                                       TextWrapping="Wrap"/>
+
+                            <Button x:Name="LaunchButton"
+                                Height="52"
+                                Style="{StaticResource ModernButton}"
+                                Click="LaunchButton_OnClick">
+                                <Button.Background>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Offset="0" Color="#FF3B5C"/>
+                                        <GradientStop Offset="0.22" Color="#FF8A3D"/>
+                                        <GradientStop Offset="0.45" Color="#F5E74F"/>
+                                        <GradientStop Offset="0.68" Color="#52F36C"/>
+                                        <GradientStop Offset="1" Color="#47E9E2"/>
+                                    </LinearGradientBrush>
+                                </Button.Background>
+                                <TextBlock Text="Play now" Foreground="White">
+                                    <TextBlock.Effect>
+                                        <DropShadowEffect Color="Black"
+                                          BlurRadius="10"
+                                          ShadowDepth="1"
+                                          Opacity="1"/>
+                                    </TextBlock.Effect>
+                                </TextBlock>
+                            </Button>
+
+                            <Button x:Name="InstallButton"
+                                    Content="Download / Update Mod"
+                                    Height="52"
+                                    Margin="0,12,0,0"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="InstallButton_OnClick">
+                            </Button>
+
+                            <Button x:Name="CheckUpdatesButton"
+                                    Content="Check for updates"
+                                    Height="48"
+                                    Margin="0,12,0,0"
+                                    Style="{StaticResource SecondaryButton}"
+                                    Click="CheckUpdatesButton_OnClick"/>
+
+                            <Border Margin="0,22,0,0"
+                                    Background="#090e1a"
+                                    CornerRadius="14"
+                                    BorderThickness="1"
+                                    Padding="14">
+                                <Border.BorderBrush>
+                                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                        <GradientStop Offset="0" Color="#33FF3B5C"/>
+                                        <GradientStop Offset="1" Color="#3347E9E2"/>
+                                    </LinearGradientBrush>
+                                </Border.BorderBrush>
+                                <StackPanel>
+                                    <TextBlock Text="Mod folder"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMainBrush}"/>
+                                    <TextBlock x:Name="ModFolderTextBlock"
+                                               Margin="0,6,0,0"
+                                               Style="{StaticResource HintTextStyle}"
+                                               TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                </Grid>
+
+                <!-- STATUS -->
+                <Border Grid.Row="4" Style="{StaticResource CardStyle}">
+                    <Border.BorderBrush>
+                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                            <GradientStop Offset="0" Color="#44FF3B5C"/>
+                            <GradientStop Offset="0.25" Color="#44FF8A3D"/>
+                            <GradientStop Offset="0.5" Color="#4447E9E2"/>
+                            <GradientStop Offset="0.75" Color="#443B6BFF"/>
+                            <GradientStop Offset="1" Color="#44A855F7"/>
+                        </LinearGradientBrush>
+                    </Border.BorderBrush>
+
+                    <StackPanel>
+                        <TextBlock Text="Status" FontSize="22" FontWeight="Bold" Foreground="{StaticResource TextMainBrush}"/>
+                        <TextBlock x:Name="StatusTextBlock"
+                                   Margin="0,10,0,0"
+                                   FontSize="15"
+                                   TextWrapping="Wrap"
+                                   Foreground="{StaticResource TextMainBrush}"/>
+                        <ProgressBar x:Name="DownloadProgressBar"
+                                     Margin="0,16,0,0"
+                                     Height="12"
+                                     Minimum="0"
+                                     Maximum="100"
+                                     Visibility="Collapsed"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- LINKS + CHANGELOG -->
+                <Grid Grid.Row="6">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="20"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Grid.Row="0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="18"/>
+                            <ColumnDefinition Width="*"/>
+                        </Grid.ColumnDefinitions>
+
+                        <Border Grid.Column="0"
+                                Style="{StaticResource CardStyle}"
+                                Padding="16"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="OpenDiscordBorder_OnClick">
+                            <Border.BorderBrush>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Offset="0" Color="#445865F2"/>
+                                    <GradientStop Offset="0.5" Color="#4447E9E2"/>
+                                    <GradientStop Offset="1" Color="#44A855F7"/>
+                                </LinearGradientBrush>
+                            </Border.BorderBrush>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="44"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Width="32"
+                                        Height="32"
+                                        CornerRadius="10"
+                                        Background="#14FFFFFF"
+                                        VerticalAlignment="Center">
+                                    <Image Source="/Assets/discord.png"
+                                           Width="18"
+                                           Height="18"
+                                           Stretch="Uniform"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Discord"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMainBrush}"/>
+                                    <TextBlock Text="Join the community"
+                                               Margin="0,2,0,0"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="2"
+                                           Text="Open"
+                                           VerticalAlignment="Center"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextMainBrush}"
+                                           Opacity="0.82"/>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Column="2"
+                                Style="{StaticResource CardStyle}"
+                                Padding="16"
+                                Cursor="Hand"
+                                MouseLeftButtonUp="OpenWebsiteBorder_OnClick">
+                            <Border.BorderBrush>
+                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                    <GradientStop Offset="0" Color="#44FF8A3D"/>
+                                    <GradientStop Offset="0.34" Color="#44F5E74F"/>
+                                    <GradientStop Offset="0.68" Color="#4452F36C"/>
+                                    <GradientStop Offset="1" Color="#4447E9E2"/>
+                                </LinearGradientBrush>
+                            </Border.BorderBrush>
+
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="44"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                </Grid.ColumnDefinitions>
+
+                                <Border Width="32"
+                                        Height="32"
+                                        CornerRadius="10"
+                                        Background="#14FFFFFF"
+                                        VerticalAlignment="Center">
+                                    <Image Source="/Assets/website.png"
+                                           Width="18"
+                                           Height="18"
+                                           Stretch="Uniform"
+                                           HorizontalAlignment="Center"
+                                           VerticalAlignment="Center"/>
+                                </Border>
+
+                                <StackPanel Grid.Column="1" Margin="12,0,0,0" VerticalAlignment="Center">
+                                    <TextBlock Text="Website"
+                                               FontSize="15"
+                                               FontWeight="SemiBold"
+                                               Foreground="{StaticResource TextMainBrush}"/>
+                                    <TextBlock Text="Official page and info"
+                                               Margin="0,2,0,0"
+                                               FontSize="12"
+                                               Foreground="{StaticResource TextMutedBrush}"/>
+                                </StackPanel>
+
+                                <TextBlock Grid.Column="2"
+                                           Text="Open"
+                                           VerticalAlignment="Center"
+                                           FontSize="13"
+                                           FontWeight="SemiBold"
+                                           Foreground="{StaticResource TextMainBrush}"
+                                           Opacity="0.82"/>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <!--
+                    <Border Grid.Row="2" Style="{StaticResource CardStyle}">
+                        <Border.BorderBrush>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Offset="0" Color="#33FF3B5C"/>
+                                <GradientStop Offset="0.2" Color="#33FF8A3D"/>
+                                <GradientStop Offset="0.4" Color="#33F5E74F"/>
+                                <GradientStop Offset="0.6" Color="#3347E9E2"/>
+                                <GradientStop Offset="0.8" Color="#333B6BFF"/>
+                                <GradientStop Offset="1" Color="#33A855F7"/>
+                            </LinearGradientBrush>
+                        </Border.BorderBrush>
+
+                        <StackPanel>
+                            <TextBlock Text="Changelog"
+                                       FontSize="22"
+                                       FontWeight="Bold"
+                                       Foreground="{StaticResource TextMainBrush}"/>
+
+                            <Border Margin="0,16,0,0"
+                                    Background="#101727"
+                                    CornerRadius="16"
+                                    Padding="16">
+                                <TextBlock TextWrapping="Wrap"
+                                           Foreground="{StaticResource TextMutedBrush}">
+v2.0.0
+- New UI
+- Better layout
+
+v1.0.104
+- Older launcher version
+                                </TextBlock>
+                            </Border>
+                        </StackPanel>
+                    </Border>
+                    -->
+                </Grid>
+            </Grid>
+        </ScrollViewer>
+    </Grid>
+</Window>

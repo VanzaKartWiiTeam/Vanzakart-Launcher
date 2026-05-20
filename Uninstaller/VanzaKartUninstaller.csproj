@@ -1,0 +1,21 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	  <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>VanzaKart Uninstaller</AssemblyName>
+    <RootNamespace>VanzaKartUninstaller</RootNamespace>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Remove="Assets\app.ico" />
+    <None Remove="Assets\logo.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <Resource Include="Assets\app.ico" />
+    <Resource Include="Assets\logo.png" />
+  </ItemGroup>
+</Project>

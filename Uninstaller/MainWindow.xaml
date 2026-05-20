@@ -1,0 +1,129 @@
+<Window x:Class="VanzaKartUninstaller.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="VanzaKart Uninstaller"
+        Width="520"
+        Height="420"
+        MinWidth="500"
+        MinHeight="420"
+        WindowStartupLocation="CenterScreen"
+        Background="#0B1020"
+        Icon="/Assets/app.ico">
+
+    <Window.Resources>
+        <SolidColorBrush x:Key="CardBgBrush" Color="#0b101c"/>
+        <SolidColorBrush x:Key="CardBgAltBrush" Color="#101727"/>
+        <SolidColorBrush x:Key="TextMainBrush" Color="#F3F6FF"/>
+        <SolidColorBrush x:Key="TextMutedBrush" Color="#A9B4C8"/>
+        <SolidColorBrush x:Key="InputBgBrush" Color="#090e1a"/>
+        <SolidColorBrush x:Key="InputBorderBrush" Color="#263246"/>
+
+        <Style x:Key="CardStyle" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource CardBgBrush}"/>
+            <Setter Property="CornerRadius" Value="22"/>
+            <Setter Property="Padding" Value="22"/>
+            <Setter Property="BorderThickness" Value="1.2"/>
+            <Setter Property="BorderBrush" Value="#2A344A"/>
+        </Style>
+
+        <Style x:Key="DangerButton" TargetType="Button">
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="16,10"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}" CornerRadius="14">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.Background>
+            <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                <GradientStop Offset="0" Color="#030405"/>
+                <GradientStop Offset="0.22" Color="#06080B"/>
+                <GradientStop Offset="0.5" Color="#080A0D"/>
+                <GradientStop Offset="0.78" Color="#05070A"/>
+                <GradientStop Offset="1" Color="#020304"/>
+            </LinearGradientBrush>
+        </Grid.Background>
+
+        <Border Width="250"
+                Height="250"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="0,-90,-90,0"
+                CornerRadius="999"
+                Opacity="0.13">
+            <Border.Background>
+                <RadialGradientBrush>
+                    <GradientStop Offset="0" Color="#55FF3B5C"/>
+                    <GradientStop Offset="0.4" Color="#33FF8A3D"/>
+                    <GradientStop Offset="1" Color="#00FFFFFF"/>
+                </RadialGradientBrush>
+            </Border.Background>
+        </Border>
+
+        <Grid Margin="30">
+            <Border Style="{StaticResource CardStyle}" Padding="26">
+                <Border.BorderBrush>
+                    <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                        <GradientStop Offset="0" Color="#55FF3B5C"/>
+                        <GradientStop Offset="0.35" Color="#55FF8A3D"/>
+                        <GradientStop Offset="1" Color="#55A855F7"/>
+                    </LinearGradientBrush>
+                </Border.BorderBrush>
+
+                <StackPanel>
+                    <Image Source="/Assets/logo.png"
+                           Width="66"
+                           Height="66"
+                           Stretch="Uniform"
+                           HorizontalAlignment="Center"/>
+
+                    <TextBlock Text="Uninstall VanzaKart"
+                               FontSize="26"
+                               FontWeight="Bold"
+                               HorizontalAlignment="Center"
+                               Margin="0,14,0,0"
+                               Foreground="{StaticResource TextMainBrush}"/>
+
+                    <TextBlock Text="This removes the launcher and the installed mod files."
+                               Margin="0,10,0,0"
+                               TextAlignment="Center"
+                               Foreground="{StaticResource TextMutedBrush}"
+                               TextWrapping="Wrap"/>
+
+                    <TextBlock x:Name="StatusTextBlock"
+                               Margin="0,22,0,0"
+                               Text="Ready."
+                               TextAlignment="Center"
+                               Foreground="{StaticResource TextMainBrush}"
+                               TextWrapping="Wrap"/>
+
+                    <Button x:Name="UninstallButton"
+                            Margin="0,26,0,0"
+                            Height="50"
+                            Content="Uninstall"
+                            Click="UninstallButton_OnClick"
+                            Style="{StaticResource DangerButton}">
+                        <Button.Background>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                <GradientStop Offset="0" Color="#FF3B5C"/>
+                                <GradientStop Offset="1" Color="#FF8A3D"/>
+                            </LinearGradientBrush>
+                        </Button.Background>
+                    </Button>
+                </StackPanel>
+            </Border>
+        </Grid>
+    </Grid>
+</Window>
