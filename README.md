@@ -1,1 +1,1 @@
-# VanzakartWii
+# Vanzakart Launcher
