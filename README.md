@@ -22,10 +22,13 @@ A custom-built, modern, and professional launcher designed to manage and boot Va
 3. Follow the quick installation wizard.
 4. Launch VanzaKart and hit the track!
 
-## 💻 Local Development
+## 💻 Development & Contributing
 
 Want to contribute to the code or build the launcher from scratch?
 
-1. Clone the repository:
-   ```bash
-   git clone [https://github.com/sossio-storto/Vanzakart-Launcher.git](https://github.com/sossio-storto/Vanzakart-Launcher.git)
+The launcher is built with C# and WPF. To dive into the code, just clone the repository and open the solution in Visual Studio or JetBrains Rider. 
+
+Standard NuGet package restoration applies. Just ensure your IDE is configured for .NET desktop development, set the `Launcher` project as your startup target, and you are ready to compile. Pull requests for optimizations, bug fixes, or new features are always welcome.
+
+---
+*Built with passion for the Mario Kart modding community.*
