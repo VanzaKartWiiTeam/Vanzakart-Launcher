@@ -7,6 +7,7 @@ namespace VanzaKartLauncher.Services;
 public sealed class NetworkService
 {
     private readonly HttpClient _httpClient;
+    private const int DefaultRetryCount = 3;
 
     public NetworkService()
     {
@@ -29,6 +30,64 @@ public sealed class NetworkService
         string destinationPath,
         IProgress<(long current, long total)>? progress = null,
         CancellationToken cancellationToken = default)
+    {
+        Exception? lastError = null;
+
+        for (var attempt = 1; attempt <= DefaultRetryCount; attempt++)
+        {
+            try
+            {
+                await DownloadFileWithResumeCoreAsync(url, destinationPath, progress, cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (attempt < DefaultRetryCount && ex is HttpRequestException or IOException or TaskCanceledException)
+            {
+                lastError = ex;
+                await Task.Delay(TimeSpan.FromMilliseconds(450 * attempt), cancellationToken);
+            }
+        }
+
+        throw lastError ?? new HttpRequestException("Download failed.");
+    }
+
+    public async Task DownloadFileWithResumeAsync(
+        IEnumerable<string> urls,
+        string destinationPath,
+        IProgress<(long current, long total)>? progress = null,
+        CancellationToken cancellationToken = default)
+    {
+        Exception? lastError = null;
+        var candidates = urls
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (candidates.Length == 0)
+        {
+            throw new ArgumentException("At least one download URL is required.", nameof(urls));
+        }
+
+        foreach (var url in candidates)
+        {
+            try
+            {
+                await DownloadFileWithResumeAsync(url, destinationPath, progress, cancellationToken);
+                return;
+            }
+            catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
+            {
+                lastError = ex;
+            }
+        }
+
+        throw lastError ?? new HttpRequestException("All download mirrors failed.");
+    }
+
+    private async Task DownloadFileWithResumeCoreAsync(
+        string url,
+        string destinationPath,
+        IProgress<(long current, long total)>? progress,
+        CancellationToken cancellationToken)
     {
         var directory = Path.GetDirectoryName(destinationPath);
         if (!string.IsNullOrWhiteSpace(directory))

@@ -1,41 +1,284 @@
-﻿using Microsoft.Win32;
+using Microsoft.Win32;
+using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
-using System.Windows.Navigation;
+using System.Windows.Media.Animation;
 using VanzaKartLauncher.Models;
 using VanzaKartLauncher.Services;
+using VanzaKartLauncher.ViewModels;
+using WpfBrush = System.Windows.Media.Brush;
+using WpfBrushes = System.Windows.Media.Brushes;
+using WpfButton = System.Windows.Controls.Button;
+using WpfColor = System.Windows.Media.Color;
+using WpfDragEventArgs = System.Windows.DragEventArgs;
+using WpfKeyEventArgs = System.Windows.Input.KeyEventArgs;
+using WpfOpenFolderDialog = Microsoft.Win32.OpenFolderDialog;
+using WpfOpenFileDialog = Microsoft.Win32.OpenFileDialog;
+using WpfSaveFileDialog = Microsoft.Win32.SaveFileDialog;
 
 namespace VanzaKartLauncher;
 
 public partial class MainWindow : Window
 {
     private readonly SettingsService _settingsService = new();
+    private readonly PreferencesService _preferencesService = new();
     private readonly NetworkService _networkService = new();
     private readonly ArchiveService _archiveService = new();
+    private readonly SaveManagerService _saveManagerService = new();
+    private readonly ModConflictService _modConflictService = new();
+    private readonly LauncherNavigationService _navigationService = new();
+    private readonly MiiRuntimeSetupService _miiRuntimeSetupService = new();
+    private readonly ShellViewModel _shellViewModel = new();
+    private readonly ObservableCollection<NewsItem> _visibleNews = new();
+    private readonly List<NewsItem> _allNews = new();
+    private readonly ObservableCollection<SaveProfileInfo> _licenseCards = new();
+    private readonly List<SaveProfileInfo> _allLicenseCards = new();
+    private readonly ObservableCollection<LauncherMiiProfile> _miiProfiles = new();
+    private readonly ObservableCollection<SaveBackupInfo> _backupRestoreItems = new();
+    private readonly Stopwatch _downloadStopwatch = new();
+    private bool _isRefreshingMiis;
+    private bool _isRenderingLicenseAvatars;
+    private bool _isRenderingLauncherMiiAvatars;
+    private bool _isInstallingMiiRuntime;
+    private FileSystemWatcher? _dolphinFileWatcher;
+    private FileSystemWatcher? _profileFileWatcher;
+    private CancellationTokenSource? _filesystemRefreshCts;
+
+    private DiscordPresenceService? _discordPresence;
+    private UserPreferences _userPreferences;
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
     private readonly string _localModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_version.txt");
 
     private string _latestModVersion = string.Empty;
+    private string _latestModUrl = LauncherConfig.ModUrl;
+    private string[] _latestModMirrors = Array.Empty<string>();
+    private string _latestModSha256 = string.Empty;
+    private string _latestLauncherUrl = LauncherConfig.LauncherZipUrl;
+    private string[] _latestLauncherMirrors = Array.Empty<string>();
+    private string _newsFilter = "All";
+    private string _currentTab = "Home";
     private bool _isBusy;
     private bool _isModUpdateRequired;
+    private long _downloadBaselineBytes = -1;
 
     public MainWindow()
     {
+        _userPreferences = _preferencesService.Load();
         InitializeComponent();
-        VersionBadgeText.Text = $"Launcher v{LauncherConfig.CurrentLauncherVersion}";
+
+        VersionBadgeTextBlock.Text = $"Launcher v{LauncherConfig.CurrentLauncherVersion}";
+        DebugNavButton.Visibility = Debugger.IsAttached ? Visibility.Visible : Visibility.Collapsed;
+
+        SeedNews();
+        NewsItemsControl.ItemsSource = _visibleNews;
+        LicenseCardsItemsControl.ItemsSource = _licenseCards;
+        MiiCardsListBox.ItemsSource = _miiProfiles;
+        BackupRestoreComboBox.ItemsSource = _backupRestoreItems;
+        BackupRestoreComboBox.DisplayMemberPath = nameof(SaveBackupInfo.DisplayName);
+        _navigationService.Navigated += tab => NavigateTo(tab);
+
         LoadSettingsIntoUi();
-        RefreshDerivedState();
+        ApplyWindowBounds();
+
+        _discordPresence = new DiscordPresenceService(_userPreferences);
+        _discordPresence.Initialize();
+
+        RefreshAllState();
+        NavigateTo("Home", animate: false);
 
         Loaded += async (_, _) =>
         {
             AnimateEntrance();
-            await CheckForUpdatesAsync(showMessages: false);
+            StartAmbientMotion();
+            RefreshMiiRuntimeStatus();
+            ConfigureFilesystemWatchers();
+            if (_userPreferences.AutoCheckUpdates)
+            {
+                await CheckForUpdatesAsync(showMessages: false);
+            }
         };
+    }
+
+    private void ApplyWindowBounds()
+    {
+        if (_userPreferences.WindowMaximized)
+        {
+            WindowState = WindowState.Maximized;
+        }
+        else
+        {
+            Width = Math.Max(MinWidth, _userPreferences.WindowWidth);
+            Height = Math.Max(MinHeight, _userPreferences.WindowHeight);
+        }
+    }
+
+    private void SaveWindowBounds()
+    {
+        if (WindowState == WindowState.Maximized)
+        {
+            _userPreferences.WindowMaximized = true;
+        }
+        else
+        {
+            _userPreferences.WindowMaximized = false;
+            _userPreferences.WindowWidth = Width;
+            _userPreferences.WindowHeight = Height;
+        }
+
+        _preferencesService.Save(_userPreferences);
+    }
+
+    private void MinimizeButton_Click(object sender, RoutedEventArgs e) => WindowState = WindowState.Minimized;
+
+    private void MaximizeButton_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState == WindowState.Maximized ? WindowState.Normal : WindowState.Maximized;
+        SaveWindowBounds();
+    }
+
+    private void CloseButton_Click(object sender, RoutedEventArgs e) => Close();
+
+    protected override void OnClosed(EventArgs e)
+    {
+        _filesystemRefreshCts?.Cancel();
+        _dolphinFileWatcher?.Dispose();
+        _profileFileWatcher?.Dispose();
+        base.OnClosed(e);
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            MaximizeButton_Click(sender, e);
+            return;
+        }
+
+        if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
+    }
+
+    private void HomeNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Home");
+    private void NewsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("News");
+    private void ModsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Mods");
+    private void LicensesNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Licenses");
+    private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Settings");
+    private void DebugNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Debug");
+
+    private void NavigateTo(string tab, bool animate = true)
+    {
+        _currentTab = tab;
+        _shellViewModel.CurrentTab = tab;
+
+        PlayView.Visibility = Visibility.Collapsed;
+        NewsView.Visibility = Visibility.Collapsed;
+        ModsView.Visibility = Visibility.Collapsed;
+        LicensesView.Visibility = Visibility.Collapsed;
+        SettingsView.Visibility = Visibility.Collapsed;
+        DebugView.Visibility = Visibility.Collapsed;
+
+        FrameworkElement view;
+        switch (tab)
+        {
+            case "News":
+                view = NewsView;
+                PageTitleTextBlock.Text = "News";
+                PageSubtitleTextBlock.Text = "Updates and changelog.";
+                ApplyNewsFilter();
+                break;
+            case "Mods":
+                view = ModsView;
+                PageTitleTextBlock.Text = "Mods";
+                PageSubtitleTextBlock.Text = "Install, repair, and addons.";
+                RefreshModsView();
+                break;
+            case "Licenses":
+                view = LicensesView;
+                PageTitleTextBlock.Text = "Mii & Licenses";
+                PageSubtitleTextBlock.Text = "Back up or import local saves.";
+                RefreshLicenseView();
+                break;
+            case "Settings":
+                view = SettingsView;
+                PageTitleTextBlock.Text = "Settings";
+                PageSubtitleTextBlock.Text = "Paths and preferences.";
+                break;
+            case "Debug":
+                view = DebugView;
+                PageTitleTextBlock.Text = "Debug";
+                PageSubtitleTextBlock.Text = "Developer-only local diagnostics.";
+                RefreshDebugInfo();
+                break;
+            default:
+                view = PlayView;
+                PageTitleTextBlock.Text = "VanzaKart";
+                PageSubtitleTextBlock.Text = "Ready to race.";
+                RefreshDerivedState();
+                break;
+        }
+
+        view.Visibility = Visibility.Visible;
+        if (animate)
+        {
+            AnimateViewTransition(view);
+        }
+
+        SetActiveTab(tab);
+    }
+
+    private void SetActiveTab(string tab)
+    {
+        var buttons = new Dictionary<string, WpfButton>
+        {
+            ["Home"] = HomeNavButton,
+            ["News"] = NewsNavButton,
+            ["Mods"] = ModsNavButton,
+            ["Licenses"] = LicensesNavButton,
+            ["Settings"] = SettingsNavButton,
+            ["Debug"] = DebugNavButton
+        };
+
+        foreach (var (key, button) in buttons)
+        {
+            button.Foreground = (WpfBrush)FindResource(key == tab ? "TextPrimary" : "TextSecondary");
+            button.Background = key == tab
+                ? new SolidColorBrush(WpfColor.FromRgb(0x1A, 0x24, 0x37))
+                : WpfBrushes.Transparent;
+        }
+    }
+
+    private static void AnimateViewTransition(FrameworkElement newView)
+    {
+        var slideIn = new TranslateTransform { X = 28 };
+        newView.RenderTransform = slideIn;
+        newView.Opacity = 0;
+
+        var easing = new CubicEase { EasingMode = EasingMode.EaseOut };
+        var animX = new DoubleAnimation(28, 0, TimeSpan.FromMilliseconds(260)) { EasingFunction = easing };
+        var animOpacity = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = easing };
+
+        slideIn.BeginAnimation(TranslateTransform.XProperty, animX);
+        newView.BeginAnimation(OpacityProperty, animOpacity);
+    }
+
+    private void RefreshAllState()
+    {
+        RefreshDerivedState();
+        RefreshModsView();
+        RefreshLicenseView();
+        RefreshPlayStats();
+        RefreshDebugInfo();
+        ApplyNewsFilter();
     }
 
     private LauncherSettings BuildSettingsFromUi() => new()
@@ -48,31 +291,121 @@ public partial class MainWindow : Window
     private void LoadSettingsIntoUi()
     {
         var settings = _settingsService.Load();
+        if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            var detectedUserFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+            if (!string.IsNullOrWhiteSpace(detectedUserFolder))
+            {
+                settings.UserFolderPath = detectedUserFolder;
+                _settingsService.Save(settings);
+            }
+        }
+
         DolphinPathTextBox.Text = settings.DolphinPath;
         UserFolderTextBox.Text = settings.UserFolderPath;
         RomPathTextBox.Text = settings.RomPath;
+
+        DiscordRpcCheckBox.IsChecked = _userPreferences.DiscordRpcEnabled;
+        AutoUpdateCheckBox.IsChecked = _userPreferences.AutoCheckUpdates;
+        SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
+        SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
+        GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 1;
     }
 
     private void SaveSettingsFromUi()
     {
         _settingsService.Save(BuildSettingsFromUi());
-        RefreshDerivedState();
+        ConfigureFilesystemWatchers();
+        RefreshAllState();
+    }
+
+    private void ConfigureFilesystemWatchers()
+    {
+        _dolphinFileWatcher?.Dispose();
+        _profileFileWatcher?.Dispose();
+        _dolphinFileWatcher = null;
+        _profileFileWatcher = null;
+
+        var settings = BuildSettingsFromUi();
+        if (!string.IsNullOrWhiteSpace(settings.UserFolderPath) && Directory.Exists(settings.UserFolderPath))
+        {
+            _dolphinFileWatcher = CreateWatcher(settings.UserFolderPath, includeSubdirectories: true);
+        }
+
+        var profilesFolder = _saveManagerService.GetLauncherProfilesFolder();
+        Directory.CreateDirectory(profilesFolder);
+        _profileFileWatcher = CreateWatcher(profilesFolder, includeSubdirectories: true);
+    }
+
+    private FileSystemWatcher CreateWatcher(string folder, bool includeSubdirectories)
+    {
+        var watcher = new FileSystemWatcher(folder)
+        {
+            IncludeSubdirectories = includeSubdirectories,
+            NotifyFilter = NotifyFilters.FileName | NotifyFilters.DirectoryName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            EnableRaisingEvents = true
+        };
+
+        watcher.Changed += (_, _) => ScheduleFilesystemRefresh();
+        watcher.Created += (_, _) => ScheduleFilesystemRefresh();
+        watcher.Deleted += (_, _) => ScheduleFilesystemRefresh();
+        watcher.Renamed += (_, _) => ScheduleFilesystemRefresh();
+        return watcher;
+    }
+
+    private void ScheduleFilesystemRefresh()
+    {
+        _filesystemRefreshCts?.Cancel();
+        _filesystemRefreshCts = new CancellationTokenSource();
+        var token = _filesystemRefreshCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(650, token);
+                await Dispatcher.InvokeAsync(() =>
+                {
+                    if (_currentTab == "Licenses")
+                    {
+                        RefreshLicenseView();
+                    }
+                    else
+                    {
+                        RefreshDebugInfo();
+                    }
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
     }
 
     private void RefreshDerivedState()
     {
         var settings = BuildSettingsFromUi();
-        ModFolderTextBlock.Text = settings.GetModFolder();
+        var modFolder = settings.GetModFolder();
+        ModFolderTextBlock.Text = modFolder;
+        SidebarVersionTextBlock.Text = string.IsNullOrWhiteSpace(_latestModVersion)
+            ? "Mod version unknown"
+            : $"Latest mod v{_latestModVersion}";
+
+        RefreshPlayStats();
+
+        if (_isModUpdateRequired)
+        {
+            SetStatus($"Mod update available (v{_latestModVersion})", (WpfBrush)FindResource("WarningBrush"));
+            return;
+        }
 
         if (IsModInstalled(settings))
         {
-            InstallStateBadgeText.Text = "Mod installed";
-            SetStatus("Mod already installed and ready. Play now.", System.Windows.Media.Brushes.LimeGreen);
+            SetStatus("Mod installed and ready", (WpfBrush)FindResource("SuccessBrush"));
         }
         else
         {
-            InstallStateBadgeText.Text = "Setup required";
-            SetStatus("Select the paths and install the mod.", System.Windows.Media.Brushes.LightGray);
+            SetStatus("Setup required: install the mod", (WpfBrush)FindResource("WarningBrush"));
         }
     }
 
@@ -82,81 +415,382 @@ public partial class MainWindow : Window
         return File.Exists(xmlPath);
     }
 
+    private void RefreshModsView()
+    {
+        var settings = BuildSettingsFromUi();
+        var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "Not installed";
+        var installed = IsModInstalled(settings);
+        var myStuffFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        var conflicts = _modConflictService.ScanAddonConflicts(myStuffFolder);
+
+        InstalledVersionText.Text = localVersion;
+        LatestVersionText.Text = string.IsNullOrEmpty(_latestModVersion) ? "Unknown" : _latestModVersion;
+        CoreModStatusTextBlock.Text = installed
+            ? $"Installed version: {localVersion}"
+            : "Core modpack is not installed yet.";
+        AddonFolderTextBlock.Text = Directory.Exists(myStuffFolder)
+            ? myStuffFolder
+            : "My Stuff folder will be created after install or first import.";
+        CompatibilityTextBlock.Text = installed
+            ? "Core files detected. Addons can be staged locally."
+            : "Install the core mod before importing addons.";
+        VersioningTextBlock.Text = string.IsNullOrEmpty(_latestModVersion)
+            ? "Waiting for manifest"
+            : $"Manifest latest: v{_latestModVersion}";
+        ModConflictTextBlock.Text = conflicts.Count == 0
+            ? "No addon conflicts detected."
+            : $"{conflicts.Count} conflict(s): {string.Join(", ", conflicts.Take(3).Select(conflict => conflict.FileName))}";
+        ModConflictTextBlock.Foreground = conflicts.Count == 0
+            ? (WpfBrush)FindResource("TextFaint")
+            : (WpfBrush)FindResource("WarningBrush");
+    }
+
+    private void RefreshLicenseView()
+    {
+        var settings = BuildSettingsFromUi();
+        var profiles = _saveManagerService.GetSaveProfiles(settings);
+        var activeMii = _saveManagerService.LoadMiiProfile();
+        var miiDb = _saveManagerService.GetMiiDatabasePath(settings);
+        var backupCount = _saveManagerService.GetBackupCount();
+
+        RefreshMiiRuntimeStatus();
+        RefreshMiiProfiles(activeMii.Id);
+        RefreshBackupRestoreItems();
+
+        _allLicenseCards.Clear();
+        _allLicenseCards.AddRange(profiles);
+        ApplyLicenseFilters();
+
+        LicensesCountTextBlock.Text = _allLicenseCards.Count.ToString(CultureInfo.InvariantCulture);
+        BackupCountTextBlock.Text = backupCount.ToString(CultureInfo.InvariantCulture);
+        LatestBackupTextBlock.Text = _saveManagerService.GetLatestBackupLabel();
+        MiiStateTextBlock.Text = File.Exists(miiDb)
+            ? "Dolphin"
+            : "Not found";
+
+        if (_allLicenseCards.Count == 0)
+        {
+            LicenseSummaryTextBlock.Text = "No Mario Kart Wii save was detected in the selected Dolphin user folder.";
+            PrimaryLicenseTextBlock.Text = "No local license detected yet.";
+            PrimaryLicensePathTextBlock.Text = string.Empty;
+            QueueLicenseAvatarRender(settings);
+            return;
+        }
+
+        LicenseSummaryTextBlock.Text = $"{profiles.Count} real Dolphin license card(s) detected.";
+        var selected = profiles.FirstOrDefault();
+        PrimaryLicenseTextBlock.Text = selected == null
+            ? string.Empty
+            : $"{selected.DisplayName} - {FormatBytes(selected.SizeBytes)} - {selected.LastModifiedUtc.ToLocalTime():g}";
+        PrimaryLicensePathTextBlock.Text = selected?.FilePath ?? string.Empty;
+        QueueLicenseAvatarRender(settings);
+    }
+
+    private void ApplyLicenseFilters()
+    {
+        if (LicenseCardsItemsControl == null)
+        {
+            return;
+        }
+
+        var query = LicenseSearchTextBox?.Text?.Trim() ?? string.Empty;
+        var filter = (LicenseFilterComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
+        var sort = (LicenseSortComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Modified";
+
+        IEnumerable<SaveProfileInfo> cards = _allLicenseCards;
+        if (!string.IsNullOrWhiteSpace(query))
+        {
+            cards = cards.Where(card =>
+                card.DisplayName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                card.MiiName.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                card.FilePath.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                card.SourceLabel.Contains(query, StringComparison.OrdinalIgnoreCase));
+        }
+
+        cards = filter switch
+        {
+            "Rendered" => cards.Where(card => card.HasAvatarImage),
+            "MissingMii" => cards.Where(card => card.MiiId != 0 && card.MiiName.Contains("not found", StringComparison.OrdinalIgnoreCase)),
+            "Active" => cards.Where(card => card.Races > 0 || card.Wins > 0 || card.Vr > 0 || card.Br > 0),
+            _ => cards
+        };
+
+        cards = sort switch
+        {
+            "Name" => cards.OrderBy(card => card.DisplayName),
+            "VR" => cards.OrderByDescending(card => card.Vr),
+            "Wins" => cards.OrderByDescending(card => card.Wins),
+            "Races" => cards.OrderByDescending(card => card.Races),
+            _ => cards.OrderByDescending(card => card.LastModifiedUtc)
+        };
+
+        _licenseCards.Clear();
+        foreach (var card in cards)
+        {
+            _licenseCards.Add(card);
+        }
+    }
+
+    private async void QueueLicenseAvatarRender(LauncherSettings settings)
+    {
+        if (_isRenderingLicenseAvatars || string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            return;
+        }
+
+        _isRenderingLicenseAvatars = true;
+        try
+        {
+            var rendered = await _saveManagerService.EnsureDolphinMiiAvatarCacheAsync(settings);
+            if (rendered)
+            {
+                RefreshLicenseView();
+            }
+        }
+        catch (Exception ex)
+        {
+            MiiRuntimeProgressTextBlock.Text = $"Renderer: {ex.Message}";
+        }
+        finally
+        {
+            _isRenderingLicenseAvatars = false;
+        }
+    }
+
+    private async void QueueLauncherMiiAvatarRender()
+    {
+        if (_isRenderingLauncherMiiAvatars)
+        {
+            return;
+        }
+
+        _isRenderingLauncherMiiAvatars = true;
+        try
+        {
+            var rendered = await _saveManagerService.EnsureLauncherMiiAvatarCacheAsync();
+            if (rendered)
+            {
+                RefreshMiiProfiles();
+            }
+        }
+        catch (Exception ex)
+        {
+            MiiRuntimeProgressTextBlock.Text = $"Renderer: {ex.Message}";
+        }
+        finally
+        {
+            _isRenderingLauncherMiiAvatars = false;
+        }
+    }
+
+    private void RefreshMiiRuntimeStatus()
+    {
+        var status = _miiRuntimeSetupService.GetStatus();
+        MiiRuntimeSetupCard.Visibility = status.IsInstalled ? Visibility.Collapsed : Visibility.Visible;
+        MiiRuntimeStatusTextBlock.Text = status.IsInstalled
+            ? "Renderer assets are installed."
+            : "Install the Mii render asset cache for real avatar previews and future offline rendering.";
+        MiiRuntimeProgressTextBlock.Text = status.IsInstalled
+            ? $"Installed: {FormatBytes(status.SizeBytes)}"
+            : "This downloads and verifies the render resource automatically.";
+        MiiRuntimeProgressBar.Value = status.IsInstalled ? 100 : 0;
+        InstallMiiRuntimeButton.IsEnabled = !_isInstallingMiiRuntime && !status.IsInstalled;
+    }
+
+    private void RefreshBackupRestoreItems()
+    {
+        var selectedPath = (BackupRestoreComboBox.SelectedItem as SaveBackupInfo)?.FilePath;
+        _backupRestoreItems.Clear();
+        foreach (var backup in _saveManagerService.GetBackups())
+        {
+            _backupRestoreItems.Add(backup);
+        }
+
+        BackupRestoreComboBox.SelectedItem = _backupRestoreItems.FirstOrDefault(item => item.FilePath == selectedPath)
+                                             ?? _backupRestoreItems.FirstOrDefault();
+    }
+
+    private void RefreshMiiProfiles(string? activeMiiId = null)
+    {
+        _isRefreshingMiis = true;
+        try
+        {
+            _miiProfiles.Clear();
+            foreach (var profile in _saveManagerService.LoadMiiProfiles())
+            {
+                _miiProfiles.Add(profile);
+            }
+
+            if (_miiProfiles.Count == 0)
+            {
+                return;
+            }
+
+            var selected = _miiProfiles.FirstOrDefault(profile => profile.Id == activeMiiId)
+                           ?? _miiProfiles.FirstOrDefault(profile => profile.Id == _saveManagerService.LoadMiiProfile().Id)
+                           ?? _miiProfiles[0];
+            MiiCardsListBox.SelectedItem = selected;
+
+            if (_miiProfiles.Any(profile => profile.IsRealMii && !profile.HasAvatarImage))
+            {
+                QueueLauncherMiiAvatarRender();
+            }
+        }
+        finally
+        {
+            _isRefreshingMiis = false;
+        }
+    }
+
+    private void RefreshPlayStats()
+    {
+        LastPlayedTextBlock.Text = _userPreferences.LastPlayedUtc.HasValue
+            ? _userPreferences.LastPlayedUtc.Value.ToLocalTime().ToString("g")
+            : "Never";
+        TimePlayedTextBlock.Text = FormatDuration(TimeSpan.FromMinutes(_userPreferences.TotalPlayTimeMinutes));
+        LaunchCountTextBlock.Text = _userPreferences.LaunchCount.ToString(CultureInfo.InvariantCulture);
+    }
+
+    private void RefreshDebugInfo()
+    {
+        if (!Debugger.IsAttached)
+        {
+            return;
+        }
+
+        var settings = BuildSettingsFromUi();
+        DebugLogTextBlock.Text =
+            $"Tab: {_currentTab}\n" +
+            $"Busy: {_isBusy}\n" +
+            $"Update required: {_isModUpdateRequired}\n" +
+            $"Launcher version: {LauncherConfig.CurrentLauncherVersion}\n" +
+            $"Latest mod version: {(_latestModVersion.Length == 0 ? "unknown" : _latestModVersion)}\n" +
+            $"Dolphin: {settings.DolphinPath}\n" +
+            $"User folder: {settings.UserFolderPath}\n" +
+            $"ROM: {settings.RomPath}\n" +
+            $"Mod folder: {settings.GetModFolder()}\n" +
+            $"Settings file: {_settingsService.GetSettingsPath()}\n" +
+            $"Preferences file: {_preferencesService.GetPreferencesPath()}";
+    }
+
     private void SetBusy(bool value)
     {
         _isBusy = value;
+        _shellViewModel.IsBusy = value;
         InstallButton.IsEnabled = !value;
         LaunchButton.IsEnabled = !value && !_isModUpdateRequired;
         CheckUpdatesButton.IsEnabled = !value;
-        BrowseDolphinButton.IsEnabled = !value;
-        BrowseUserFolderButton.IsEnabled = !value;
-        BrowseRomButton.IsEnabled = !value;
+        RepairModButton.IsEnabled = !value;
+        OpenModFolderButton.IsEnabled = !value;
     }
 
-    private void ApplyModUpdateRequiredState()
-    {
-        LaunchButton.IsEnabled = !_isBusy && !_isModUpdateRequired;
-    }
-
-    private void SetStatus(string text, System.Windows.Media.Brush brush)
+    private void SetStatus(string text, WpfBrush brush)
     {
         StatusTextBlock.Text = text;
         StatusTextBlock.Foreground = brush;
+        ShellStatusTextBlock.Text = text;
+        ShellStatusTextBlock.Foreground = brush;
+        _shellViewModel.Status = text;
+    }
+
+    private void SetUpdateState(string phase, string detail, double? percent = null)
+    {
+        UpdatePhaseTextBlock.Text = phase;
+        UpdateDetailTextBlock.Text = detail;
+        if (percent.HasValue)
+        {
+            DownloadProgressBar.Value = Math.Clamp(percent.Value, 0, 100);
+            UpdatePercentTextBlock.Text = $"{Math.Clamp(percent.Value, 0, 100):F0}%";
+        }
+    }
+
+    private MessageBoxResult ShowCustomDialog(string title, string message, MessageBoxButton buttons = MessageBoxButton.OK)
+    {
+        var dialog = new CustomDialog(title, message, buttons)
+        {
+            Owner = this
+        };
+
+        var result = dialog.ShowDialog();
+        if (buttons == MessageBoxButton.OK)
+        {
+            return result == MessageBoxResult.OK ? MessageBoxResult.OK : MessageBoxResult.None;
+        }
+
+        if (buttons == MessageBoxButton.YesNo)
+        {
+            return result == MessageBoxResult.Yes ? MessageBoxResult.Yes : MessageBoxResult.No;
+        }
+
+        return result ?? MessageBoxResult.OK;
     }
 
     private async void InstallButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_isBusy) return;
+        if (_isBusy)
+        {
+            return;
+        }
 
         var settings = BuildSettingsFromUi();
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
-            System.Windows.MessageBox.Show("Select the Dolphin User folder first.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowCustomDialog("Setup required", "Select the Dolphin User folder first in Settings.", MessageBoxButton.OK);
+            NavigateTo("Settings");
             return;
         }
 
         SaveSettingsFromUi();
 
-        if (IsModInstalled(settings))
+        if (IsModInstalled(settings) && !string.IsNullOrEmpty(_latestModVersion))
         {
-            var result = System.Windows.MessageBox.Show(
-                "The mod appears to already be installed. Do you want to re-download it to update or repair it?",
-                "Mod already installed",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Question);
-
-            if (result != MessageBoxResult.Yes)
+            var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
+            if (localVersion == _latestModVersion)
             {
-                RefreshDerivedState();
-                return;
+                var result = ShowCustomDialog("Mod up to date", "The mod is already up to date. Reinstall anyway?", MessageBoxButton.YesNo);
+                if (result != MessageBoxResult.Yes)
+                {
+                    return;
+                }
             }
         }
 
+        await PerformModInstallation();
+    }
+
+    private async Task PerformModInstallation()
+    {
         SetBusy(true);
+        ResetDownloadMetrics();
         DownloadProgressBar.Visibility = Visibility.Visible;
         DownloadProgressBar.IsIndeterminate = false;
         DownloadProgressBar.Value = 0;
-        SetStatus("Connecting to the server...", System.Windows.Media.Brushes.LightSkyBlue);
+        UpdateSpeedTextBlock.Text = string.Empty;
+        SetStatus("Connecting to update channel", (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState("Connecting", "Preparing download...", 0);
+        _discordPresence?.SetDownloading();
 
         try
         {
-            var progress = new Progress<(long current, long total)>(p =>
-            {
-                if (p.total <= 0) return;
-                DownloadProgressBar.Value = (double)p.current / p.total * 100d;
-                var currentGb = p.current / 1024d / 1024d / 1024d;
-                var totalGb = p.total / 1024d / 1024d / 1024d;
-                SetStatus($"Download: {currentGb:F2} GB of {totalGb:F2} GB ({DownloadProgressBar.Value:F0}%)", System.Windows.Media.Brushes.LightSkyBlue);
-            });
+            var progress = new Progress<(long current, long total)>(p => UpdateDownloadProgress(p.current, p.total));
+            await _networkService.DownloadFileWithResumeAsync(BuildModMirrorList(), _tempZipPath, progress);
 
-            await _networkService.DownloadFileWithResumeAsync(LauncherConfig.ModUrl, _tempZipPath, progress);
+            SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
+            SetUpdateState("Verifying", "Checking archive integrity...", 100);
+            await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
 
-            DownloadProgressBar.IsIndeterminate = true;
-            SetStatus("Extracting files...", System.Windows.Media.Brushes.Orange);
+            DownloadProgressBar.IsIndeterminate = false;
+            DownloadProgressBar.Value = 0;
+            SetStatus("Extracting mod files", (WpfBrush)FindResource("WarningBrush"));
+            SetUpdateState("Extracting", "Replacing VanzaKart files safely...", 0);
+            _discordPresence?.SetExtracting();
 
+            var settings = BuildSettingsFromUi();
             var modFolder = settings.GetModFolder();
             var specificModFolder = Path.Combine(modFolder, "VanzaKart");
-            await _archiveService.ExtractZipAsync(_tempZipPath, modFolder, specificModFolder);
+
+            var extractProgress = new Progress<int>(p => SetUpdateState("Extracting", "Writing files to Dolphin Riivolution folder...", p));
+            await _archiveService.ExtractZipAsync(_tempZipPath, modFolder, specificModFolder, extractProgress);
 
             if (File.Exists(_tempZipPath))
             {
@@ -168,19 +802,21 @@ public partial class MainWindow : Window
                 File.WriteAllText(_localModVersionFile, _latestModVersion);
             }
 
-            DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Value = 100;
             _isModUpdateRequired = false;
-            ApplyModUpdateRequiredState();
-            SetStatus("Installation complete. You can now launch the game.", System.Windows.Media.Brushes.LimeGreen);
-            RefreshDerivedState();
+            SetUpdateState("Complete", "VanzaKart is ready.", 100);
+            SetStatus("Installation complete. Ready to race.", (WpfBrush)FindResource("SuccessBrush"));
+            ShowToast("Update complete", "VanzaKart was installed successfully.");
+            RefreshAllState();
+            _discordPresence?.SetLauncherIdle();
         }
         catch (Exception ex)
         {
             DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Visibility = Visibility.Collapsed;
-            SetStatus("Error during installation or update.", System.Windows.Media.Brushes.IndianRed);
-            System.Windows.MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetStatus("Installation failed", (WpfBrush)FindResource("DangerBrush"));
+            SetUpdateState("Failed", ex.Message, 0);
+            ShowCustomDialog("Installation error", ex.Message, MessageBoxButton.OK);
         }
         finally
         {
@@ -188,24 +824,34 @@ public partial class MainWindow : Window
         }
     }
 
-    private void LaunchButton_OnClick(object sender, RoutedEventArgs e)
+    private async void RepairModButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_isBusy) return;
+        if (ShowCustomDialog("Repair installation", "This will re-download and reinstall the mod. Continue?", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+        {
+            await PerformModInstallation();
+        }
+    }
+
+    private async void LaunchButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
 
         if (_isModUpdateRequired)
         {
-            System.Windows.MessageBox.Show(
-                "A mandatory mod update is available. You must install the update before playing.",
-                "Update required",
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
+            ShowCustomDialog("Update required", "A mandatory mod update is available. Install it before launching.", MessageBoxButton.OK);
             return;
         }
 
         var settings = BuildSettingsFromUi();
-        if (string.IsNullOrWhiteSpace(settings.DolphinPath) || string.IsNullOrWhiteSpace(settings.RomPath) || string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        if (string.IsNullOrWhiteSpace(settings.DolphinPath) ||
+            string.IsNullOrWhiteSpace(settings.RomPath) ||
+            string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
-            System.Windows.MessageBox.Show("Select Dolphin, the ROM, and the User folder before launching the game.", "Warning", MessageBoxButton.OK, MessageBoxImage.Warning);
+            ShowCustomDialog("Setup required", "Configure Dolphin, the User folder, and the Mario Kart Wii ROM in Settings.", MessageBoxButton.OK);
+            NavigateTo("Settings");
             return;
         }
 
@@ -213,41 +859,47 @@ public partial class MainWindow : Window
         var xmlPath = Path.Combine(rootDir, "Riivolution", "VanzaKart.xml");
         if (!File.Exists(xmlPath))
         {
-            System.Windows.MessageBox.Show("Mod XML file not found. Install the mod first.", "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowCustomDialog("Mod not found", "Install the VanzaKart modpack before launching.", MessageBoxButton.OK);
+            NavigateTo("Mods");
             return;
         }
 
         SaveSettingsFromUi();
 
+        _userPreferences.SeparateSavegame = SeparateSaveCheckBox.IsChecked == true;
+        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 1 : 2;
+        _userPreferences.LastPlayedUtc = DateTime.UtcNow;
+        _userPreferences.LaunchCount++;
+        _preferencesService.Save(_userPreferences);
+
         try
         {
+            int optionChoice = _userPreferences.ModOptionChoice;
+            int saveChoice = _userPreferences.SeparateSavegame ? 1 : 0;
+
             var jsonPath = Path.Combine(AppContext.BaseDirectory, "VanzaKart_launcher.json");
-            var json = string.Join(Environment.NewLine, new[]
-{
-                "{",
-                $"  \"base-file\": \"{EscapeJsonValue(settings.RomPath)}\",",
-                "  \"display-name\": \"VanzaKart Modpack\",",
-                "  \"riivolution\": {",
-                "    \"patches\": [",
-                "      {",
-                "        \"options\": [",
-                "          { \"choice\": 1, \"option-name\": \"Pack\", \"section-name\": \"VanzaKart\" },",
-                "          { \"choice\": 2, \"option-name\": \"My Stuff\", \"section-name\": \"VanzaKart\" },",
-                "          { \"choice\": 1, \"option-name\": \"Seperate Savegame\", \"section-name\": \"VanzaKart\" }",
-                "        ],",
-                $"        \"root\": \"{EscapeJsonValue(rootDir)}\",",
-                $"        \"xml\": \"{EscapeJsonValue(xmlPath)}\"",
-                "      }",
-                "    ]",
-                "  },",
-                "  \"type\": \"dolphin-game-mod-descriptor\",",
-                "  \"version\": 1",
-                "}"
-            });
+            var json = $@"{{
+  ""base-file"": ""{EscapeJsonValue(settings.RomPath)}"",
+  ""display-name"": ""VanzaKart Modpack"",
+  ""riivolution"": {{
+    ""patches"": [
+      {{
+        ""options"": [
+          {{ ""choice"": {optionChoice}, ""option-name"": ""{(optionChoice == 1 ? "Pack" : "My Stuff")}"", ""section-name"": ""VanzaKart"" }},
+          {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""VanzaKart"" }}
+        ],
+        ""root"": ""{EscapeJsonValue(rootDir)}"",
+        ""xml"": ""{EscapeJsonValue(xmlPath)}""
+      }}
+    ]
+  }},
+  ""type"": ""dolphin-game-mod-descriptor"",
+  ""version"": 1
+}}";
 
             File.WriteAllText(jsonPath, json);
 
-            Process.Start(new ProcessStartInfo
+            var process = Process.Start(new ProcessStartInfo
             {
                 FileName = settings.DolphinPath,
                 Arguments = $"\"{jsonPath}\"",
@@ -255,39 +907,51 @@ public partial class MainWindow : Window
                 WorkingDirectory = Path.GetDirectoryName(settings.DolphinPath)
             });
 
-            SetStatus("Game launched.", System.Windows.Media.Brushes.LimeGreen);
+            TrackGameSession(process);
+            _discordPresence?.SetPlaying();
+            SetStatus("Game launched. Enjoy VanzaKart.", (WpfBrush)FindResource("SuccessBrush"));
+            ShowToast("Race started", "Dolphin is launching the VanzaKart descriptor.");
+            RefreshPlayStats();
         }
         catch (Exception ex)
         {
-            System.Windows.MessageBox.Show(ex.Message, "Launch error", MessageBoxButton.OK, MessageBoxImage.Error);
+            ShowCustomDialog("Launch error", ex.Message, MessageBoxButton.OK);
         }
     }
 
-    private async void CheckUpdatesButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        await CheckForUpdatesAsync(showMessages: true);
-    }
+    private async void CheckUpdatesButton_OnClick(object sender, RoutedEventArgs e) => await CheckForUpdatesAsync(true);
 
     private async Task CheckForUpdatesAsync(bool showMessages)
     {
         try
         {
+            if (showMessages)
+            {
+                SetStatus("Checking for updates", (WpfBrush)FindResource("TextSecondary"));
+                SetUpdateState("Checking", "Reading VanzaKart update manifest...", 0);
+            }
+
             var noCacheUrl = $"{LauncherConfig.VersionJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             var json = await _networkService.DownloadStringAsync(noCacheUrl);
             var info = JsonSerializer.Deserialize<VersionInfo>(json) ?? new VersionInfo();
+
             _latestModVersion = info.ModVersion;
+            _latestModUrl = string.IsNullOrWhiteSpace(info.ModUrl) ? LauncherConfig.ModUrl : info.ModUrl;
+            _latestModMirrors = info.ModMirrors ?? Array.Empty<string>();
+            _latestModSha256 = info.ModSha256;
+            _latestLauncherUrl = string.IsNullOrWhiteSpace(info.LauncherUrl) ? LauncherConfig.LauncherZipUrl : info.LauncherUrl;
+            _latestLauncherMirrors = info.LauncherMirrors ?? Array.Empty<string>();
 
-            var notes = new List<string>();
-
-            if (!string.IsNullOrWhiteSpace(info.LauncherVersion) && info.LauncherVersion != LauncherConfig.CurrentLauncherVersion)
+            if (info.Changelog.Length > 0)
             {
-                notes.Add($"New launcher available: v{info.LauncherVersion}.");
-                var answer = System.Windows.MessageBox.Show(
-                    $"A launcher update is available (v{info.LauncherVersion}). Do you want to download it now?",
-                    "Launcher update",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Information);
+                QuickChangelogTextBlock.Text = info.Changelog[0];
+                MergeManifestNews(info);
+            }
 
+            if (!string.IsNullOrWhiteSpace(info.LauncherVersion) &&
+                info.LauncherVersion != LauncherConfig.CurrentLauncherVersion)
+            {
+                var answer = ShowCustomDialog("Launcher update", $"New launcher v{info.LauncherVersion} is available. Update now?", MessageBoxButton.YesNo);
                 if (answer == MessageBoxResult.Yes)
                 {
                     await PerformLauncherUpdateAsync();
@@ -297,43 +961,38 @@ public partial class MainWindow : Window
 
             if (IsModInstalled(BuildSettingsFromUi()))
             {
-                var localVersion = File.Exists(_localModVersionFile)
-                    ? File.ReadAllText(_localModVersionFile).Trim()
-                    : "0.0";
-
+                var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
                 if (!string.IsNullOrWhiteSpace(info.ModVersion) && info.ModVersion != localVersion)
                 {
-                    notes.Add($"New mod available: v{info.ModVersion}. Update required to play.");
                     _isModUpdateRequired = true;
-                    ApplyModUpdateRequiredState();
-                    SetStatus(
-                        $"⚠ Mod update required (v{info.ModVersion}). Install the update to play.",
-                        System.Windows.Media.Brushes.Orange);
+                    SetStatus($"Mod update available (v{info.ModVersion})", (WpfBrush)FindResource("WarningBrush"));
+                    SetUpdateState("Update available", $"Installed {localVersion}, latest {info.ModVersion}.", 0);
+                    if (showMessages)
+                    {
+                        ShowToast("Update available", $"VanzaKart v{info.ModVersion} is ready to install.");
+                    }
                 }
                 else
                 {
                     _isModUpdateRequired = false;
-                    ApplyModUpdateRequiredState();
+                    SetStatus("Mod is up to date", (WpfBrush)FindResource("SuccessBrush"));
+                    SetUpdateState("Up to date", "No mod update is required.", 100);
+                    if (showMessages)
+                    {
+                        ShowToast("No updates", "VanzaKart is already up to date.");
+                    }
                 }
             }
 
-            if (notes.Count == 0)
-            {
-                if (showMessages)
-                {
-                    System.Windows.MessageBox.Show("No updates found.", "Updates", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            else if (showMessages)
-            {
-                System.Windows.MessageBox.Show(string.Join(Environment.NewLine, notes), "Updates", MessageBoxButton.OK, MessageBoxImage.Information);
-            }
+            RefreshAllState();
         }
-        catch
+        catch (Exception ex)
         {
             if (showMessages)
             {
-                System.Windows.MessageBox.Show("Unable to check for updates now.", "Network", MessageBoxButton.OK, MessageBoxImage.Warning);
+                SetStatus("Update check failed", (WpfBrush)FindResource("DangerBrush"));
+                SetUpdateState("Network error", ex.Message, 0);
+                ShowCustomDialog("Network error", "Failed to check for updates.", MessageBoxButton.OK);
             }
         }
     }
@@ -341,65 +1000,157 @@ public partial class MainWindow : Window
     private async Task PerformLauncherUpdateAsync()
     {
         SetBusy(true);
+        ResetDownloadMetrics();
         DownloadProgressBar.Visibility = Visibility.Visible;
-        DownloadProgressBar.IsIndeterminate = true;
-        SetStatus("Downloading the new launcher...", System.Windows.Media.Brushes.LightSkyBlue);
+        DownloadProgressBar.IsIndeterminate = false;
+        DownloadProgressBar.Value = 0;
+        SetStatus("Downloading launcher update", (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState("Launcher update", "Downloading new launcher package...", 0);
 
         var tempZip = Path.Combine(AppContext.BaseDirectory, "Launcher_Update.zip");
         var batchPath = Path.Combine(AppContext.BaseDirectory, "update.bat");
 
         try
         {
-            await _networkService.DownloadFileWithResumeAsync(LauncherConfig.LauncherZipUrl, tempZip);
+            var progress = new Progress<(long current, long total)>(p => UpdateDownloadProgress(p.current, p.total));
+            await _networkService.DownloadFileWithResumeAsync(BuildLauncherMirrorList(), tempZip, progress);
+            await _archiveService.ValidateZipAsync(tempZip);
 
             var exeName = Path.GetFileName(Environment.ProcessPath) ?? "VanzaKart Launcher.exe";
-            var script = string.Join(Environment.NewLine, new[]
-            {
-                "@echo off",
-                $"cd /d \"{AppContext.BaseDirectory}\"",
-                "timeout /t 2 /nobreak >nul",
-                $"powershell -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -Path '{tempZip}' -DestinationPath '{AppContext.BaseDirectory}' -Force\"",
-                $"del \"{tempZip}\"",
-                $"start \"\" \"{Path.Combine(AppContext.BaseDirectory, exeName)}\"",
-                "del \"%~f0\""
-            });
+            var script = $@"@echo off
+cd /d ""{AppContext.BaseDirectory}""
+timeout /t 2 /nobreak >nul
+powershell -NoProfile -ExecutionPolicy Bypass -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{AppContext.BaseDirectory}' -Force""
+del ""{tempZip}""
+start """" ""{Path.Combine(AppContext.BaseDirectory, exeName)}""
+del ""%~f0""";
             File.WriteAllText(batchPath, script);
 
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = batchPath,
-                UseShellExecute = true,
-                WindowStyle = ProcessWindowStyle.Hidden,
-                CreateNoWindow = true
-            });
-
+            Process.Start(new ProcessStartInfo { FileName = batchPath, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden });
             System.Windows.Application.Current.Shutdown();
         }
         catch (Exception ex)
         {
-            SetStatus("Error during launcher update.", System.Windows.Media.Brushes.IndianRed);
-            System.Windows.MessageBox.Show(ex.Message, "Error", MessageBoxButton.OK, MessageBoxImage.Error);
+            SetStatus("Launcher update failed", (WpfBrush)FindResource("DangerBrush"));
+            SetUpdateState("Failed", ex.Message, 0);
+            ShowCustomDialog("Launcher update error", ex.Message, MessageBoxButton.OK);
             SetBusy(false);
         }
     }
 
-    private void BrowseDolphinButton_OnClick(object sender, RoutedEventArgs e)
+    private async Task VerifyDownloadedArchiveAsync(string zipPath, string expectedSha256)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Executable (*.exe)|*.exe" };
-        if (dialog.ShowDialog() != true) return;
-
-        DolphinPathTextBox.Text = dialog.FileName;
-        var dolphinDir = Path.GetDirectoryName(dialog.FileName) ?? string.Empty;
-        var possibleUser = Path.Combine(dolphinDir, "User");
-
-        if (Directory.Exists(possibleUser))
+        await _archiveService.ValidateZipAsync(zipPath);
+        if (string.IsNullOrWhiteSpace(expectedSha256))
         {
-            UserFolderTextBox.Text = possibleUser;
-            SetStatus("Dolphin and the User folder detected automatically.", System.Windows.Media.Brushes.LimeGreen);
+            return;
+        }
+
+        var actual = await ComputeSha256Async(zipPath);
+        if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException("The downloaded archive hash does not match the manifest.");
+        }
+    }
+
+    private static async Task<string> ComputeSha256Async(string path)
+    {
+        await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
+        using var sha = SHA256.Create();
+        var hash = await sha.ComputeHashAsync(stream);
+        return Convert.ToHexString(hash);
+    }
+
+    private IEnumerable<string> BuildModMirrorList()
+    {
+        yield return _latestModUrl;
+        foreach (var mirror in _latestModMirrors)
+        {
+            yield return mirror;
+        }
+        yield return LauncherConfig.ModUrl;
+    }
+
+    private IEnumerable<string> BuildLauncherMirrorList()
+    {
+        yield return _latestLauncherUrl;
+        foreach (var mirror in _latestLauncherMirrors)
+        {
+            yield return mirror;
+        }
+        yield return LauncherConfig.LauncherZipUrl;
+    }
+
+    private void ResetDownloadMetrics()
+    {
+        _downloadStopwatch.Reset();
+        _downloadBaselineBytes = -1;
+        UpdateSpeedTextBlock.Text = string.Empty;
+        UpdatePercentTextBlock.Text = "0%";
+    }
+
+    private void UpdateDownloadProgress(long current, long total)
+    {
+        if (_downloadBaselineBytes < 0)
+        {
+            _downloadBaselineBytes = current;
+            _downloadStopwatch.Restart();
+        }
+
+        var percent = total <= 0 ? 0 : (double)current / total * 100;
+        var sessionBytes = Math.Max(0, current - _downloadBaselineBytes);
+        var speed = _downloadStopwatch.Elapsed.TotalSeconds <= 0
+            ? 0
+            : sessionBytes / _downloadStopwatch.Elapsed.TotalSeconds;
+
+        SetUpdateState("Downloading", $"{FormatBytes(current)} / {FormatBytes(total)}", percent);
+        UpdateSpeedTextBlock.Text = speed <= 0 ? "Measuring speed..." : $"{FormatBytes((long)speed)}/s";
+        SetStatus($"Downloading {percent:F0}%", (WpfBrush)FindResource("TextSecondary"));
+    }
+
+    private void OpenModFolderButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var folder = BuildSettingsFromUi().GetModFolder();
+        if (Directory.Exists(folder))
+        {
+            OpenFolder(folder);
         }
         else
         {
-            SetStatus("Dolphin found. The User folder must be set manually.", System.Windows.Media.Brushes.Orange);
+            ShowCustomDialog("Folder not found", "The mod folder does not exist yet.", MessageBoxButton.OK);
+        }
+    }
+
+    private void OpenAddonsFolderButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings))
+        {
+            ShowCustomDialog("Mod not installed", "Install VanzaKart before opening the addon folder.", MessageBoxButton.OK);
+            return;
+        }
+
+        var folder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        Directory.CreateDirectory(folder);
+        OpenFolder(folder);
+        RefreshModsView();
+    }
+
+    private void BrowseDolphinButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfOpenFileDialog { Filter = "Executable (*.exe)|*.exe" };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        DolphinPathTextBox.Text = dialog.FileName;
+        var settings = BuildSettingsFromUi();
+        var possibleUser = _saveManagerService.TryAutoDetectUserFolder(settings);
+        if (!string.IsNullOrWhiteSpace(possibleUser))
+        {
+            UserFolderTextBox.Text = possibleUser;
+            ShowToast("Dolphin detected", "The User folder was detected automatically.");
         }
 
         SaveSettingsFromUi();
@@ -407,82 +1158,1190 @@ public partial class MainWindow : Window
 
     private void BrowseUserFolderButton_OnClick(object sender, RoutedEventArgs e)
     {
-        using var dialog = new System.Windows.Forms.FolderBrowserDialog
+        var dialog = new WpfOpenFolderDialog
         {
-            Description = "Select the Dolphin User folder"
+            Title = "Select Dolphin User folder",
+            Multiselect = false
         };
 
-        if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+        if (dialog.ShowDialog(this) == true)
         {
-            UserFolderTextBox.Text = dialog.SelectedPath;
+            UserFolderTextBox.Text = dialog.FolderName;
             SaveSettingsFromUi();
         }
     }
 
     private void BrowseRomButton_OnClick(object sender, RoutedEventArgs e)
     {
-        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Wii ROM (*.wbfs;*.iso)|*.wbfs;*.iso" };
-        if (dialog.ShowDialog() != true) return;
+        var dialog = new WpfOpenFileDialog { Filter = "Wii ROM (*.wbfs;*.iso)|*.wbfs;*.iso" };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
 
         RomPathTextBox.Text = dialog.FileName;
         SaveSettingsFromUi();
     }
 
-    private static string EscapeJsonValue(string value)
+    private async void InstallMiiRuntimeButton_OnClick(object sender, RoutedEventArgs e)
     {
-        return value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        if (_isInstallingMiiRuntime)
+        {
+            return;
+        }
+
+        _isInstallingMiiRuntime = true;
+        InstallMiiRuntimeButton.IsEnabled = false;
+        MiiRuntimeSetupCard.Visibility = Visibility.Visible;
+
+        var progress = new Progress<MiiRuntimeSetupProgress>(item =>
+        {
+            MiiRuntimeStatusTextBlock.Text = item.Stage;
+            MiiRuntimeProgressBar.Value = item.Percent;
+            MiiRuntimeProgressTextBlock.Text = item.TotalBytes is > 0
+                ? $"{FormatBytes(item.BytesReceived)} / {FormatBytes(item.TotalBytes.Value)}"
+                : $"{FormatBytes(item.BytesReceived)} downloaded";
+        });
+
+        try
+        {
+            await _miiRuntimeSetupService.InstallAsync(progress);
+            ShowToast("Mii setup ready", "Render assets installed successfully.");
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii setup error", ex.Message, MessageBoxButton.OK);
+        }
+        finally
+        {
+            _isInstallingMiiRuntime = false;
+            RefreshMiiRuntimeStatus();
+            QueueLauncherMiiAvatarRender();
+            QueueLicenseAvatarRender(BuildSettingsFromUi());
+        }
     }
+
+    private async void BackupSaveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var backup = await _saveManagerService.BackupPrimarySaveAsync(BuildSettingsFromUi());
+            ShowToast("Backup created", backup);
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Backup error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void RestoreBackupButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (BackupRestoreComboBox.SelectedItem is not SaveBackupInfo backup)
+        {
+            ShowCustomDialog("No backup selected", "Create or select a backup before restoring.", MessageBoxButton.OK);
+            return;
+        }
+
+        if (ShowCustomDialog("Restore backup", $"Restore {backup.DisplayName}? A safety backup will be created first.", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            await _saveManagerService.RestoreBackupAsync(BuildSettingsFromUi(), backup.FilePath);
+            ShowToast("Backup restored", backup.DisplayName);
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Restore error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void ImportSaveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfOpenFileDialog { Filter = "Mario Kart Wii save (rksys.dat)|rksys.dat|All files (*.*)|*.*" };
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _saveManagerService.ImportSaveFileAsync(BuildSettingsFromUi(), dialog.FileName);
+            ShowToast("Save imported", "A backup was created before replacing the current save.");
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Import error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void ExportSaveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfSaveFileDialog
+        {
+            Filter = "Mario Kart Wii save (rksys.dat)|rksys.dat|All files (*.*)|*.*",
+            FileName = $"rksys_export_{DateTime.Now:yyyyMMdd_HHmmss}.dat"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _saveManagerService.ExportPrimarySaveAsync(BuildSettingsFromUi(), dialog.FileName);
+            ShowToast("Save exported", dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Export error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void CreateMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            var state = new MiiEditorState
+            {
+                Name = BuildNewMiiName(),
+                CreatorName = "VanzaKart",
+                FavoriteColorIndex = 4,
+                IsFavorite = _saveManagerService.LoadMiiProfiles().Count == 0
+            };
+
+            var profile = await _saveManagerService.CreateMiiProfileAsync(state);
+            await TrySyncMiiToDolphinAsync(profile);
+            RefreshLicenseView();
+            OpenMiiEditor(profile.Id);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii creation error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void CreateLicenseButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var settings = BuildSettingsFromUi();
+        var hasRealSave = _saveManagerService.GetSaveProfiles(settings).Count > 0;
+        var message = hasRealSave
+            ? "Real save-backed license editing is enabled through detected rksys.dat cards. Full from-scratch rksys generation is intentionally disabled until a verified save template is provided, so the launcher will not create a fake license."
+            : "No real Mario Kart Wii save was found. Launch Mario Kart Wii once in Dolphin to create rksys.dat, then the launcher can manage real licenses without fake data.";
+        ShowCustomDialog("Real license required", message, MessageBoxButton.OK);
+    }
+
+    private async void ImportMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var dialog = new WpfOpenFileDialog
+        {
+            Filter = "Mii files (*.mii;*.miigx;*.mae;*.rcd;*.rsd;*.json;*.vk-mii)|*.mii;*.miigx;*.mae;*.rcd;*.rsd;*.json;*.vk-mii|All files (*.*)|*.*"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            var profile = await _saveManagerService.ImportMiiProfileAsync(dialog.FileName);
+            var synced = await TrySyncMiiToDolphinAsync(profile);
+            ShowToast("Mii imported", synced ? $"{profile.Name} was synced to Dolphin." : profile.Name);
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii import error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void ExportMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
+        if (selected == null)
+        {
+            ShowCustomDialog("Select a Mii", "Select a Mii before exporting.", MessageBoxButton.OK);
+            return;
+        }
+
+        var dialog = new WpfSaveFileDialog
+        {
+            Filter = "Wii Mii (*.mii)|*.mii|VanzaKart Mii profile (*.vk-mii)|*.vk-mii|JSON profile (*.json)|*.json",
+            FileName = $"{SanitizeFileName(selected.Name)}.mii"
+        };
+
+        if (dialog.ShowDialog() != true)
+        {
+            return;
+        }
+
+        try
+        {
+            await _saveManagerService.ExportMiiProfileAsync(selected.Id, dialog.FileName);
+            ShowToast("Mii exported", dialog.FileName);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii export error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void DuplicateMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
+        if (selected == null)
+        {
+            ShowCustomDialog("Select a Mii", "Select a Mii before duplicating.", MessageBoxButton.OK);
+            return;
+        }
+
+        try
+        {
+            var duplicate = await _saveManagerService.DuplicateMiiProfileAsync(selected.Id);
+            ShowToast("Mii duplicated", duplicate.Name);
+            RefreshLicenseView();
+            OpenMiiEditor(duplicate.Id);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii duplicate error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void DeleteMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
+        if (selected == null)
+        {
+            ShowCustomDialog("Select a Mii", "Select a Mii before deleting.", MessageBoxButton.OK);
+            return;
+        }
+
+        if (ShowCustomDialog("Delete Mii", $"Delete {selected.Name} from the launcher library?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            _saveManagerService.DeleteMiiProfile(selected.Id);
+            ShowToast("Mii deleted", selected.Name);
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii delete error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void MiiCardsListBox_SelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isRefreshingMiis || MiiCardsListBox.SelectedItem is not LauncherMiiProfile selected)
+        {
+            return;
+        }
+
+        try
+        {
+            _saveManagerService.SetActiveMii(selected.Id);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii selection error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void EditMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
+        if (selected == null)
+        {
+            ShowCustomDialog("Select a Mii", "Select a Mii before editing.", MessageBoxButton.OK);
+            return;
+        }
+
+        OpenMiiEditor(selected.Id);
+    }
+
+    private void MiiCardsListBox_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if (MiiCardsListBox.SelectedItem is LauncherMiiProfile selected)
+        {
+            OpenMiiEditor(selected.Id);
+        }
+    }
+
+    private void OpenMiiEditor(string miiId)
+    {
+        try
+        {
+            var editor = new MiiEditorWindow(_saveManagerService, BuildSettingsFromUi(), miiId)
+            {
+                Owner = this
+            };
+            editor.ShowDialog();
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Mii editor error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private string BuildNewMiiName()
+    {
+        var index = _saveManagerService.LoadMiiProfiles().Count + 1;
+        return index <= 1 ? "Vanza Mii" : $"Vanza Mii {index}";
+    }
+
+    private void OpenSavesFolderButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var settings = BuildSettingsFromUi();
+        var wiiFolder = _saveManagerService.GetWiiRoot(settings);
+        var folder = Directory.Exists(wiiFolder) ? wiiFolder : settings.UserFolderPath;
+        if (Directory.Exists(folder))
+        {
+            OpenFolder(folder);
+        }
+        else
+        {
+            ShowCustomDialog("Folder not found", "The Dolphin Wii save folder was not found.", MessageBoxButton.OK);
+        }
+    }
+
+    private void OpenMiiRendererLogButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var logPath = Path.Combine(AppContext.BaseDirectory, "Logs", "mii-renderer.log");
+        if (File.Exists(logPath))
+        {
+            OpenFileLocation(logPath);
+        }
+        else
+        {
+            ShowCustomDialog("Renderer log", "No renderer log has been created yet.", MessageBoxButton.OK);
+        }
+    }
+
+    private async Task<bool> TrySyncMiiToDolphinAsync(LauncherMiiProfile profile)
+    {
+        var settings = BuildSettingsFromUi();
+        if (string.IsNullOrWhiteSpace(settings.UserFolderPath) || !Directory.Exists(settings.UserFolderPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            await _saveManagerService.SyncMiiToDolphinAsync(settings, profile);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            ShowToast("Mii saved locally", ex.Message);
+            return false;
+        }
+    }
+
+    private void MiiDropZone_DragOver(object sender, WpfDragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop)
+            ? System.Windows.DragDropEffects.Copy
+            : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void MiiDropZone_Drop(object sender, WpfDragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        var files = (string[]?)e.Data.GetData(System.Windows.DataFormats.FileDrop) ?? Array.Empty<string>();
+        var imported = 0;
+        foreach (var file in files.Where(MiiFileParserService.IsSupportedMiiFile))
+        {
+            try
+            {
+                var profile = await _saveManagerService.ImportMiiProfileAsync(file);
+                await TrySyncMiiToDolphinAsync(profile);
+                imported++;
+            }
+            catch (Exception ex)
+            {
+                ShowToast("Mii import skipped", ex.Message);
+            }
+        }
+
+        if (imported > 0)
+        {
+            ShowToast("Mii import complete", $"{imported} real Mii file(s) imported.");
+            RefreshLicenseView();
+        }
+    }
+
+    private void ModsDropZone_DragOver(object sender, WpfDragEventArgs e)
+    {
+        e.Effects = e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop) ? System.Windows.DragDropEffects.Copy : System.Windows.DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    private async void ModsDropZone_Drop(object sender, WpfDragEventArgs e)
+    {
+        if (!e.Data.GetDataPresent(System.Windows.DataFormats.FileDrop))
+        {
+            return;
+        }
+
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings))
+        {
+            ShowCustomDialog("Mod not installed", "Install VanzaKart before importing addons.", MessageBoxButton.OK);
+            return;
+        }
+
+        var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
+        var targetFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        Directory.CreateDirectory(targetFolder);
+
+        try
+        {
+            foreach (var path in files)
+            {
+                if (Directory.Exists(path))
+                {
+                    CopyDirectory(path, Path.Combine(targetFolder, Path.GetFileName(path)), overwrite: true);
+                }
+                else if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
+                {
+                    await _archiveService.ValidateZipAsync(path);
+                    await _archiveService.ExtractZipAsync(path, targetFolder);
+                }
+                else if (File.Exists(path))
+                {
+                    File.Copy(path, Path.Combine(targetFolder, Path.GetFileName(path)), overwrite: true);
+                }
+            }
+
+            ShowToast("Addons imported", "Files were copied into the local My Stuff folder.");
+            RefreshModsView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Import error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void OpenWebsiteButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenUrl(LauncherConfig.DownloadPageUrl);
+    }
+
+    private void OpenDiscordBorder_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenUrl("https://discord.gg/4qPAQjt27j");
+    }
+
+    private void RefreshDebugButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        RefreshAllState();
+        ShowToast("Debug refreshed", "Local launcher state was refreshed.");
+    }
+
+    private void OpenSettingsFileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenFileLocation(_settingsService.GetSettingsPath());
+    }
+
+    private void OpenPreferencesFileButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenFileLocation(_preferencesService.GetPreferencesPath());
+    }
+
+    private void DiscordSetting_Changed(object sender, RoutedEventArgs e)
+    {
+        _userPreferences.DiscordRpcEnabled = DiscordRpcCheckBox.IsChecked == true;
+        _preferencesService.Save(_userPreferences);
+        _discordPresence?.UpdatePreferences(_userPreferences);
+        if (_userPreferences.DiscordRpcEnabled)
+        {
+            _discordPresence?.SetLauncherIdle();
+        }
+    }
+
+    private void AutoUpdateSetting_Changed(object sender, RoutedEventArgs e)
+    {
+        _userPreferences.AutoCheckUpdates = AutoUpdateCheckBox.IsChecked == true;
+        _preferencesService.Save(_userPreferences);
+    }
+
+    private void SeparateSaveDefault_Changed(object sender, RoutedEventArgs e)
+    {
+        _userPreferences.SeparateSavegame = SeparateSaveDefaultCheckBox.IsChecked == true;
+        _preferencesService.Save(_userPreferences);
+        SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
+    }
+
+    private void SeparateSave_Changed(object sender, RoutedEventArgs e)
+    {
+        _userPreferences.SeparateSavegame = SeparateSaveCheckBox.IsChecked == true;
+        _preferencesService.Save(_userPreferences);
+    }
+
+    private void GraphicsTextures_Changed(object sender, RoutedEventArgs e)
+    {
+        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 1 : 2;
+        _preferencesService.Save(_userPreferences);
+    }
+
+    private void NewsSearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyNewsFilter();
+
+    private void LicenseSearchTextBox_TextChanged(object sender, TextChangedEventArgs e) => ApplyLicenseFilters();
+
+    private void LicenseFilterComboBox_SelectionChanged(object sender, SelectionChangedEventArgs e) => ApplyLicenseFilters();
+
+    private void NewsFilterButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton { Tag: string tag })
+        {
+            _newsFilter = tag;
+            ApplyNewsFilter();
+        }
+    }
+
+    private void ApplyNewsFilter()
+    {
+        if (NewsItemsControl == null)
+        {
+            return;
+        }
+
+        var query = NewsSearchTextBox?.Text?.Trim() ?? string.Empty;
+        var items = _allNews.Where(item =>
+        {
+            var filterMatch = _newsFilter switch
+            {
+                "Pinned" => item.IsPinned,
+                "All" => true,
+                _ => item.Category.Equals(_newsFilter, StringComparison.OrdinalIgnoreCase)
+            };
+
+            if (!filterMatch)
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(query))
+            {
+                return true;
+            }
+
+            return item.Title.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                   item.Summary.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                   item.Version.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                   item.Category.Contains(query, StringComparison.OrdinalIgnoreCase);
+        });
+
+        _visibleNews.Clear();
+        foreach (var item in items)
+        {
+            _visibleNews.Add(item);
+        }
+    }
+
+    private void SettingsSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        var query = SettingsSearchTextBox.Text.Trim();
+        SetCardVisibility(GamePathsSettingsCard, query, "paths dolphin rom user folder game");
+        SetCardVisibility(LauncherSettingsCard, query, "launcher discord startup updates preferences");
+        SetCardVisibility(GameSettingsCard, query, "game mod texture graphics grafiche save separate");
+        SetCardVisibility(DownloadSettingsCard, query, "downloads update retry mirror cache resume");
+        SetCardVisibility(FutureSettingsCard, query, "graphics audio controller network accessibility");
+    }
+
+    private static void SetCardVisibility(FrameworkElement card, string query, string keywords)
+    {
+        card.Visibility = string.IsNullOrWhiteSpace(query) ||
+                          keywords.Contains(query, StringComparison.OrdinalIgnoreCase)
+            ? Visibility.Visible
+            : Visibility.Collapsed;
+    }
+
+    private void SeedNews()
+    {
+        _allNews.Clear();
+        _allNews.AddRange(new[]
+        {
+            new NewsItem
+            {
+                Title = "Launcher shell rebuilt",
+                Category = "Update",
+                Version = $"Launcher v{LauncherConfig.CurrentLauncherVersion}",
+                DateLabel = "Local",
+                IsPinned = true,
+                Summary = "New neon shell, premium play surface, update panel, modular tabs, and local save tooling."
+            },
+            new NewsItem
+            {
+                Title = "Update flow upgraded",
+                Category = "Update",
+                Version = "Installer",
+                DateLabel = "Local",
+                IsPinned = true,
+                Summary = "Downloads now support resume, retry, mirror fallback, archive validation, and optional SHA-256 checks."
+            },
+            new NewsItem
+            {
+                Title = "Mii and license tools",
+                Category = "Feature",
+                Version = "Local saves",
+                DateLabel = "Local",
+                IsPinned = false,
+                Summary = "The launcher detects Mario Kart Wii save files and handles backup, import, and export without manual folder hunting."
+            },
+            new NewsItem
+            {
+                Title = "Future online-ready architecture",
+                Category = "Event",
+                Version = "Roadmap",
+                DateLabel = "Next",
+                IsPinned = false,
+                Summary = "Tabs and services are prepared for news APIs, accounts, lobby status, cloud sync, and profiles when backend systems exist."
+            }
+        });
+    }
+
+    private void MergeManifestNews(VersionInfo info)
+    {
+        var existingManifestItems = _allNews.Where(item => item.Category == "Manifest").ToArray();
+        foreach (var item in existingManifestItems)
+        {
+            _allNews.Remove(item);
+        }
+
+        foreach (var change in info.Changelog.Take(4))
+        {
+            _allNews.Insert(0, new NewsItem
+            {
+                Title = change,
+                Category = "Manifest",
+                Version = string.IsNullOrWhiteSpace(info.ModVersion) ? "Mod" : $"Mod v{info.ModVersion}",
+                DateLabel = "Live",
+                IsPinned = false,
+                Summary = "Loaded from the current update manifest."
+            });
+        }
+
+        ApplyNewsFilter();
+    }
+
+    private void TrackGameSession(Process? process)
+    {
+        if (process == null)
+        {
+            return;
+        }
+
+        var sessionStart = DateTime.UtcNow;
+        try
+        {
+            process.EnableRaisingEvents = true;
+            process.Exited += (_, _) =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    var minutes = Math.Max(1, (DateTime.UtcNow - sessionStart).TotalMinutes);
+                    _userPreferences.TotalPlayTimeMinutes += minutes;
+                    _preferencesService.Save(_userPreferences);
+                    _discordPresence?.SetLauncherIdle();
+                    RefreshPlayStats();
+                });
+            };
+        }
+        catch
+        {
+            // Some shell-launched processes cannot be tracked reliably; launch still succeeds.
+        }
+    }
+
+    private static void CopyDirectory(string sourceDir, string destinationDir, bool overwrite)
+    {
+        Directory.CreateDirectory(destinationDir);
+
+        foreach (var file in Directory.EnumerateFiles(sourceDir))
+        {
+            File.Copy(file, Path.Combine(destinationDir, Path.GetFileName(file)), overwrite);
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(sourceDir))
+        {
+            CopyDirectory(directory, Path.Combine(destinationDir, Path.GetFileName(directory)), overwrite);
+        }
+    }
+
+    private void ShowToast(string title, string message)
+    {
+        ToastTitleTextBlock.Text = title;
+        ToastMessageTextBlock.Text = message;
+        ToastBorder.Visibility = Visibility.Visible;
+        ToastBorder.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(160)));
+
+        _ = HideToastLaterAsync();
+    }
+
+    private async Task HideToastLaterAsync()
+    {
+        await Task.Delay(3200);
+        var fade = new DoubleAnimation(1, 0, TimeSpan.FromMilliseconds(220));
+        fade.Completed += (_, _) => ToastBorder.Visibility = Visibility.Collapsed;
+        ToastBorder.BeginAnimation(OpacityProperty, fade);
+    }
+
+    private string? ShowTextInputDialog(string title, string label, string defaultValue)
+    {
+        var dialog = CreateSmallInputWindow(title, 390, 210);
+        string? result = null;
+
+        var stack = new StackPanel { Margin = new Thickness(22) };
+        stack.Children.Add(CreateDialogTitle(title));
+        stack.Children.Add(new TextBlock
+        {
+            Text = label,
+            Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        var input = new System.Windows.Controls.TextBox
+        {
+            Text = defaultValue,
+            Height = 36,
+            Padding = new Thickness(10, 7, 10, 7),
+            Background = new SolidColorBrush(WpfColor.FromRgb(0x0B, 0x10, 0x20)),
+            Foreground = WpfBrushes.White,
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x35, 0x42, 0x62))
+        };
+        stack.Children.Add(input);
+        stack.Children.Add(CreateDialogButtonRow(
+            () =>
+            {
+                result = input.Text.Trim();
+                dialog.Close();
+            },
+            dialog.Close));
+
+        dialog.Content = stack;
+        dialog.Loaded += (_, _) => input.Focus();
+        dialog.ShowDialog();
+        return result;
+    }
+
+    private (string name, string color)? ShowMiiProfileDialog()
+    {
+        var existing = _saveManagerService.LoadMiiProfile();
+        var dialog = CreateSmallInputWindow("New Mii", 430, 280);
+        (string name, string color)? result = null;
+
+        var stack = new StackPanel { Margin = new Thickness(22) };
+        stack.Children.Add(CreateDialogTitle("New Mii"));
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Mii name",
+            Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
+            Margin = new Thickness(0, 0, 0, 8)
+        });
+
+        var nameBox = new System.Windows.Controls.TextBox
+        {
+            Text = existing.Name,
+            Height = 36,
+            Padding = new Thickness(10, 7, 10, 7),
+            Background = new SolidColorBrush(WpfColor.FromRgb(0x0B, 0x10, 0x20)),
+            Foreground = WpfBrushes.White,
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x35, 0x42, 0x62))
+        };
+        stack.Children.Add(nameBox);
+
+        stack.Children.Add(new TextBlock
+        {
+            Text = "Favorite color",
+            Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
+            Margin = new Thickness(0, 14, 0, 8)
+        });
+
+        var colorBox = new System.Windows.Controls.ComboBox
+        {
+            Height = 36,
+            Background = new SolidColorBrush(WpfColor.FromRgb(0x0B, 0x10, 0x20)),
+            Foreground = WpfBrushes.White,
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x35, 0x42, 0x62))
+        };
+
+        AddColorChoice(colorBox, "Cyan", "#39E7FF");
+        AddColorChoice(colorBox, "Pink", "#FF3B7A");
+        AddColorChoice(colorBox, "Purple", "#9D5CFF");
+        AddColorChoice(colorBox, "Blue", "#5A6DFF");
+        AddColorChoice(colorBox, "Green", "#4DFF8D");
+        AddColorChoice(colorBox, "Yellow", "#FFD166");
+        colorBox.SelectedIndex = Math.Max(0, colorBox.Items.Cast<System.Windows.Controls.ComboBoxItem>().ToList().FindIndex(item => Equals(item.Tag, existing.FavoriteColor)));
+        stack.Children.Add(colorBox);
+
+        stack.Children.Add(CreateDialogButtonRow(
+            () =>
+            {
+                var selected = colorBox.SelectedItem as System.Windows.Controls.ComboBoxItem;
+                result = (nameBox.Text.Trim(), selected?.Tag?.ToString() ?? "#39E7FF");
+                dialog.Close();
+            },
+            dialog.Close));
+
+        dialog.Content = stack;
+        dialog.Loaded += (_, _) => nameBox.Focus();
+        dialog.ShowDialog();
+        return result;
+    }
+
+    private Window CreateSmallInputWindow(string title, double width, double height)
+    {
+        return new Window
+        {
+            Title = title,
+            Owner = this,
+            Width = width,
+            Height = height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            ResizeMode = ResizeMode.NoResize,
+            WindowStyle = WindowStyle.None,
+            Background = new SolidColorBrush(WpfColor.FromRgb(0x13, 0x1B, 0x2C)),
+            Content = null
+        };
+    }
+
+    private static TextBlock CreateDialogTitle(string title)
+    {
+        return new TextBlock
+        {
+            Text = title,
+            FontSize = 20,
+            FontWeight = FontWeights.Black,
+            Foreground = WpfBrushes.White,
+            Margin = new Thickness(0, 0, 0, 16)
+        };
+    }
+
+    private static StackPanel CreateDialogButtonRow(Action confirm, Action cancel)
+    {
+        var row = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 18, 0, 0)
+        };
+
+        var ok = CreateSmallDialogButton("Create", true);
+        ok.Click += (_, _) => confirm();
+        var cancelButton = CreateSmallDialogButton("Cancel", false);
+        cancelButton.Margin = new Thickness(10, 0, 0, 0);
+        cancelButton.Click += (_, _) => cancel();
+
+        row.Children.Add(ok);
+        row.Children.Add(cancelButton);
+        return row;
+    }
+
+    private static WpfButton CreateSmallDialogButton(string content, bool primary)
+    {
+        return new WpfButton
+        {
+            Content = content,
+            MinWidth = 82,
+            Height = 34,
+            Padding = new Thickness(12, 0, 12, 0),
+            FontWeight = FontWeights.Bold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Foreground = WpfBrushes.White,
+            Background = primary
+                ? new LinearGradientBrush(WpfColor.FromRgb(0xFF, 0x3B, 0x7A), WpfColor.FromRgb(0x39, 0xE7, 0xFF), 0)
+                : new SolidColorBrush(WpfColor.FromRgb(0x21, 0x2B, 0x43)),
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x43, 0x51, 0x70)),
+            BorderThickness = new Thickness(1)
+        };
+    }
+
+    private static void AddColorChoice(System.Windows.Controls.ComboBox comboBox, string label, string color)
+    {
+        comboBox.Items.Add(new System.Windows.Controls.ComboBoxItem
+        {
+            Content = label,
+            Tag = color
+        });
+    }
+
+    private static void OpenUrl(string url)
+    {
+        Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+    }
+
+    private static void OpenFolder(string folder)
+    {
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = "explorer.exe",
+            Arguments = $"\"{folder}\"",
+            UseShellExecute = true
+        });
+    }
+
+    private static void OpenFileLocation(string file)
+    {
+        if (File.Exists(file))
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = "explorer.exe",
+                Arguments = $"/select,\"{file}\"",
+                UseShellExecute = true
+            });
+            return;
+        }
+
+        var folder = Path.GetDirectoryName(file);
+        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
+        {
+            OpenFolder(folder);
+        }
+    }
+
+    private static string EscapeJsonValue(string value) => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
     private void AnimateEntrance()
     {
         Opacity = 0;
-        var animation = new System.Windows.Media.Animation.DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(380));
-        BeginAnimation(OpacityProperty, animation);
-    }
-    private void Link_RequestNavigate(object sender, RequestNavigateEventArgs e)
-    {
-        try
+        var anim = new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(360))
         {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = e.Uri.AbsoluteUri,
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            System.Windows.MessageBox.Show("Impossibile aprire il link.");
-        }
-    }
-    private void OpenDiscordBorder_OnClick(object sender, MouseButtonEventArgs e)
-    {
-        try
-        {
-            Process.Start(new ProcessStartInfo
-            {
-                FileName = "https://discord.gg/4qPAQjt27j",
-                UseShellExecute = true
-            });
-        }
-        catch
-        {
-            System.Windows.MessageBox.Show("Impossibile aprire Discord.");
-        }
+            EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+        };
+        BeginAnimation(OpacityProperty, anim);
     }
 
-    private void OpenWebsiteBorder_OnClick(object sender, MouseButtonEventArgs e)
+    private void StartAmbientMotion()
     {
-        try
+        var ease = new SineEase { EasingMode = EasingMode.EaseInOut };
+
+        AmbientParticleTransform.BeginAnimation(TranslateTransform.XProperty, new DoubleAnimation(-18, 18, TimeSpan.FromSeconds(7.5))
         {
-            Process.Start(new ProcessStartInfo
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = ease
+        });
+        AmbientParticleTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-8, 10, TimeSpan.FromSeconds(6.4))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = ease
+        });
+
+        HeroLogoTransform.BeginAnimation(TranslateTransform.YProperty, new DoubleAnimation(-8, 8, TimeSpan.FromSeconds(3.6))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = ease
+        });
+
+        AmbientStreakTransformA.BeginAnimation(TranslateTransform.XProperty, CreateStreakAnimation(-80, 120, 4.8));
+        AmbientStreakTransformB.BeginAnimation(TranslateTransform.XProperty, CreateStreakAnimation(70, -120, 5.7));
+        AmbientStreakTransformC.BeginAnimation(TranslateTransform.XProperty, CreateStreakAnimation(-40, 90, 6.2));
+    }
+
+    private static DoubleAnimation CreateStreakAnimation(double from, double to, double seconds)
+    {
+        return new DoubleAnimation(from, to, TimeSpan.FromSeconds(seconds))
+        {
+            AutoReverse = true,
+            RepeatBehavior = RepeatBehavior.Forever,
+            EasingFunction = new SineEase { EasingMode = EasingMode.EaseInOut }
+        };
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        if (bytes <= 0)
+        {
+            return "0 B";
+        }
+
+        string[] units = { "B", "KB", "MB", "GB" };
+        var size = (double)bytes;
+        var unit = 0;
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return $"{size:0.#} {units[unit]}";
+    }
+
+    private static string FormatDuration(TimeSpan duration)
+    {
+        if (duration.TotalMinutes < 1)
+        {
+            return "0 min";
+        }
+
+        if (duration.TotalHours < 1)
+        {
+            return $"{duration.TotalMinutes:0} min";
+        }
+
+        return $"{duration.TotalHours:0.#} h";
+    }
+
+    private static string SanitizeFileName(string value)
+    {
+        var invalid = Path.GetInvalidFileNameChars();
+        var cleaned = new string(value.Select(ch => invalid.Contains(ch) ? '_' : ch).ToArray());
+        return string.IsNullOrWhiteSpace(cleaned) ? "mii" : cleaned;
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        SaveWindowBounds();
+        _discordPresence?.Dispose();
+        base.OnClosing(e);
+    }
+}
+
+public sealed class CustomDialog : Window
+{
+    private MessageBoxResult _result = MessageBoxResult.None;
+    private readonly MessageBoxButton _buttons;
+
+    public CustomDialog(string title, string message, MessageBoxButton buttons)
+    {
+        _buttons = buttons;
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Width = 460;
+        Height = 230;
+        ResizeMode = ResizeMode.NoResize;
+        WindowStyle = WindowStyle.None;
+        Background = new SolidColorBrush(WpfColor.FromRgb(0x13, 0x1B, 0x2C));
+        Topmost = true;
+        Focusable = true;
+
+        var root = new Border
+        {
+            Padding = new Thickness(24),
+            CornerRadius = new CornerRadius(8),
+            Background = Background,
+            BorderBrush = new LinearGradientBrush
             {
-                FileName = "https://web.sitodaking.it/",
-                UseShellExecute = true
-            });
-        }
-        catch
+                StartPoint = new System.Windows.Point(0, 0),
+                EndPoint = new System.Windows.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop(WpfColor.FromRgb(0xFF, 0x3B, 0x7A), 0),
+                    new GradientStop(WpfColor.FromRgb(0x39, 0xE7, 0xFF), 0.55),
+                    new GradientStop(WpfColor.FromRgb(0xC6, 0x5C, 0xFF), 1)
+                }
+            },
+            BorderThickness = new Thickness(1)
+        };
+
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock
         {
-            System.Windows.MessageBox.Show("Impossibile aprire il sito.");
+            Text = title,
+            FontSize = 20,
+            FontWeight = FontWeights.Black,
+            Foreground = WpfBrushes.White,
+            Margin = new Thickness(0, 0, 0, 12)
+        });
+        stack.Children.Add(new TextBlock
+        {
+            Text = message,
+            FontSize = 14,
+            Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
+            TextWrapping = TextWrapping.Wrap,
+            Margin = new Thickness(0, 0, 0, 24)
+        });
+
+        var buttonPanel = new StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+        };
+
+        var primaryButton = CreateDialogButton(buttons == MessageBoxButton.YesNo ? "Yes" : "OK", true);
+        primaryButton.Click += (_, _) =>
+        {
+            _result = buttons == MessageBoxButton.YesNo ? MessageBoxResult.Yes : MessageBoxResult.OK;
+            Close();
+        };
+        buttonPanel.Children.Add(primaryButton);
+
+        if (buttons == MessageBoxButton.YesNo)
+        {
+            var secondaryButton = CreateDialogButton("No", false);
+            secondaryButton.Margin = new Thickness(10, 0, 0, 0);
+            secondaryButton.Click += (_, _) =>
+            {
+                _result = MessageBoxResult.No;
+                Close();
+            };
+            buttonPanel.Children.Add(secondaryButton);
         }
+
+        stack.Children.Add(buttonPanel);
+        root.Child = stack;
+        Content = root;
+        Loaded += (_, _) => Focus();
+    }
+
+    private static WpfButton CreateDialogButton(string content, bool primary)
+    {
+        return new WpfButton
+        {
+            Content = content,
+            MinWidth = 96,
+            Height = 38,
+            Padding = new Thickness(16, 0, 16, 0),
+            FontWeight = FontWeights.Bold,
+            Cursor = System.Windows.Input.Cursors.Hand,
+            Foreground = WpfBrushes.White,
+            Background = primary
+                ? new LinearGradientBrush(WpfColor.FromRgb(0xFF, 0x3B, 0x7A), WpfColor.FromRgb(0x39, 0xE7, 0xFF), 0)
+                : new SolidColorBrush(WpfColor.FromRgb(0x21, 0x2B, 0x43)),
+            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x43, 0x51, 0x70)),
+            BorderThickness = new Thickness(1)
+        };
+    }
+
+    protected override void OnKeyDown(WpfKeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            _result = _buttons == MessageBoxButton.YesNo ? MessageBoxResult.Yes : MessageBoxResult.OK;
+            Close();
+        }
+        else if (e.Key == Key.Escape && _result == MessageBoxResult.None)
+        {
+            _result = MessageBoxResult.No;
+            Close();
+        }
+
+        base.OnKeyDown(e);
+    }
+
+    public new MessageBoxResult? ShowDialog()
+    {
+        base.ShowDialog();
+        return _result;
     }
 }

@@ -1,6 +1,6 @@
 using System.Windows;
 
-namespace VanzaKartLauncher.Modern;
+namespace VanzaKartLauncher;
 
 public partial class App : System.Windows.Application
 {
