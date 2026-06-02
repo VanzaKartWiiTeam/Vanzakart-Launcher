@@ -8,7 +8,7 @@ namespace VanzaKartSetup;
 
 public partial class MainWindow : Window
 {
-    private const string LauncherZipUrl = "https://web.sitodaking.it/Launcher/vanzakart_launcher.zip";
+    private const string LauncherZipUrl = "https://sitodaking.it/Launcher/vanzakart_launcher.zip";
 
     private readonly NetworkService _networkService = new();
     private readonly ShortcutService _shortcutService = new();

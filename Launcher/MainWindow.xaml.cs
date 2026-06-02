@@ -387,10 +387,6 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         var modFolder = settings.GetModFolder();
         ModFolderTextBlock.Text = modFolder;
-        SidebarVersionTextBlock.Text = string.IsNullOrWhiteSpace(_latestModVersion)
-            ? "Mod version unknown"
-            : $"Latest mod v{_latestModVersion}";
-
         RefreshPlayStats();
 
         if (_isModUpdateRequired)
@@ -470,14 +466,14 @@ public partial class MainWindow : Window
 
         if (_allLicenseCards.Count == 0)
         {
-            LicenseSummaryTextBlock.Text = "No Mario Kart Wii save was detected in the selected Dolphin user folder.";
+            LicenseSummaryTextBlock.Text = "No VanzaKart modpack license save was detected in the selected Dolphin user folder.";
             PrimaryLicenseTextBlock.Text = "No local license detected yet.";
             PrimaryLicensePathTextBlock.Text = string.Empty;
             QueueLicenseAvatarRender(settings);
             return;
         }
 
-        LicenseSummaryTextBlock.Text = $"{profiles.Count} real Dolphin license card(s) detected.";
+        LicenseSummaryTextBlock.Text = $"{profiles.Count} Dolphin license card(s) detected.";
         var selected = profiles.FirstOrDefault();
         PrimaryLicenseTextBlock.Text = selected == null
             ? string.Empty
@@ -493,9 +489,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var query = LicenseSearchTextBox?.Text?.Trim() ?? string.Empty;
-        var filter = (LicenseFilterComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "All";
-        var sort = (LicenseSortComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Modified";
+        var query = string.Empty;
+        var filter = "All";
+        var sort = "Modified";
 
         IEnumerable<SaveProfileInfo> cards = _allLicenseCards;
         if (!string.IsNullOrWhiteSpace(query))
@@ -696,7 +692,6 @@ public partial class MainWindow : Window
     private void SetUpdateState(string phase, string detail, double? percent = null)
     {
         UpdatePhaseTextBlock.Text = phase;
-        UpdateDetailTextBlock.Text = detail;
         if (percent.HasValue)
         {
             DownloadProgressBar.Value = Math.Clamp(percent.Value, 0, 100);
@@ -902,7 +897,7 @@ public partial class MainWindow : Window
             var process = Process.Start(new ProcessStartInfo
             {
                 FileName = settings.DolphinPath,
-                Arguments = $"\"{jsonPath}\"",
+                Arguments = $"-b \"{jsonPath}\"",
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(settings.DolphinPath)
             });
@@ -910,7 +905,7 @@ public partial class MainWindow : Window
             TrackGameSession(process);
             _discordPresence?.SetPlaying();
             SetStatus("Game launched. Enjoy VanzaKart.", (WpfBrush)FindResource("SuccessBrush"));
-            ShowToast("Race started", "Dolphin is launching the VanzaKart descriptor.");
+            ShowToast("Race started", "Vanzakart is launching.");
             RefreshPlayStats();
         }
         catch (Exception ex)
@@ -941,12 +936,6 @@ public partial class MainWindow : Window
             _latestModSha256 = info.ModSha256;
             _latestLauncherUrl = string.IsNullOrWhiteSpace(info.LauncherUrl) ? LauncherConfig.LauncherZipUrl : info.LauncherUrl;
             _latestLauncherMirrors = info.LauncherMirrors ?? Array.Empty<string>();
-
-            if (info.Changelog.Length > 0)
-            {
-                QuickChangelogTextBlock.Text = info.Changelog[0];
-                MergeManifestNews(info);
-            }
 
             if (!string.IsNullOrWhiteSpace(info.LauncherVersion) &&
                 info.LauncherVersion != LauncherConfig.CurrentLauncherVersion)
@@ -1762,8 +1751,6 @@ del ""%~f0""";
         SetCardVisibility(GamePathsSettingsCard, query, "paths dolphin rom user folder game");
         SetCardVisibility(LauncherSettingsCard, query, "launcher discord startup updates preferences");
         SetCardVisibility(GameSettingsCard, query, "game mod texture graphics grafiche save separate");
-        SetCardVisibility(DownloadSettingsCard, query, "downloads update retry mirror cache resume");
-        SetCardVisibility(FutureSettingsCard, query, "graphics audio controller network accessibility");
     }
 
     private static void SetCardVisibility(FrameworkElement card, string query, string keywords)
@@ -1781,40 +1768,22 @@ del ""%~f0""";
         {
             new NewsItem
             {
-                Title = "Launcher shell rebuilt",
-                Category = "Update",
+                Title = "Nauz TERRONE",
+                Category = "GODO",
                 Version = $"Launcher v{LauncherConfig.CurrentLauncherVersion}",
                 DateLabel = "Local",
                 IsPinned = true,
-                Summary = "New neon shell, premium play surface, update panel, modular tabs, and local save tooling."
+                Summary = "nauz bannato per troppi rossi"
             },
             new NewsItem
             {
-                Title = "Update flow upgraded",
-                Category = "Update",
-                Version = "Installer",
-                DateLabel = "Local",
-                IsPinned = true,
-                Summary = "Downloads now support resume, retry, mirror fallback, archive validation, and optional SHA-256 checks."
-            },
-            new NewsItem
-            {
-                Title = "Mii and license tools",
+                Title = "news test aura",
                 Category = "Feature",
-                Version = "Local saves",
+                Version = "6.7",
                 DateLabel = "Local",
                 IsPinned = false,
-                Summary = "The launcher detects Mario Kart Wii save files and handles backup, import, and export without manual folder hunting."
+                Summary = "W sossio"
             },
-            new NewsItem
-            {
-                Title = "Future online-ready architecture",
-                Category = "Event",
-                Version = "Roadmap",
-                DateLabel = "Next",
-                IsPinned = false,
-                Summary = "Tabs and services are prepared for news APIs, accounts, lobby status, cloud sync, and profiles when backend systems exist."
-            }
         });
     }
 

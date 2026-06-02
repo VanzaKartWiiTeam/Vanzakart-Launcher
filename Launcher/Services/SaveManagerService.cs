@@ -80,7 +80,7 @@ public sealed class SaveManagerService
         {
             var miiDatabase = _mkwiiSaveParserService.ReadMiiDatabase(settings.UserFolderPath);
             var cards = new List<SaveProfileInfo>();
-            foreach (var saveFile in _mkwiiSaveParserService.FindMarioKartSaveFiles(settings.UserFolderPath))
+            foreach (var saveFile in _mkwiiSaveParserService.FindVanzaKartSaveFiles(settings))
             {
                 var parsedCards = _mkwiiSaveParserService.ReadLicenseCards(saveFile, miiDatabase);
                 if (parsedCards.Count > 0)
@@ -311,6 +311,8 @@ public sealed class SaveManagerService
             throw new InvalidDataException("The selected file does not contain real Wii Mii data.");
         }
 
+        metadata = EnsureImportedMiiIdentity(metadata);
+
         Directory.CreateDirectory(GetMiiImportsFolder());
         var importCopy = Path.Combine(GetMiiImportsFolder(), $"{Path.GetFileNameWithoutExtension(sourceFile)}_{DateTime.Now:yyyyMMddHHmmss}{extension}");
         File.Copy(sourceFile, importCopy, overwrite: true);
@@ -373,24 +375,40 @@ public sealed class SaveManagerService
         var source = LoadMiiProfiles().FirstOrDefault(item => item.Id == miiId)
             ?? throw new InvalidOperationException("Select a Mii to duplicate.");
 
+        if (string.IsNullOrWhiteSpace(source.RawMiiBase64))
+        {
+            throw new InvalidOperationException("Selected Mii does not contain real Wii Mii data.");
+        }
+
+        var state = _miiFileParserService.ReadEditorState(Convert.FromBase64String(source.RawMiiBase64));
+        state.Name = NormalizeMiiNameForDuplicate(source.Name);
+        state.MiiId = 0;
+        state.SystemId0 = 0;
+        state.SystemId1 = 0;
+        state.SystemId2 = 0;
+        state.SystemId3 = 0;
+        state.IsFavorite = false;
+
+        var duplicatedMii = _miiFileParserService.CreateMii(state, "Real duplicate");
+        var renderResult = await _miiAvatarRenderService.EnsureAvatarRenderAsync(duplicatedMii, cancellationToken);
         var duplicate = new LauncherMiiProfile
         {
             Id = Guid.NewGuid().ToString("N"),
-            Name = $"{source.Name} Copy",
-            FavoriteColor = source.FavoriteColor,
+            Name = duplicatedMii.Name,
+            FavoriteColor = duplicatedMii.FavoriteColor,
             CreatedUtc = DateTime.UtcNow,
-            SourceLabel = "Duplicate",
+            SourceLabel = "Real duplicate",
             ImportedFilePath = source.ImportedFilePath,
-            RawMiiBase64 = source.RawMiiBase64,
-            StudioData = source.StudioData,
-            AvatarImagePath = source.AvatarImagePath,
-            RenderState = source.RenderState,
-            RenderMessage = source.RenderMessage,
-            LastRenderedUtc = source.LastRenderedUtc,
-            CreatorName = source.CreatorName,
-            MiiId = source.MiiId,
-            FavoriteColorIndex = source.FavoriteColorIndex,
-            IsFemale = source.IsFemale,
+            RawMiiBase64 = duplicatedMii.RawMiiBase64,
+            StudioData = duplicatedMii.StudioData,
+            AvatarImagePath = renderResult.AvatarPath,
+            RenderState = renderResult.State.ToString(),
+            RenderMessage = renderResult.Message,
+            LastRenderedUtc = renderResult.IsReady ? renderResult.UpdatedUtc : null,
+            CreatorName = duplicatedMii.CreatorName,
+            MiiId = duplicatedMii.MiiId,
+            FavoriteColorIndex = duplicatedMii.FavoriteColorIndex,
+            IsFemale = duplicatedMii.IsFemale,
             IsFavorite = false
         };
 
@@ -803,6 +821,46 @@ public sealed class SaveManagerService
         return value.StartsWith('#') && value.Length == 7
             ? value
             : "#39E7FF";
+    }
+
+    private MiiFileMetadata EnsureImportedMiiIdentity(MiiFileMetadata metadata)
+    {
+        if (metadata.MiiId != 0)
+        {
+            return metadata;
+        }
+
+        var raw = Convert.FromBase64String(metadata.RawMiiBase64);
+        var state = _miiFileParserService.ReadEditorState(raw);
+        state.MiiId = 0;
+        var regenerated = _miiFileParserService.CreateMii(state, metadata.FormatName);
+        return new MiiFileMetadata
+        {
+            FormatName = metadata.FormatName,
+            SuggestedName = regenerated.Name,
+            SizeBytes = metadata.SizeBytes,
+            Sha256 = regenerated.Sha256,
+            RawMiiBase64 = regenerated.RawMiiBase64,
+            StudioData = regenerated.StudioData,
+            CreatorName = regenerated.CreatorName,
+            FavoriteColor = regenerated.FavoriteColor,
+            FavoriteColorIndex = regenerated.FavoriteColorIndex,
+            MiiId = regenerated.MiiId,
+            IsFemale = regenerated.IsFemale,
+            IsFavorite = regenerated.IsFavorite
+        };
+    }
+
+    private static string NormalizeMiiNameForDuplicate(string value)
+    {
+        var baseName = string.IsNullOrWhiteSpace(value) ? "Mii" : value.Trim();
+        const string suffix = " 2";
+        if (baseName.Length + suffix.Length <= 10)
+        {
+            return baseName + suffix;
+        }
+
+        return baseName[..Math.Max(1, 10 - suffix.Length)] + suffix;
     }
 
     private static int ResolveFavoriteColorIndex(string value)

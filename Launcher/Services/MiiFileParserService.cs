@@ -136,6 +136,7 @@ public sealed class MiiFileParserService
 
     public byte[] CreateMiiBytes(MiiEditorState state)
     {
+        state = NormalizeEditorState(state);
         var raw = new byte[WiiMiiBlockSize];
         var systemId = ResolveSystemId(state);
 
@@ -294,6 +295,11 @@ public sealed class MiiFileParserService
         }
 
         var scanLimit = Math.Min(fileBytes.Length - WiiMiiBlockSize, 4096);
+        if (fileBytes.Length <= 1024 * 1024)
+        {
+            scanLimit = fileBytes.Length - WiiMiiBlockSize;
+        }
+
         for (var offset = 0; offset <= scanLimit; offset++)
         {
             var candidate = fileBytes.AsSpan(offset, WiiMiiBlockSize).ToArray();
@@ -321,11 +327,14 @@ public sealed class MiiFileParserService
     private static IEnumerable<int> CandidateOffsets(int length)
     {
         yield return 0;
+        yield return 2;
         yield return 4;
         yield return 8;
         yield return 0x10;
         yield return 0x20;
         yield return 0x40;
+        yield return 0x60;
+        yield return 0xF0;
         yield return Math.Max(0, length - WiiMiiBlockSize);
     }
 
@@ -358,11 +367,38 @@ public sealed class MiiFileParserService
         var day = (header >> 5) & 0x1F;
 
         return favoriteColor <= 11
-               && month is >= 1 and <= 12
-               && day is >= 1 and <= 31
+               && month <= 12
+               && day <= 31
                && raw[0x16] <= 127
                && raw[0x17] <= 127
-               && ReadUInt32BigEndian(raw, 0x18) != 0;
+               && LooksLikeValidFeatureBlock(raw);
+    }
+
+    private static bool LooksLikeValidFeatureBlock(byte[] raw)
+    {
+        var face = ReadUInt16BigEndian(raw, 0x20);
+        var hair = ReadUInt16BigEndian(raw, 0x22);
+        var brow = ReadUInt32BigEndian(raw, 0x24);
+        var eye = ReadUInt32BigEndian(raw, 0x28);
+        var nose = ReadUInt16BigEndian(raw, 0x2C);
+        var mouth = ReadUInt16BigEndian(raw, 0x2E);
+        var glasses = ReadUInt16BigEndian(raw, 0x30);
+        var facial = ReadUInt16BigEndian(raw, 0x32);
+
+        return (face >> 13) <= 7
+               && ((face >> 10) & 0x07) <= 5
+               && ((face >> 6) & 0x0F) <= 11
+               && (hair >> 9) <= 71
+               && ((hair >> 6) & 0x07) <= 7
+               && (brow >> 27) <= 23
+               && ((brow >> 13) & 0x07) <= 7
+               && (eye >> 26) <= 47
+               && ((eye >> 13) & 0x07) <= 5
+               && (nose >> 12) <= 11
+               && (mouth >> 11) <= 23
+               && (glasses >> 12) <= 8
+               && (facial >> 14) <= 3
+               && ((facial >> 12) & 0x03) <= 3;
     }
 
     private static string ResolveFormatName(string path)
@@ -493,6 +529,55 @@ public sealed class MiiFileParserService
         }
 
         return RandomNumberGenerator.GetBytes(4);
+    }
+
+    private static MiiEditorState NormalizeEditorState(MiiEditorState state)
+    {
+        var normalized = state.Clone();
+        normalized.Name = NormalizeMiiName(normalized.Name, "Vanza Mii");
+        normalized.CreatorName = NormalizeMiiName(normalized.CreatorName, "VanzaKart");
+        normalized.FavoriteColorIndex = Math.Clamp(normalized.FavoriteColorIndex, 0, 11);
+        normalized.BirthMonth = Math.Clamp(normalized.BirthMonth, 1, 12);
+        normalized.BirthDay = Math.Clamp(normalized.BirthDay, 1, 31);
+        normalized.Height = Math.Clamp(normalized.Height, 0, 127);
+        normalized.Weight = Math.Clamp(normalized.Weight, 0, 127);
+        normalized.FaceShape = Math.Clamp(normalized.FaceShape, 0, 7);
+        normalized.SkinColor = Math.Clamp(normalized.SkinColor, 0, 5);
+        normalized.FacialFeature = Math.Clamp(normalized.FacialFeature, 0, 11);
+        normalized.HairType = Math.Clamp(normalized.HairType, 0, 71);
+        normalized.HairColor = Math.Clamp(normalized.HairColor, 0, 7);
+        normalized.EyebrowType = Math.Clamp(normalized.EyebrowType, 0, 23);
+        normalized.EyebrowRotation = Math.Clamp(normalized.EyebrowRotation, 0, 15);
+        normalized.EyebrowColor = Math.Clamp(normalized.EyebrowColor, 0, 7);
+        normalized.EyebrowSize = Math.Clamp(normalized.EyebrowSize, 0, 15);
+        normalized.EyebrowVertical = Math.Clamp(normalized.EyebrowVertical, 0, 31);
+        normalized.EyebrowSpacing = Math.Clamp(normalized.EyebrowSpacing, 0, 15);
+        normalized.EyeType = Math.Clamp(normalized.EyeType, 0, 47);
+        normalized.EyeRotation = Math.Clamp(normalized.EyeRotation, 0, 7);
+        normalized.EyeVertical = Math.Clamp(normalized.EyeVertical, 0, 31);
+        normalized.EyeColor = Math.Clamp(normalized.EyeColor, 0, 5);
+        normalized.EyeSize = Math.Clamp(normalized.EyeSize, 0, 7);
+        normalized.EyeSpacing = Math.Clamp(normalized.EyeSpacing, 0, 15);
+        normalized.NoseType = Math.Clamp(normalized.NoseType, 0, 11);
+        normalized.NoseSize = Math.Clamp(normalized.NoseSize, 0, 15);
+        normalized.NoseVertical = Math.Clamp(normalized.NoseVertical, 0, 31);
+        normalized.MouthType = Math.Clamp(normalized.MouthType, 0, 23);
+        normalized.MouthColor = Math.Clamp(normalized.MouthColor, 0, 3);
+        normalized.MouthSize = Math.Clamp(normalized.MouthSize, 0, 15);
+        normalized.MouthVertical = Math.Clamp(normalized.MouthVertical, 0, 31);
+        normalized.GlassesType = Math.Clamp(normalized.GlassesType, 0, 8);
+        normalized.GlassesColor = Math.Clamp(normalized.GlassesColor, 0, 5);
+        normalized.GlassesSize = Math.Clamp(normalized.GlassesSize, 0, 7);
+        normalized.GlassesVertical = Math.Clamp(normalized.GlassesVertical, 0, 31);
+        normalized.MustacheType = Math.Clamp(normalized.MustacheType, 0, 3);
+        normalized.BeardType = Math.Clamp(normalized.BeardType, 0, 3);
+        normalized.FacialHairColor = Math.Clamp(normalized.FacialHairColor, 0, 7);
+        normalized.MustacheSize = Math.Clamp(normalized.MustacheSize, 0, 15);
+        normalized.MustacheVertical = Math.Clamp(normalized.MustacheVertical, 0, 31);
+        normalized.MoleSize = Math.Clamp(normalized.MoleSize, 0, 15);
+        normalized.MoleVertical = Math.Clamp(normalized.MoleVertical, 0, 31);
+        normalized.MoleHorizontal = Math.Clamp(normalized.MoleHorizontal, 0, 31);
+        return normalized;
     }
 
     private static string NormalizeMiiName(string value, string fallback)

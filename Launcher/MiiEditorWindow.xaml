@@ -2,10 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="Mii Editor"
-        Width="1080"
-        Height="720"
-        MinWidth="980"
-        MinHeight="660"
+        Width="960"
+        Height="680"
+        MinWidth="960"
+        MinHeight="680"
         WindowStartupLocation="CenterOwner"
         Background="#090D18"
         Foreground="#F7FAFF">
@@ -48,7 +48,7 @@
             <Setter Property="BorderBrush" Value="{StaticResource EditorStroke}"/>
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="18"/>
+            <Setter Property="Padding" Value="16"/>
             <Setter Property="Effect" Value="{StaticResource EditorSoftShadow}"/>
         </Style>
 
@@ -57,7 +57,7 @@
             <Setter Property="Foreground" Value="{StaticResource EditorTextPrimary}"/>
             <Setter Property="BorderBrush" Value="#3B4B70"/>
             <Setter Property="BorderThickness" Value="1"/>
-            <Setter Property="Padding" Value="14,8"/>
+            <Setter Property="Padding" Value="13,8"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
@@ -125,10 +125,14 @@
         </Style>
 
         <Style TargetType="Slider">
+            <Setter Property="Height" Value="34"/>
             <Setter Property="Foreground" Value="#39E7FF"/>
-            <Setter Property="Margin" Value="0,8,0,14"/>
+            <Setter Property="Margin" Value="0,8,0,18"/>
             <Setter Property="IsSnapToTickEnabled" Value="True"/>
             <Setter Property="TickFrequency" Value="1"/>
+            <Setter Property="AutoToolTipPlacement" Value="TopLeft"/>
+            <Setter Property="AutoToolTipPrecision" Value="0"/>
+            <Setter Property="TickPlacement" Value="BottomRight"/>
         </Style>
 
         <Style TargetType="CheckBox">
@@ -171,27 +175,27 @@
 
     <Grid Background="{StaticResource EditorBackground}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="76"/>
+            <RowDefinition Height="58"/>
             <RowDefinition Height="*"/>
         </Grid.RowDefinitions>
 
         <Border Grid.Row="0" BorderBrush="#263654" BorderThickness="0,0,0,1" Background="#78070A13">
-            <Grid Margin="26,0">
+            <Grid Margin="18,0">
                 <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="Mii Studio" FontSize="25" FontWeight="Black"/>
-                    <TextBlock Text="Live Wii Mii data, Nintendo Studio preview, Dolphin sync" Foreground="{StaticResource EditorTextSecondary}" FontSize="12" Margin="0,4,0,0"/>
+                    <TextBlock Text="Mii Studio" FontSize="21" FontWeight="Black"/>
+                    <TextBlock Text="Preview live, opzioni a pagine, regolazioni nei menu" Foreground="{StaticResource EditorTextSecondary}" FontSize="11" Margin="0,2,0,0"/>
                 </StackPanel>
-                <Button Content="Close" Width="92" Height="36" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource EditorButton}" Click="CloseButton_OnClick"/>
+                <Button Content="Close" Width="82" Height="34" HorizontalAlignment="Right" VerticalAlignment="Center" Style="{StaticResource EditorButton}" Click="CloseButton_OnClick"/>
             </Grid>
         </Border>
 
-        <Grid Grid.Row="1" Margin="22">
+        <Grid Grid.Row="1" Margin="16">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="340"/>
+                <ColumnDefinition Width="286"/>
                 <ColumnDefinition Width="*"/>
             </Grid.ColumnDefinitions>
 
-            <Border Style="{StaticResource EditorCard}" Padding="20" Margin="0,0,18,0">
+            <Border Style="{StaticResource EditorCard}" Padding="16" Margin="0,0,14,0">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -200,22 +204,22 @@
                     </Grid.RowDefinitions>
 
                     <StackPanel>
-                        <TextBlock x:Name="PreviewNameTextBlock" Text="Mii" FontSize="24" FontWeight="Black" TextWrapping="Wrap"/>
-                        <TextBlock x:Name="PreviewMetaTextBlock" Text="Ready" Foreground="{StaticResource EditorTextSecondary}" FontWeight="SemiBold" Margin="0,6,0,0"/>
+                        <TextBlock x:Name="PreviewNameTextBlock" Text="Mii" FontSize="22" FontWeight="Black" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="PreviewMetaTextBlock" Text="Ready" Foreground="{StaticResource EditorTextSecondary}" FontWeight="SemiBold" Margin="0,4,0,0"/>
                     </StackPanel>
 
-                    <Border Grid.Row="1" Width="270" Height="330" CornerRadius="8" Background="#0B1020" BorderBrush="#3A4A6D" BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="True">
+                    <Border Grid.Row="1" Width="238" Height="292" CornerRadius="8" Background="#0B1020" BorderBrush="#3A4A6D" BorderThickness="1" HorizontalAlignment="Center" VerticalAlignment="Center" ClipToBounds="True">
                         <Grid>
-                            <Rectangle Fill="{StaticResource EditorRainbow}" Opacity="0.13"/>
-                            <Image x:Name="PreviewImage" Stretch="Uniform" Margin="16"/>
-                            <TextBlock x:Name="PreviewPlaceholderTextBlock" Text="Rendering..." FontSize="16" FontWeight="Black" Foreground="{StaticResource EditorTextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <Rectangle Fill="{StaticResource EditorRainbow}" Opacity="0.14"/>
+                            <Image x:Name="PreviewImage" Stretch="Uniform" Margin="10"/>
+                            <TextBlock x:Name="PreviewPlaceholderTextBlock" Text="Rendering..." FontSize="15" FontWeight="Black" Foreground="{StaticResource EditorTextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
                     </Border>
 
                     <StackPanel Grid.Row="2">
-                        <TextBlock x:Name="RenderStatusTextBlock" Text="Renderer ready" Foreground="{StaticResource EditorTextSecondary}" TextWrapping="Wrap" Margin="0,0,0,12"/>
+                        <TextBlock x:Name="RenderStatusTextBlock" Text="Renderer ready" Foreground="{StaticResource EditorTextSecondary}" TextWrapping="Wrap" Margin="0,0,0,10"/>
                         <WrapPanel>
-                            <Button Content="Randomize" Style="{StaticResource EditorPrimaryButton}" Margin="0,0,8,8" Click="RandomizeButton_OnClick"/>
+                            <Button Content="Random" Style="{StaticResource EditorPrimaryButton}" Margin="0,0,8,8" Click="RandomizeButton_OnClick"/>
                             <Button Content="Reset" Style="{StaticResource EditorButton}" Margin="0,0,8,8" Click="ResetButton_OnClick"/>
                             <Button Content="Export" Style="{StaticResource EditorButton}" Margin="0,0,0,8" Click="ExportButton_OnClick"/>
                         </WrapPanel>
@@ -224,178 +228,214 @@
                 </Grid>
             </Border>
 
-            <Border Grid.Column="1" Style="{StaticResource EditorCard}" Padding="18">
+            <Border Grid.Column="1" Style="{StaticResource EditorCard}" Padding="16">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <Grid Margin="0,0,0,12">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="94"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="112"/>
+                        </Grid.ColumnDefinitions>
+                        <TextBox x:Name="NameTextBox" TextChanged="EditorControl_OnChanged" ToolTip="Nome Mii"/>
+                        <Button x:Name="SymbolButton" Grid.Column="1" Content="Simboli" Margin="8,0,0,0" Style="{StaticResource EditorButton}" Click="SymbolButton_OnClick"/>
+                        <TextBox x:Name="CreatorTextBox" Grid.Column="2" Margin="10,0,0,0" TextChanged="EditorControl_OnChanged" ToolTip="Creator"/>
+                        <Button x:Name="OpenAdjustPopupButton" Grid.Column="3" Content="Regola" Margin="8,0,0,0" Style="{StaticResource EditorPrimaryButton}" Click="OpenAdjustPopupButton_OnClick"/>
+                    </Grid>
+
+                    <Grid Grid.Row="1" Margin="0,0,0,10">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="42"/>
+                            <ColumnDefinition Width="*"/>
+                            <ColumnDefinition Width="42"/>
+                        </Grid.ColumnDefinitions>
+                        <Button Content="‹" Width="34" Height="34" Style="{StaticResource EditorButton}" Click="PreviousCategoryButton_OnClick"/>
+                        <ScrollViewer Grid.Column="1" HorizontalScrollBarVisibility="Hidden" VerticalScrollBarVisibility="Disabled">
+                            <WrapPanel x:Name="CategoryRailWrapPanel"/>
+                        </ScrollViewer>
+                        <Button Grid.Column="2" Content="›" Width="34" Height="34" HorizontalAlignment="Right" Style="{StaticResource EditorButton}" Click="NextCategoryButton_OnClick"/>
+                    </Grid>
+
+                    <Border Grid.Row="2" Background="{StaticResource EditorPanelSoft}" BorderBrush="#263654" BorderThickness="1" CornerRadius="8" Padding="12" Margin="0,0,0,10">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock x:Name="CurrentCategoryTitleTextBlock" Text="Volto" FontWeight="Black" FontSize="18"/>
+                                <TextBlock x:Name="CurrentCategoryHintTextBlock" Text="Scegli una forma, poi usa Regola per dimensione e posizione." Foreground="{StaticResource EditorTextSecondary}" FontSize="12" Margin="0,3,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                <Button x:Name="PreviousOptionsButton" Content="‹" Width="36" Height="34" Style="{StaticResource EditorButton}" Click="PreviousOptionsButton_OnClick"/>
+                                <TextBlock x:Name="OptionsPageTextBlock" Text="1/1" Width="58" TextAlignment="Center" VerticalAlignment="Center" FontWeight="Black"/>
+                                <Button x:Name="NextOptionsButton" Content="›" Width="36" Height="34" Style="{StaticResource EditorButton}" Click="NextOptionsButton_OnClick"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <ScrollViewer Grid.Row="3" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Disabled">
+                        <WrapPanel x:Name="FeaturePreviewWrapPanel"/>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <Popup x:Name="SymbolPopup" AllowsTransparency="True" StaysOpen="False" Placement="Bottom" PlacementTarget="{Binding ElementName=SymbolButton}">
+            <Border Width="430" MaxHeight="300" Background="#F011192A" BorderBrush="#4A5F8E" BorderThickness="1" CornerRadius="8" Padding="14" Effect="{StaticResource EditorSoftShadow}">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <WrapPanel x:Name="NameSymbolWrapPanel"/>
+                </ScrollViewer>
+            </Border>
+        </Popup>
+
+        <Popup x:Name="AdjustPopup" AllowsTransparency="True" StaysOpen="False" Placement="Left" PlacementTarget="{Binding ElementName=OpenAdjustPopupButton}">
+            <Border Width="560" MaxHeight="500" Background="#F011192A" BorderBrush="#4A5F8E" BorderThickness="1" CornerRadius="8" Padding="16" Effect="{StaticResource EditorSoftShadow}">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
-
-                    <Grid Margin="0,0,0,16">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="*"/>
-                            <ColumnDefinition Width="*"/>
-                        </Grid.ColumnDefinitions>
-                        <StackPanel Margin="0,0,10,0">
-                            <TextBlock Text="Name" FontWeight="Bold" Foreground="{StaticResource EditorTextSecondary}" Margin="0,0,0,7"/>
-                            <TextBox x:Name="NameTextBox" TextChanged="EditorControl_OnChanged"/>
-                        </StackPanel>
-                        <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                            <TextBlock Text="Creator" FontWeight="Bold" Foreground="{StaticResource EditorTextSecondary}" Margin="0,0,0,7"/>
-                            <TextBox x:Name="CreatorTextBox" TextChanged="EditorControl_OnChanged"/>
-                        </StackPanel>
+                    <Grid Margin="0,0,0,10">
+                        <TextBlock Text="Regolazioni fini" FontSize="18" FontWeight="Black"/>
+                        <Button Content="Close" Width="72" Height="30" HorizontalAlignment="Right" Style="{StaticResource EditorButton}" Click="CloseAdjustPopupButton_OnClick"/>
                     </Grid>
-
                     <TabControl Grid.Row="1">
-                        <TabItem Header="Body">
+                        <TabItem Header="Base">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <WrapPanel Margin="0,0,0,10">
                                         <CheckBox x:Name="FemaleCheckBox" Content="Female" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
                                         <CheckBox x:Name="FavoriteCheckBox" Content="Favorite" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
+                                        <CheckBox x:Name="HairFlipCheckBox" Content="Flip hair" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
+                                        <CheckBox x:Name="MoleEnabledCheckBox" Content="Neo" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
                                     </WrapPanel>
-                                    <TextBlock Text="Favorite color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="FavoriteColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="FavoriteColorSlider" Minimum="0" Maximum="11" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Height" FontWeight="Bold"/>
+                                    <TextBlock x:Name="HeightValueTextBlock" Text="Altezza 64" FontWeight="Bold"/>
                                     <Slider x:Name="HeightSlider" Minimum="0" Maximum="127" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Weight" FontWeight="Bold"/>
+                                    <TextBlock x:Name="WeightValueTextBlock" Text="Peso 64" FontWeight="Bold"/>
                                     <Slider x:Name="WeightSlider" Minimum="0" Maximum="127" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Face">
+                        <TabItem Header="Volto">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Face shape" FontWeight="Bold"/>
+                                    <TextBlock x:Name="FaceShapeValueTextBlock" Text="Forma volto 1" FontWeight="Bold"/>
                                     <Slider x:Name="FaceShapeSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Skin tone" FontWeight="Bold"/>
+                                    <TextBlock x:Name="SkinColorValueTextBlock" Text="Pelle 1" FontWeight="Bold"/>
                                     <Slider x:Name="SkinColorSlider" Minimum="0" Maximum="5" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Facial details" FontWeight="Bold"/>
+                                    <TextBlock x:Name="FacialFeatureValueTextBlock" Text="Dettagli 1" FontWeight="Bold"/>
                                     <Slider x:Name="FacialFeatureSlider" Minimum="0" Maximum="11" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Hair">
+                        <TabItem Header="Capelli">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <CheckBox x:Name="HairFlipCheckBox" Content="Flip hair" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Hair style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="HairTypeValueTextBlock" Text="Stile capelli 1" FontWeight="Bold"/>
                                     <Slider x:Name="HairTypeSlider" Minimum="0" Maximum="71" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Hair color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="HairColorValueTextBlock" Text="Colore capelli 1" FontWeight="Bold"/>
                                     <Slider x:Name="HairColorSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Eyes">
+                        <TabItem Header="Occhi">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Eye style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeTypeValueTextBlock" Text="Stile occhi 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyeTypeSlider" Minimum="0" Maximum="47" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Rotation" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeRotationValueTextBlock" Text="Rotazione 0" FontWeight="Bold"/>
                                     <Slider x:Name="EyeRotationSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyeColorSlider" Minimum="0" Maximum="5" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeSizeValueTextBlock" Text="Dimensione 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyeSizeSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Spacing" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeSpacingValueTextBlock" Text="Distanza 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyeSpacingSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyeVerticalValueTextBlock" Text="Posizione 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyeVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Brows">
+                        <TabItem Header="Sopracciglia">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Brow style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowTypeValueTextBlock" Text="Stile sopracciglia 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowTypeSlider" Minimum="0" Maximum="23" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Rotation" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowRotationValueTextBlock" Text="Rotazione 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowRotationSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowColorSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowSizeValueTextBlock" Text="Dimensione 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowSizeSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Spacing" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowSpacingValueTextBlock" Text="Distanza 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowSpacingSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="EyebrowVerticalValueTextBlock" Text="Posizione 1" FontWeight="Bold"/>
                                     <Slider x:Name="EyebrowVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Nose">
+                        <TabItem Header="Naso">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Nose style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="NoseTypeValueTextBlock" Text="Stile naso 1" FontWeight="Bold"/>
                                     <Slider x:Name="NoseTypeSlider" Minimum="0" Maximum="11" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="NoseSizeValueTextBlock" Text="Dimensione 1" FontWeight="Bold"/>
                                     <Slider x:Name="NoseSizeSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="NoseVerticalValueTextBlock" Text="Posizione 1" FontWeight="Bold"/>
                                     <Slider x:Name="NoseVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Mouth">
+                        <TabItem Header="Bocca">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Mouth style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MouthTypeValueTextBlock" Text="Stile bocca 1" FontWeight="Bold"/>
                                     <Slider x:Name="MouthTypeSlider" Minimum="0" Maximum="23" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MouthColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="MouthColorSlider" Minimum="0" Maximum="3" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MouthSizeValueTextBlock" Text="Dimensione 1" FontWeight="Bold"/>
                                     <Slider x:Name="MouthSizeSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MouthVerticalValueTextBlock" Text="Posizione 1" FontWeight="Bold"/>
                                     <Slider x:Name="MouthVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-
-                        <TabItem Header="Beard">
+                        <TabItem Header="Extra">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Mustache" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MustacheTypeValueTextBlock" Text="Baffi 1" FontWeight="Bold"/>
                                     <Slider x:Name="MustacheTypeSlider" Minimum="0" Maximum="3" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Beard" FontWeight="Bold"/>
+                                    <TextBlock x:Name="BeardTypeValueTextBlock" Text="Barba 1" FontWeight="Bold"/>
                                     <Slider x:Name="BeardTypeSlider" Minimum="0" Maximum="3" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="FacialHairColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="FacialHairColorSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Mustache size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MustacheSizeValueTextBlock" Text="Dimensione baffi 1" FontWeight="Bold"/>
                                     <Slider x:Name="MustacheSizeSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Mustache position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MustacheVerticalValueTextBlock" Text="Posizione baffi 1" FontWeight="Bold"/>
                                     <Slider x:Name="MustacheVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </TabItem>
-
-                        <TabItem Header="Glasses">
-                            <ScrollViewer>
-                                <StackPanel Margin="2,10,8,0">
-                                    <TextBlock Text="Glasses style" FontWeight="Bold"/>
+                                    <TextBlock x:Name="GlassesTypeValueTextBlock" Text="Stile occhiali 1" FontWeight="Bold"/>
                                     <Slider x:Name="GlassesTypeSlider" Minimum="0" Maximum="8" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Color" FontWeight="Bold"/>
+                                    <TextBlock x:Name="GlassesColorValueTextBlock" Text="Colore 1" FontWeight="Bold"/>
                                     <Slider x:Name="GlassesColorSlider" Minimum="0" Maximum="5" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="GlassesSizeValueTextBlock" Text="Dimensione 1" FontWeight="Bold"/>
                                     <Slider x:Name="GlassesSizeSlider" Minimum="0" Maximum="7" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="GlassesVerticalValueTextBlock" Text="Posizione 1" FontWeight="Bold"/>
                                     <Slider x:Name="GlassesVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
-                                </StackPanel>
-                            </ScrollViewer>
-                        </TabItem>
-
-                        <TabItem Header="Mole">
-                            <ScrollViewer>
-                                <StackPanel Margin="2,10,8,0">
-                                    <CheckBox x:Name="MoleEnabledCheckBox" Content="Enable mole" Checked="EditorControl_OnChanged" Unchecked="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Size" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MoleSizeValueTextBlock" Text="Dimensione neo 1" FontWeight="Bold"/>
                                     <Slider x:Name="MoleSizeSlider" Minimum="0" Maximum="15" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Vertical position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MoleVerticalValueTextBlock" Text="Posizione verticale 1" FontWeight="Bold"/>
                                     <Slider x:Name="MoleVerticalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
-                                    <TextBlock Text="Horizontal position" FontWeight="Bold"/>
+                                    <TextBlock x:Name="MoleHorizontalValueTextBlock" Text="Posizione orizzontale 1" FontWeight="Bold"/>
                                     <Slider x:Name="MoleHorizontalSlider" Minimum="0" Maximum="31" ValueChanged="EditorControl_OnChanged"/>
                                 </StackPanel>
                             </ScrollViewer>
@@ -403,6 +443,6 @@
                     </TabControl>
                 </Grid>
             </Border>
-        </Grid>
+        </Popup>
     </Grid>
 </Window>

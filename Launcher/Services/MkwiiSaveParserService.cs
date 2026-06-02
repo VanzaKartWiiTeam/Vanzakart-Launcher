@@ -103,6 +103,24 @@ public sealed class MkwiiSaveParserService
         return files.OrderBy(path => path).ToArray();
     }
 
+    public IReadOnlyList<string> FindVanzaKartSaveFiles(LauncherSettings settings)
+    {
+        if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            return Array.Empty<string>();
+        }
+
+        var modRoot = Path.Combine(settings.GetModFolder(), "VanzaKart");
+        return FindMarioKartSaveFiles(settings.UserFolderPath)
+            .Where(path => IsVanzaKartSavePath(path, modRoot))
+            .Select(path => new FileInfo(path))
+            .Where(info => info.Exists)
+            .OrderByDescending(info => info.LastWriteTimeUtc)
+            .Take(1)
+            .Select(info => info.FullName)
+            .ToArray();
+    }
+
     public IReadOnlyList<SaveProfileInfo> ReadLicenseCards(string rksysPath, IReadOnlyDictionary<uint, WiiMiiData> miiDatabase)
     {
         var data = File.ReadAllBytes(rksysPath);
@@ -271,6 +289,27 @@ public sealed class MkwiiSaveParserService
         catch
         {
         }
+    }
+
+    private static bool IsVanzaKartSavePath(string path, string modRoot)
+    {
+        if (!string.IsNullOrWhiteSpace(modRoot))
+        {
+            try
+            {
+                var relative = Path.GetRelativePath(modRoot, path);
+                if (!relative.StartsWith("..", StringComparison.Ordinal) && !Path.IsPathRooted(relative))
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        return path.Contains($"{Path.DirectorySeparatorChar}VanzaKart{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+               || path.Contains($"{Path.AltDirectorySeparatorChar}VanzaKart{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int FindMiiSlotOffset(byte[] db, uint miiId)
