@@ -416,7 +416,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "Not installed";
         var installed = IsModInstalled(settings);
-        var myStuffFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        var myStuffFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
         var conflicts = _modConflictService.ScanAddonConflicts(myStuffFolder);
 
         InstalledVersionText.Text = localVersion;
@@ -862,7 +862,7 @@ public partial class MainWindow : Window
         SaveSettingsFromUi();
 
         _userPreferences.SeparateSavegame = SeparateSaveCheckBox.IsChecked == true;
-        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 1 : 2;
+        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 2 : 0;
         _userPreferences.LastPlayedUtc = DateTime.UtcNow;
         _userPreferences.LaunchCount++;
         _preferencesService.Save(_userPreferences);
@@ -880,7 +880,8 @@ public partial class MainWindow : Window
     ""patches"": [
       {{
         ""options"": [
-          {{ ""choice"": {optionChoice}, ""option-name"": ""{(optionChoice == 1 ? "Pack" : "My Stuff")}"", ""section-name"": ""VanzaKart"" }},
+          {{ ""choice"": 1, ""option-name"": ""Pack"", ""section-name"": ""VanzaKart"" }},
+          {(optionChoice == 2 ? "{ \"choice\": 2, \"option-name\": \"My Stuff\", \"section-name\": \"VanzaKart\" }," : "")}
           {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""VanzaKart"" }}
         ],
         ""root"": ""{EscapeJsonValue(rootDir)}"",
@@ -1119,7 +1120,7 @@ del ""%~f0""";
             return;
         }
 
-        var folder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        var folder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
         Directory.CreateDirectory(folder);
         OpenFolder(folder);
         RefreshModsView();
@@ -1597,7 +1598,7 @@ del ""%~f0""";
         }
 
         var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
-        var targetFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "My Stuff");
+        var targetFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
         Directory.CreateDirectory(targetFolder);
 
         try
