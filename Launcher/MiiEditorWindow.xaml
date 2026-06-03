@@ -221,9 +221,11 @@
                         <WrapPanel>
                             <Button Content="Random" Style="{StaticResource EditorPrimaryButton}" Margin="0,0,8,8" Click="RandomizeButton_OnClick"/>
                             <Button Content="Reset" Style="{StaticResource EditorButton}" Margin="0,0,8,8" Click="ResetButton_OnClick"/>
+                            <Button x:Name="SaveMiiButton" Content="Save" Style="{StaticResource EditorPrimaryButton}" Margin="0,0,8,8" Click="SaveMiiButton_OnClick"/>
+                            <Button x:Name="CancelMiiButton" Content="Cancel" Style="{StaticResource EditorButton}" Margin="0,0,8,8" Click="CancelMiiButton_OnClick"/>
                             <Button Content="Export" Style="{StaticResource EditorButton}" Margin="0,0,0,8" Click="ExportButton_OnClick"/>
                         </WrapPanel>
-                        <TextBlock x:Name="AutosaveTextBlock" Text="Autosave active" Foreground="{StaticResource EditorTextFaint}" FontSize="12" TextWrapping="Wrap"/>
+                        <TextBlock x:Name="AutosaveTextBlock" Text="No unsaved changes" Foreground="{StaticResource EditorTextFaint}" FontSize="12" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -307,8 +309,8 @@
                         <TextBlock Text="Regolazioni fini" FontSize="18" FontWeight="Black"/>
                         <Button Content="Close" Width="72" Height="30" HorizontalAlignment="Right" Style="{StaticResource EditorButton}" Click="CloseAdjustPopupButton_OnClick"/>
                     </Grid>
-                    <TabControl Grid.Row="1">
-                        <TabItem Header="Base">
+                    <TabControl x:Name="AdjustTabs" Grid.Row="1">
+                        <TabItem x:Name="AdjustBaseTab" Header="Base">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <WrapPanel Margin="0,0,0,10">
@@ -326,7 +328,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Volto">
+                        <TabItem x:Name="AdjustFaceTab" Header="Volto">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="FaceShapeValueTextBlock" Text="Forma volto 1" FontWeight="Bold"/>
@@ -338,7 +340,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Capelli">
+                        <TabItem x:Name="AdjustHairTab" Header="Capelli">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="HairTypeValueTextBlock" Text="Stile capelli 1" FontWeight="Bold"/>
@@ -348,7 +350,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Occhi">
+                        <TabItem x:Name="AdjustEyesTab" Header="Occhi">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="EyeTypeValueTextBlock" Text="Stile occhi 1" FontWeight="Bold"/>
@@ -366,7 +368,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Sopracciglia">
+                        <TabItem x:Name="AdjustBrowsTab" Header="Sopracciglia">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="EyebrowTypeValueTextBlock" Text="Stile sopracciglia 1" FontWeight="Bold"/>
@@ -384,7 +386,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Naso">
+                        <TabItem x:Name="AdjustNoseTab" Header="Naso">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="NoseTypeValueTextBlock" Text="Stile naso 1" FontWeight="Bold"/>
@@ -396,7 +398,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Bocca">
+                        <TabItem x:Name="AdjustMouthTab" Header="Bocca">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="MouthTypeValueTextBlock" Text="Stile bocca 1" FontWeight="Bold"/>
@@ -410,7 +412,7 @@
                                 </StackPanel>
                             </ScrollViewer>
                         </TabItem>
-                        <TabItem Header="Extra">
+                        <TabItem x:Name="AdjustExtraTab" Header="Extra">
                             <ScrollViewer>
                                 <StackPanel Margin="2,10,8,0">
                                     <TextBlock x:Name="MustacheTypeValueTextBlock" Text="Baffi 1" FontWeight="Bold"/>

@@ -20,10 +20,12 @@ public partial class MiiEditorWindow : Window
     private readonly List<CategoryDefinition> _categories = [];
     private readonly List<FeatureOption> _featureOptions = [];
     private MiiEditorState _resetState;
-    private CancellationTokenSource? _autosaveCts;
+    private CancellationTokenSource? _previewCts;
     private CancellationTokenSource? _featurePreviewCts;
     private bool _isLoading;
-    private int _autosaveVersion;
+    private bool _hasUnsavedChanges;
+    private bool _forceClose;
+    private int _previewVersion;
     private int _categoryIndex;
     private int _featurePage;
 
@@ -43,13 +45,36 @@ public partial class MiiEditorWindow : Window
         {
             ApplyState(_resetState);
             BuildFeatureOptionsForSelectedCategory(resetPage: true);
-            QueueAutosave(renderImmediately: true);
+            QueuePreviewRender(markDirty: false, renderImmediately: true);
         };
         Closing += (_, _) =>
         {
-            _autosaveCts?.Cancel();
+            _previewCts?.Cancel();
             _featurePreviewCts?.Cancel();
         };
+    }
+
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (_hasUnsavedChanges && !_forceClose)
+        {
+            var result = MessageBox.Show(
+                this,
+                "Ci sono modifiche non salvate. Vuoi chiudere senza salvarle?",
+                "Unsaved Changes",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Warning);
+
+            if (result != MessageBoxResult.Yes)
+            {
+                e.Cancel = true;
+                return;
+            }
+
+            _forceClose = true;
+        }
+
+        base.OnClosing(e);
     }
 
     private void EditorControl_OnChanged(object sender, RoutedEventArgs e)
@@ -59,27 +84,32 @@ public partial class MiiEditorWindow : Window
             return;
         }
 
-        QueueAutosave(renderImmediately: false);
+        QueuePreviewRender(markDirty: true, renderImmediately: false);
     }
 
-    private void QueueAutosave(bool renderImmediately)
+    private void QueuePreviewRender(bool markDirty, bool renderImmediately)
     {
-        _autosaveCts?.Cancel();
-        _autosaveCts = new CancellationTokenSource();
-        var token = _autosaveCts.Token;
-        var version = ++_autosaveVersion;
+        _previewCts?.Cancel();
+        _previewCts = new CancellationTokenSource();
+        var token = _previewCts.Token;
+        var version = ++_previewVersion;
 
         var state = ReadState();
         PreviewNameTextBlock.Text = state.Name;
         PreviewMetaTextBlock.Text = $"{(state.IsFemale ? "Female" : "Male")}   Color {state.FavoriteColorIndex + 1}";
-        RenderStatusTextBlock.Text = renderImmediately ? "Renderer starting..." : "Waiting for edits to settle...";
-        AutosaveTextBlock.Text = "Autosave queued";
+        RenderStatusTextBlock.Text = renderImmediately ? "Renderer starting..." : "Preview queued...";
+        if (markDirty)
+        {
+            _hasUnsavedChanges = true;
+        }
+
+        AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "No unsaved changes";
         UpdateValueLabels();
 
-        _ = AutosaveAsync(state, version, renderImmediately ? TimeSpan.Zero : TimeSpan.FromMilliseconds(420), token);
+        _ = PreviewRenderAsync(state, version, renderImmediately ? TimeSpan.Zero : TimeSpan.FromMilliseconds(260), token);
     }
 
-    private async Task AutosaveAsync(MiiEditorState state, int version, TimeSpan delay, CancellationToken cancellationToken)
+    private async Task PreviewRenderAsync(MiiEditorState state, int version, TimeSpan delay, CancellationToken cancellationToken)
     {
         try
         {
@@ -91,38 +121,22 @@ public partial class MiiEditorWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 PreviewPlaceholderTextBlock.Visibility = Visibility.Visible;
-                RenderStatusTextBlock.Text = "Rendering live preview...";
-                AutosaveTextBlock.Text = "Saving real Mii data...";
+                RenderStatusTextBlock.Text = "Rendering temporary preview...";
             });
 
-            var profile = await _saveManagerService.UpdateMiiProfileAsync(_miiId, state, cancellationToken);
-            if (version != _autosaveVersion)
+            var mii = _miiParser.CreateMii(state, "Editor temporary preview");
+            var render = await _avatarRenderer.EnsureAvatarRenderAsync(mii, cancellationToken);
+            if (version != _previewVersion)
             {
                 return;
             }
 
-            if (!string.IsNullOrWhiteSpace(_settings.UserFolderPath) && Directory.Exists(_settings.UserFolderPath))
-            {
-                try
-                {
-                    await _saveManagerService.SyncMiiToDolphinAsync(_settings, profile, cancellationToken);
-                    await Dispatcher.InvokeAsync(() => AutosaveTextBlock.Text = "Autosaved and synced to Dolphin");
-                }
-                catch (Exception ex)
-                {
-                    await Dispatcher.InvokeAsync(() => AutosaveTextBlock.Text = $"Autosaved locally. Dolphin sync: {ex.Message}");
-                }
-            }
-            else
-            {
-                await Dispatcher.InvokeAsync(() => AutosaveTextBlock.Text = "Autosaved locally");
-            }
-
             await Dispatcher.InvokeAsync(() =>
             {
-                SetPreviewImage(profile.AvatarImagePath);
-                RenderStatusTextBlock.Text = profile.RenderStatusText;
-                PreviewPlaceholderTextBlock.Visibility = profile.HasAvatarImage ? Visibility.Collapsed : Visibility.Visible;
+                SetPreviewImage(render.AvatarPath);
+                RenderStatusTextBlock.Text = render.Message;
+                PreviewPlaceholderTextBlock.Visibility = render.IsReady ? Visibility.Collapsed : Visibility.Visible;
+                AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "No unsaved changes";
             });
         }
         catch (OperationCanceledException)
@@ -133,7 +147,7 @@ public partial class MiiEditorWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 RenderStatusTextBlock.Text = ex.Message;
-                AutosaveTextBlock.Text = "Autosave failed";
+                AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "Preview failed";
             });
         }
     }
@@ -270,14 +284,66 @@ public partial class MiiEditorWindow : Window
         randomized.BirthDay = current.BirthDay;
         ApplyState(randomized);
         BuildFeatureOptionsForSelectedCategory(resetPage: false);
-        QueueAutosave(renderImmediately: false);
+        QueuePreviewRender(markDirty: true, renderImmediately: false);
     }
 
     private void ResetButton_OnClick(object sender, RoutedEventArgs e)
     {
         ApplyState(_resetState.Clone());
         BuildFeatureOptionsForSelectedCategory(resetPage: false);
-        QueueAutosave(renderImmediately: false);
+        QueuePreviewRender(markDirty: true, renderImmediately: false);
+    }
+
+    private async void SaveMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        SaveMiiButton.IsEnabled = false;
+        CancelMiiButton.IsEnabled = false;
+        try
+        {
+            _previewCts?.Cancel();
+            var state = ReadState();
+            AutosaveTextBlock.Text = "Saving...";
+            RenderStatusTextBlock.Text = "Writing real Mii data...";
+            var profile = await _saveManagerService.UpdateMiiProfileAsync(_miiId, state);
+
+            if (!string.IsNullOrWhiteSpace(_settings.UserFolderPath) && Directory.Exists(_settings.UserFolderPath))
+            {
+                try
+                {
+                    await _saveManagerService.SyncMiiToDolphinAsync(_settings, profile);
+                    AutosaveTextBlock.Text = "Saved and synced to Dolphin";
+                }
+                catch (Exception ex)
+                {
+                    AutosaveTextBlock.Text = $"Saved locally. Dolphin sync: {ex.Message}";
+                }
+            }
+            else
+            {
+                AutosaveTextBlock.Text = "Saved locally";
+            }
+
+            _resetState = _saveManagerService.LoadMiiEditorState(_miiId);
+            _hasUnsavedChanges = false;
+            SetPreviewImage(profile.AvatarImagePath);
+            PreviewPlaceholderTextBlock.Visibility = profile.HasAvatarImage ? Visibility.Collapsed : Visibility.Visible;
+            RenderStatusTextBlock.Text = profile.RenderStatusText;
+        }
+        catch (Exception ex)
+        {
+            AutosaveTextBlock.Text = "Save failed";
+            RenderStatusTextBlock.Text = ex.Message;
+        }
+        finally
+        {
+            SaveMiiButton.IsEnabled = true;
+            CancelMiiButton.IsEnabled = true;
+        }
+    }
+
+    private void CancelMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        Close();
     }
 
     private void BuildCategories()
@@ -332,6 +398,7 @@ public partial class MiiEditorWindow : Window
         _featurePage = 0;
         BuildCategoryButtons();
         BuildFeatureOptionsForSelectedCategory(resetPage: true);
+        ConfigureAdjustPopupForCurrentCategory();
     }
 
     private void PreviousCategoryButton_OnClick(object sender, RoutedEventArgs e)
@@ -374,12 +441,41 @@ public partial class MiiEditorWindow : Window
 
     private void OpenAdjustPopupButton_OnClick(object sender, RoutedEventArgs e)
     {
+        ConfigureAdjustPopupForCurrentCategory();
         AdjustPopup.IsOpen = true;
     }
 
     private void CloseAdjustPopupButton_OnClick(object sender, RoutedEventArgs e)
     {
         AdjustPopup.IsOpen = false;
+    }
+
+    private void ConfigureAdjustPopupForCurrentCategory()
+    {
+        if (_categories.Count == 0 || AdjustTabs == null)
+        {
+            return;
+        }
+
+        var key = _categories[_categoryIndex].Key;
+        var visibleTab = key switch
+        {
+            "Face" => AdjustFaceTab,
+            "Hair" => AdjustHairTab,
+            "Eyes" => AdjustEyesTab,
+            "Brows" => AdjustBrowsTab,
+            "Nose" => AdjustNoseTab,
+            "Mouth" => AdjustMouthTab,
+            "Beard" or "Glasses" or "Mole" => AdjustExtraTab,
+            _ => AdjustBaseTab
+        };
+
+        foreach (var tab in new[] { AdjustBaseTab, AdjustFaceTab, AdjustHairTab, AdjustEyesTab, AdjustBrowsTab, AdjustNoseTab, AdjustMouthTab, AdjustExtraTab })
+        {
+            tab.Visibility = tab == visibleTab ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        AdjustTabs.SelectedItem = visibleTab;
     }
 
     private void BuildNameSymbolButtons()

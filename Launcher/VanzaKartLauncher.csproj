@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>2.0.1</Version>
+    <Version>1.0.2</Version>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\app.ico" />
