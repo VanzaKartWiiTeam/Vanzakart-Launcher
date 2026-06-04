@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
 	<ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <OutputType>WinExe</OutputType>
@@ -8,7 +8,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>1.0.2</Version>
+    <Version>1.0.4</Version>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\app.ico" />

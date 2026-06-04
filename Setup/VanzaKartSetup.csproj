@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
 	  <ApplicationIcon>Assets\app.ico</ApplicationIcon>
     <OutputType>WinExe</OutputType>
@@ -9,6 +9,8 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Setup</AssemblyName>
     <RootNamespace>VanzaKartSetup</RootNamespace>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="Assets\app.ico" />

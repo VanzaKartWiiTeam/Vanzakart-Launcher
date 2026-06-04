@@ -95,6 +95,17 @@ public sealed class DiscordPresenceService : IDisposable
         }
     }
 
+    public void Deactivate()
+    {
+        try
+        {
+            _client?.ClearPresence();
+            _client?.Dispose();
+        }
+        catch { }
+        _client = null;
+    }
+
     public void Dispose()
     {
         try { _client?.Dispose(); }

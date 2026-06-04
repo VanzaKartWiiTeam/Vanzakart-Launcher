@@ -71,6 +71,7 @@ public partial class MainWindow : Window
     private string _currentTab = "Home";
     private bool _isBusy;
     private bool _isModUpdateRequired;
+    private bool _isGameRunning;
     private long _downloadBaselineBytes = -1;
 
     public MainWindow()
@@ -313,7 +314,7 @@ public partial class MainWindow : Window
         AutoUpdateCheckBox.IsChecked = _userPreferences.AutoCheckUpdates;
         SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
         SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
-        GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 1;
+        GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 2;
     }
 
     private void SaveSettingsFromUi()
@@ -734,7 +735,7 @@ public partial class MainWindow : Window
         _isBusy = value;
         _shellViewModel.IsBusy = value;
         InstallButton.IsEnabled = !value;
-        LaunchButton.IsEnabled = !value && !_isModUpdateRequired;
+        LaunchButton.IsEnabled = !value && !_isGameRunning;
         CheckUpdatesButton.IsEnabled = !value;
         RepairModButton.IsEnabled = !value;
         OpenModFolderButton.IsEnabled = !value;
@@ -1055,8 +1056,12 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
-            ShowCustomDialog("Update required", "A mandatory mod update is available. Install it before launching.", MessageBoxButton.OK);
-            return;
+            var result = ShowCustomDialog("Aggiornamento consigliato", "È disponibile un aggiornamento per la mod. Si consiglia di installarlo prima di giocare.\n\nVuoi avviare il gioco comunque senza aggiornare?", MessageBoxButton.YesNo);
+            if (result != MessageBoxResult.Yes)
+            {
+                NavigateTo("Mods");
+                return;
+            }
         }
 
         var settings = BuildSettingsFromUi();
@@ -1122,8 +1127,11 @@ public partial class MainWindow : Window
                 WorkingDirectory = Path.GetDirectoryName(settings.DolphinPath)
             });
 
+            _isGameRunning = true;
+            SetBusy(_isBusy);
+
             TrackGameSession(process);
-            _discordPresence?.SetPlaying();
+            _discordPresence?.Deactivate();
             SetStatus("Game launched. Enjoy VanzaKart.", (WpfBrush)FindResource("SuccessBrush"));
             ShowToast("Race started", "Vanzakart is launching.");
             RefreshPlayStats();
@@ -1912,7 +1920,7 @@ del ""%~f0""";
 
     private void GraphicsTextures_Changed(object sender, RoutedEventArgs e)
     {
-        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 1 : 2;
+        _userPreferences.ModOptionChoice = GraphicsTexturesCheckBox.IsChecked == true ? 2 : 0;
         _preferencesService.Save(_userPreferences);
     }
 
@@ -2041,6 +2049,8 @@ del ""%~f0""";
     {
         if (process == null)
         {
+            _isGameRunning = false;
+            SetBusy(_isBusy);
             return;
         }
 
@@ -2052,17 +2062,21 @@ del ""%~f0""";
             {
                 Dispatcher.Invoke(() =>
                 {
+                    _isGameRunning = false;
                     var minutes = Math.Max(1, (DateTime.UtcNow - sessionStart).TotalMinutes);
                     _userPreferences.TotalPlayTimeMinutes += minutes;
                     _preferencesService.Save(_userPreferences);
-                    _discordPresence?.SetLauncherIdle();
+                    _discordPresence?.Initialize();
                     RefreshPlayStats();
+                    SetBusy(_isBusy);
                 });
             };
         }
         catch
         {
             // Some shell-launched processes cannot be tracked reliably; launch still succeeds.
+            _isGameRunning = false;
+            SetBusy(_isBusy);
         }
     }
 

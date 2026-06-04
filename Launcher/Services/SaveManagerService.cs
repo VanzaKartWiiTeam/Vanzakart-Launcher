@@ -147,6 +147,12 @@ public sealed class SaveManagerService
 
     public IReadOnlyList<LauncherMiiProfile> LoadMiiProfiles()
     {
+        var settings = new SettingsService().Load();
+        return LoadMiiProfiles(settings);
+    }
+
+    public IReadOnlyList<LauncherMiiProfile> LoadMiiProfiles(LauncherSettings settings)
+    {
         var profiles = new List<LauncherMiiProfile>();
         var folder = GetLauncherMiisFolder();
 
@@ -166,6 +172,47 @@ public sealed class SaveManagerService
                 catch
                 {
                 }
+            }
+        }
+
+        if (settings != null && !string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            try
+            {
+                var miiDatabase = _mkwiiSaveParserService.ReadMiiDatabase(settings.UserFolderPath);
+                foreach (var kvp in miiDatabase)
+                {
+                    var mii = kvp.Value;
+                    if (mii.MiiId != 0 && !profiles.Any(p => p.MiiId == mii.MiiId))
+                    {
+                        // Auto-detect and import
+                        var newProfile = new LauncherMiiProfile
+                        {
+                            Id = Guid.NewGuid().ToString("N"),
+                            Name = mii.Name,
+                            FavoriteColor = mii.FavoriteColor,
+                            CreatedUtc = DateTime.UtcNow,
+                            SourceLabel = "Dolphin Mii DB",
+                            RawMiiBase64 = mii.RawMiiBase64,
+                            StudioData = mii.StudioData,
+                            AvatarImagePath = mii.AvatarImagePath,
+                            RenderState = string.IsNullOrWhiteSpace(mii.AvatarImagePath) ? "Queued" : "Ready",
+                            RenderMessage = string.IsNullOrWhiteSpace(mii.AvatarImagePath) ? "Waiting for render" : "Rendered",
+                            CreatorName = mii.CreatorName,
+                            MiiId = mii.MiiId,
+                            FavoriteColorIndex = mii.FavoriteColorIndex,
+                            IsFemale = mii.IsFemale,
+                            IsFavorite = false
+                        };
+                        
+                        SaveMiiProfile(newProfile);
+                        profiles.Add(newProfile);
+                    }
+                }
+            }
+            catch
+            {
+                // Non-critical, ignore to avoid crash
             }
         }
 
@@ -419,6 +466,28 @@ public sealed class SaveManagerService
 
     public void DeleteMiiProfile(string miiId)
     {
+        var settings = new SettingsService().Load();
+        if (!string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            try
+            {
+                var profilePath = GetMiiProfilePath(miiId);
+                if (File.Exists(profilePath))
+                {
+                    var json = File.ReadAllText(profilePath);
+                    var profile = JsonSerializer.Deserialize<LauncherMiiProfile>(json);
+                    if (profile != null && profile.MiiId != 0)
+                    {
+                        _mkwiiSaveParserService.DeleteMiiFromDatabase(settings.UserFolderPath, profile.MiiId);
+                    }
+                }
+            }
+            catch
+            {
+                // Keep moving to delete local files anyway
+            }
+        }
+
         var path = GetMiiProfilePath(miiId);
         if (File.Exists(path))
         {

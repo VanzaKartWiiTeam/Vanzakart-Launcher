@@ -254,6 +254,38 @@ public sealed class MkwiiSaveParserService
         await File.WriteAllBytesAsync(dbPath, db, cancellationToken);
     }
 
+    public void DeleteMiiFromDatabase(string userFolderPath, uint miiId)
+    {
+        if (string.IsNullOrWhiteSpace(userFolderPath) || miiId == 0)
+        {
+            return;
+        }
+
+        var dbPath = GetMiiDatabasePath(userFolderPath);
+        if (!File.Exists(dbPath))
+        {
+            return;
+        }
+
+        try
+        {
+            var db = File.ReadAllBytes(dbPath);
+            var offset = FindMiiSlotOffset(db, miiId);
+            if (offset >= 0)
+            {
+                BackupDatabase(dbPath);
+                var empty = new byte[MiiFileParserService.WiiMiiBlockSize];
+                Buffer.BlockCopy(empty, 0, db, offset, empty.Length);
+                WriteMiiDatabaseCrc(db);
+                File.WriteAllBytes(dbPath, db);
+            }
+        }
+        catch
+        {
+            throw;
+        }
+    }
+
     private WiiMiiData AttachCachedAvatar(WiiMiiData mii)
     {
         return new WiiMiiData

@@ -10,7 +10,7 @@ namespace VanzaKartLauncher;
 
 public partial class MiiEditorWindow : Window
 {
-    private const int OptionsPerPage = 8;
+    private const int OptionsPerPage = 6;
     private static readonly SemaphoreSlim FeaturePreviewRenderGate = new(3, 3);
     private readonly SaveManagerService _saveManagerService;
     private readonly MiiFileParserService _miiParser = new();
@@ -58,12 +58,10 @@ public partial class MiiEditorWindow : Window
     {
         if (_hasUnsavedChanges && !_forceClose)
         {
-            var result = MessageBox.Show(
-                this,
-                "Ci sono modifiche non salvate. Vuoi chiudere senza salvarle?",
+            var result = ShowCustomDialog(
                 "Unsaved Changes",
-                MessageBoxButton.YesNo,
-                MessageBoxImage.Warning);
+                "Ci sono modifiche non salvate. Vuoi chiudere senza salvarle?",
+                MessageBoxButton.YesNo);
 
             if (result != MessageBoxResult.Yes)
             {
@@ -375,10 +373,10 @@ public partial class MiiEditorWindow : Window
             var button = new Button
             {
                 Content = category.Label,
-                Height = 34,
-                MinWidth = 74,
-                Margin = new Thickness(0, 0, 8, 6),
-                Padding = new Thickness(10, 0, 10, 0),
+                Height = 44,
+                MinWidth = 80,
+                Margin = new Thickness(0, 0, 8, 8),
+                Padding = new Thickness(16, 0, 16, 0),
                 Style = (Style)FindResource(i == _categoryIndex ? "EditorPrimaryButton" : "EditorButton"),
                 ToolTip = category.Hint
             };
@@ -399,6 +397,14 @@ public partial class MiiEditorWindow : Window
         BuildCategoryButtons();
         BuildFeatureOptionsForSelectedCategory(resetPage: true);
         ConfigureAdjustPopupForCurrentCategory();
+
+        if (CategoryRailWrapPanel.Children.Count > _categoryIndex)
+        {
+            if (CategoryRailWrapPanel.Children[_categoryIndex] is FrameworkElement element)
+            {
+                element.BringIntoView();
+            }
+        }
     }
 
     private void PreviousCategoryButton_OnClick(object sender, RoutedEventArgs e)
@@ -466,11 +472,13 @@ public partial class MiiEditorWindow : Window
             "Brows" => AdjustBrowsTab,
             "Nose" => AdjustNoseTab,
             "Mouth" => AdjustMouthTab,
-            "Beard" or "Glasses" or "Mole" => AdjustExtraTab,
+            "Beard" => AdjustBeardTab,
+            "Glasses" => AdjustGlassesTab,
+            "Mole" => AdjustMoleTab,
             _ => AdjustBaseTab
         };
 
-        foreach (var tab in new[] { AdjustBaseTab, AdjustFaceTab, AdjustHairTab, AdjustEyesTab, AdjustBrowsTab, AdjustNoseTab, AdjustMouthTab, AdjustExtraTab })
+        foreach (var tab in new[] { AdjustBaseTab, AdjustFaceTab, AdjustHairTab, AdjustEyesTab, AdjustBrowsTab, AdjustNoseTab, AdjustMouthTab, AdjustBeardTab, AdjustGlassesTab, AdjustMoleTab })
         {
             tab.Visibility = tab == visibleTab ? Visibility.Visible : Visibility.Collapsed;
         }
@@ -657,9 +665,9 @@ public partial class MiiEditorWindow : Window
                     {
                         new Border
                         {
-                            Width = 96,
-                            Height = 96,
-                            CornerRadius = new CornerRadius(8),
+                            Width = 110,
+                            Height = 110,
+                            CornerRadius = new CornerRadius(12),
                             Background = new System.Windows.Media.SolidColorBrush(color),
                             BorderBrush = new System.Windows.Media.SolidColorBrush(System.Windows.Media.Colors.White),
                             BorderThickness = option.IsSelected() ? new Thickness(3) : new Thickness(0)
@@ -670,7 +678,7 @@ public partial class MiiEditorWindow : Window
             }
             else
             {
-                var image = new Image { Width = 120, Height = 120, Stretch = System.Windows.Media.Stretch.Uniform };
+                var image = new Image { Width = 130, Height = 130, Stretch = System.Windows.Media.Stretch.Uniform };
                 button.Content = new StackPanel { Children = { image, CreateOptionLabel(option.Label ?? (option.Value + 1).ToString()) } };
                 if (option.Mutate != null)
                 {
@@ -700,10 +708,10 @@ public partial class MiiEditorWindow : Window
     {
         return new Button
         {
-            Width = 136,
-            Height = 160,
-            Padding = new Thickness(8),
-            Margin = new Thickness(0, 0, 12, 12),
+            Width = 150,
+            Height = 180,
+            Padding = new Thickness(12),
+            Margin = new Thickness(0, 0, 16, 16),
             Style = (Style)FindResource(selected ? "EditorPrimaryButton" : "EditorButton")
         };
     }
@@ -716,8 +724,8 @@ public partial class MiiEditorWindow : Window
             HorizontalAlignment = HorizontalAlignment.Center,
             TextAlignment = TextAlignment.Center,
             FontWeight = FontWeights.Black,
-            FontSize = 13,
-            Margin = new Thickness(0, 4, 0, 0)
+            FontSize = 14,
+            Margin = new Thickness(0, 8, 0, 0)
         };
     }
 
@@ -728,45 +736,45 @@ public partial class MiiEditorWindow : Window
             return;
         }
 
-        FavoriteColorValueTextBlock.Text = $"Colore {GetSlider(FavoriteColorSlider) + 1}";
+        FavoriteColorValueTextBlock.Text = $"Colore preferito {GetSlider(FavoriteColorSlider) + 1}";
         HeightValueTextBlock.Text = $"Altezza {GetSlider(HeightSlider)}";
         WeightValueTextBlock.Text = $"Peso {GetSlider(WeightSlider)}";
         FaceShapeValueTextBlock.Text = $"Forma volto {GetSlider(FaceShapeSlider) + 1}";
-        SkinColorValueTextBlock.Text = $"Pelle {GetSlider(SkinColorSlider) + 1}";
-        FacialFeatureValueTextBlock.Text = $"Dettagli {GetSlider(FacialFeatureSlider) + 1}";
+        SkinColorValueTextBlock.Text = $"Colore pelle {GetSlider(SkinColorSlider) + 1}";
+        FacialFeatureValueTextBlock.Text = $"Dettagli viso {GetSlider(FacialFeatureSlider) + 1}";
         HairTypeValueTextBlock.Text = $"Stile capelli {GetSlider(HairTypeSlider) + 1}";
         HairColorValueTextBlock.Text = $"Colore capelli {GetSlider(HairColorSlider) + 1}";
         EyeTypeValueTextBlock.Text = $"Stile occhi {GetSlider(EyeTypeSlider) + 1}";
-        EyeRotationValueTextBlock.Text = $"Rotazione {GetSlider(EyeRotationSlider)}";
-        EyeColorValueTextBlock.Text = $"Colore {GetSlider(EyeColorSlider) + 1}";
-        EyeSizeValueTextBlock.Text = $"Dimensione {GetSlider(EyeSizeSlider)}";
-        EyeSpacingValueTextBlock.Text = $"Distanza {GetSlider(EyeSpacingSlider)}";
-        EyeVerticalValueTextBlock.Text = $"Posizione {GetSlider(EyeVerticalSlider)}";
+        EyeRotationValueTextBlock.Text = $"Inclinazione occhi {GetSlider(EyeRotationSlider)}";
+        EyeColorValueTextBlock.Text = $"Colore occhi {GetSlider(EyeColorSlider) + 1}";
+        EyeSizeValueTextBlock.Text = $"Dimensione occhi {GetSlider(EyeSizeSlider)}";
+        EyeSpacingValueTextBlock.Text = $"Spaziatura occhi {GetSlider(EyeSpacingSlider)}";
+        EyeVerticalValueTextBlock.Text = $"Altezza occhi {GetSlider(EyeVerticalSlider)}";
         EyebrowTypeValueTextBlock.Text = $"Stile sopracciglia {GetSlider(EyebrowTypeSlider) + 1}";
-        EyebrowRotationValueTextBlock.Text = $"Rotazione {GetSlider(EyebrowRotationSlider)}";
-        EyebrowColorValueTextBlock.Text = $"Colore {GetSlider(EyebrowColorSlider) + 1}";
-        EyebrowSizeValueTextBlock.Text = $"Dimensione {GetSlider(EyebrowSizeSlider)}";
-        EyebrowSpacingValueTextBlock.Text = $"Distanza {GetSlider(EyebrowSpacingSlider)}";
-        EyebrowVerticalValueTextBlock.Text = $"Posizione {GetSlider(EyebrowVerticalSlider)}";
+        EyebrowRotationValueTextBlock.Text = $"Inclinazione sopracciglia {GetSlider(EyebrowRotationSlider)}";
+        EyebrowColorValueTextBlock.Text = $"Colore sopracciglia {GetSlider(EyebrowColorSlider) + 1}";
+        EyebrowSizeValueTextBlock.Text = $"Dimensione sopracciglia {GetSlider(EyebrowSizeSlider)}";
+        EyebrowSpacingValueTextBlock.Text = $"Spaziatura sopracciglia {GetSlider(EyebrowSpacingSlider)}";
+        EyebrowVerticalValueTextBlock.Text = $"Altezza sopracciglia {GetSlider(EyebrowVerticalSlider)}";
         NoseTypeValueTextBlock.Text = $"Stile naso {GetSlider(NoseTypeSlider) + 1}";
-        NoseSizeValueTextBlock.Text = $"Dimensione {GetSlider(NoseSizeSlider)}";
-        NoseVerticalValueTextBlock.Text = $"Posizione {GetSlider(NoseVerticalSlider)}";
+        NoseSizeValueTextBlock.Text = $"Dimensione naso {GetSlider(NoseSizeSlider)}";
+        NoseVerticalValueTextBlock.Text = $"Altezza naso {GetSlider(NoseVerticalSlider)}";
         MouthTypeValueTextBlock.Text = $"Stile bocca {GetSlider(MouthTypeSlider) + 1}";
-        MouthColorValueTextBlock.Text = $"Colore {GetSlider(MouthColorSlider) + 1}";
-        MouthSizeValueTextBlock.Text = $"Dimensione {GetSlider(MouthSizeSlider)}";
-        MouthVerticalValueTextBlock.Text = $"Posizione {GetSlider(MouthVerticalSlider)}";
+        MouthColorValueTextBlock.Text = $"Colore bocca {GetSlider(MouthColorSlider) + 1}";
+        MouthSizeValueTextBlock.Text = $"Dimensione bocca {GetSlider(MouthSizeSlider)}";
+        MouthVerticalValueTextBlock.Text = $"Altezza bocca {GetSlider(MouthVerticalSlider)}";
         MustacheTypeValueTextBlock.Text = $"Baffi {GetSlider(MustacheTypeSlider) + 1}";
         BeardTypeValueTextBlock.Text = $"Barba {GetSlider(BeardTypeSlider) + 1}";
-        FacialHairColorValueTextBlock.Text = $"Colore {GetSlider(FacialHairColorSlider) + 1}";
+        FacialHairColorValueTextBlock.Text = $"Colore barba/baffi {GetSlider(FacialHairColorSlider) + 1}";
         MustacheSizeValueTextBlock.Text = $"Dimensione baffi {GetSlider(MustacheSizeSlider)}";
-        MustacheVerticalValueTextBlock.Text = $"Posizione baffi {GetSlider(MustacheVerticalSlider)}";
+        MustacheVerticalValueTextBlock.Text = $"Altezza baffi {GetSlider(MustacheVerticalSlider)}";
         GlassesTypeValueTextBlock.Text = $"Stile occhiali {GetSlider(GlassesTypeSlider) + 1}";
-        GlassesColorValueTextBlock.Text = $"Colore {GetSlider(GlassesColorSlider) + 1}";
-        GlassesSizeValueTextBlock.Text = $"Dimensione {GetSlider(GlassesSizeSlider)}";
-        GlassesVerticalValueTextBlock.Text = $"Posizione {GetSlider(GlassesVerticalSlider)}";
+        GlassesColorValueTextBlock.Text = $"Colore occhiali {GetSlider(GlassesColorSlider) + 1}";
+        GlassesSizeValueTextBlock.Text = $"Dimensione occhiali {GetSlider(GlassesSizeSlider)}";
+        GlassesVerticalValueTextBlock.Text = $"Altezza occhiali {GetSlider(GlassesVerticalSlider)}";
         MoleSizeValueTextBlock.Text = $"Dimensione neo {GetSlider(MoleSizeSlider)}";
-        MoleVerticalValueTextBlock.Text = $"Posizione verticale {GetSlider(MoleVerticalSlider)}";
-        MoleHorizontalValueTextBlock.Text = $"Posizione orizzontale {GetSlider(MoleHorizontalSlider)}";
+        MoleVerticalValueTextBlock.Text = $"Altezza neo {GetSlider(MoleVerticalSlider)}";
+        MoleHorizontalValueTextBlock.Text = $"Posizione orizzontale neo {GetSlider(MoleHorizontalSlider)}";
     }
 
     private async Task RenderFeatureOptionAsync(Image image, FeatureOption option, CancellationToken cancellationToken)
@@ -870,6 +878,27 @@ public partial class MiiEditorWindow : Window
         }
 
         return safe;
+    }
+
+    private MessageBoxResult ShowCustomDialog(string title, string message, MessageBoxButton buttons = MessageBoxButton.OK)
+    {
+        var dialog = new CustomDialog(title, message, buttons)
+        {
+            Owner = this
+        };
+
+        var result = dialog.ShowDialog();
+        if (buttons == MessageBoxButton.OK)
+        {
+            return result == MessageBoxResult.OK ? MessageBoxResult.OK : MessageBoxResult.None;
+        }
+
+        if (buttons == MessageBoxButton.YesNo)
+        {
+            return result == MessageBoxResult.Yes ? MessageBoxResult.Yes : MessageBoxResult.No;
+        }
+
+        return result ?? MessageBoxResult.OK;
     }
 
     private sealed record CategoryDefinition(string Key, string Label, string Title, string Hint);

@@ -10,7 +10,11 @@
         WindowStyle="None"
         AllowsTransparency="True"
         Background="Transparent"
-        Icon="/Assets/app.ico">
+        Icon="/Assets/app.ico"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        RenderOptions.BitmapScalingMode="HighQuality">
 
     <Window.Resources>
         <SolidColorBrush x:Key="TextPrimary" Color="#F7FAFF"/>
@@ -139,7 +143,7 @@
                                                HorizontalAlignment="Center"
                                                VerticalAlignment="Center"/>
                                 </Border>
-                                <ContentPresenter Grid.Column="2" VerticalAlignment="Center"/>
+                                <ContentPresenter Grid.Column="2" Margin="12,0,8,0" VerticalAlignment="Center"/>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -149,6 +153,11 @@
                                 <Setter TargetName="IconPlate" Property="Background" Value="{StaticResource RainbowGradient}"/>
                                 <Setter TargetName="IconPlate" Property="BorderBrush" Value="#A8FFFFFF"/>
                                 <Setter TargetName="IconGlyph" Property="Foreground" Value="White"/>
+                                <Setter TargetName="IconGlyph" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="2" ShadowDepth="1" Direction="315" Opacity="0.75" Color="Black"/>
+                                    </Setter.Value>
+                                </Setter>
                                 <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
                                 <Setter TargetName="Root" Property="RenderTransform">
                                     <Setter.Value>
@@ -160,6 +169,11 @@
                                 <Setter TargetName="Rail" Property="Opacity" Value="1"/>
                                 <Setter TargetName="IconPlate" Property="Background" Value="{StaticResource RainbowGradient}"/>
                                 <Setter TargetName="IconGlyph" Property="Foreground" Value="White"/>
+                                <Setter TargetName="IconGlyph" Property="Effect">
+                                    <Setter.Value>
+                                        <DropShadowEffect BlurRadius="2" ShadowDepth="1" Direction="315" Opacity="0.75" Color="Black"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
                                 <Setter TargetName="Root" Property="Background" Value="#101827"/>
@@ -181,21 +195,45 @@
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
             <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="FontWeight" Value="Black"/>
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root" Background="{TemplateBinding Background}" CornerRadius="8">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Border.RenderTransform>
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.Effect>
+                                    <DropShadowEffect BlurRadius="5" ShadowDepth="2" Direction="315" Opacity="1.0" Color="Black"/>
+                                </ContentPresenter.Effect>
+                            </ContentPresenter>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#22304A"/>
-                                <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                <Setter TargetName="Root" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.018" ScaleY="1.018"/>
+                                    </Setter.Value>
+                                </Setter>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Background" Value="#121A2A"/>
+                                <Setter TargetName="Root" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.982" ScaleY="0.982"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -224,7 +262,7 @@
                             <Border.RenderTransform>
                                 <ScaleTransform ScaleX="1" ScaleY="1"/>
                             </Border.RenderTransform>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -257,19 +295,59 @@
             <Setter Property="BorderBrush" Value="#80FFFFFF"/>
             <Setter Property="Foreground" Value="#FFFFFF"/>
             <Setter Property="Effect" Value="{StaticResource NeonGlow}"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                RenderTransformOrigin="0.5,0.5">
+                            <Border.RenderTransform>
+                                <ScaleTransform ScaleX="1" ScaleY="1"/>
+                            </Border.RenderTransform>
+                            <ContentPresenter Margin="{TemplateBinding Padding}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                <ContentPresenter.Effect>
+                                    <DropShadowEffect BlurRadius="4" ShadowDepth="1.2" Direction="315" Opacity="0.85" Color="Black"/>
+                                </ContentPresenter.Effect>
+                            </ContentPresenter>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="1.018" ScaleY="1.018"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Root" Property="RenderTransform">
+                                    <Setter.Value>
+                                        <ScaleTransform ScaleX="0.982" ScaleY="0.982"/>
+                                    </Setter.Value>
+                                </Setter>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="CompactButton" TargetType="Button" BasedOn="{StaticResource ActionButton}">
-            <Setter Property="MinWidth" Value="82"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinWidth" Value="90"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="14,6"/>
             <Setter Property="FontSize" Value="12"/>
         </Style>
 
         <Style x:Key="CompactPrimaryButton" TargetType="Button" BasedOn="{StaticResource PrimaryButton}">
-            <Setter Property="MinWidth" Value="82"/>
-            <Setter Property="Height" Value="34"/>
-            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="MinWidth" Value="90"/>
+            <Setter Property="Height" Value="38"/>
+            <Setter Property="Padding" Value="14,6"/>
             <Setter Property="FontSize" Value="12"/>
             <Setter Property="Effect" Value="{x:Null}"/>
         </Style>
@@ -297,7 +375,11 @@
                             </Border.RenderTransform>
                             <Grid>
                                 <Border Background="#24FFFFFF" CornerRadius="8" Margin="2"/>
-                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
+                                    <ContentPresenter.Effect>
+                                        <DropShadowEffect BlurRadius="6" ShadowDepth="2.5" Direction="315" Opacity="1.0" Color="Black"/>
+                                    </ContentPresenter.Effect>
+                                </ContentPresenter>
                             </Grid>
                         </Border>
                         <ControlTemplate.Triggers>
@@ -523,7 +605,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.0.2" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.0.4" FontSize="11" Foreground="{StaticResource TextSecondary}"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}"/>
@@ -531,9 +613,9 @@
                     </StackPanel>
 
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
-                        <Button x:Name="MinimizeButton" Content="_" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
-                        <Button x:Name="MaximizeButton" Content="□" Style="{StaticResource ChromeButton}" Click="MaximizeButton_Click"/>
-                        <Button x:Name="CloseButton" Content="X" Style="{StaticResource ChromeButton}" Foreground="{StaticResource DangerBrush}" Click="CloseButton_Click"/>
+                        <Button x:Name="MinimizeButton" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
+                        <Button x:Name="MaximizeButton" Content="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MaximizeButton_Click"/>
+                        <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Foreground="{StaticResource DangerBrush}" Click="CloseButton_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -736,9 +818,24 @@
 													</StackPanel>
 
                                                     <WrapPanel Grid.Row="3" Margin="0,14,0,0">
-                                                        <Button Content="↻ Check Updates" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CheckUpdatesButton_OnClick"/>
-                                                        <Button Content="⇩ Update Mod" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="InstallButton_OnClick"/>
-                                                        <Button Content="✦ Repair" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="RepairModButton_OnClick"/>
+                                                        <Button Style="{StaticResource CompactButton}" Margin="0,0,10,10" Click="CheckUpdatesButton_OnClick">
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Check Updates" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button Style="{StaticResource CompactPrimaryButton}" Margin="0,0,10,10" Click="InstallButton_OnClick">
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="&#xE118;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Update Mod" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
+                                                        <Button Style="{StaticResource CompactButton}" Margin="0,0,0,10" Click="RepairModButton_OnClick">
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="&#xE90F;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
+                                                                <TextBlock Text="Repair" VerticalAlignment="Center"/>
+                                                            </StackPanel>
+                                                        </Button>
                                                     </WrapPanel>
                                                 </Grid>
                                             </Border>

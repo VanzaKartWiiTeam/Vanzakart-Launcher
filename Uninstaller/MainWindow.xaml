@@ -8,7 +8,11 @@
         MinHeight="420"
         WindowStartupLocation="CenterScreen"
         Background="#0B1020"
-        Icon="/Assets/app.ico">
+        Icon="/Assets/app.ico"
+        UseLayoutRounding="True"
+        TextOptions.TextFormattingMode="Display"
+        TextOptions.TextRenderingMode="ClearType"
+        RenderOptions.BitmapScalingMode="HighQuality">
 
     <Window.Resources>
         <SolidColorBrush x:Key="CardBgBrush" Color="#0b101c"/>

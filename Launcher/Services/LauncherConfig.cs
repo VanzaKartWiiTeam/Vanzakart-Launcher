@@ -2,7 +2,7 @@ namespace VanzaKartLauncher.Services;
 
 public static class LauncherConfig
 {
-    public const string CurrentLauncherVersion = "1.0.2";
+    public const string CurrentLauncherVersion = "1.0.4";
     public const string ModUrl = "https://sitodaking.it/Modpack/VanzaKart.zip";
     public const string LauncherZipUrl = "https://sitodaking.it/Launcher/vanzakart_launcher.zip";
     public const string VersionJsonUrl = "https://sitodaking.it/Launcher/versions.json";
