@@ -255,10 +255,9 @@ public partial class MainWindow : Window
 
         foreach (var (key, button) in buttons)
         {
+            if (button == null) continue;
             button.Foreground = (WpfBrush)FindResource(key == tab ? "TextPrimary" : "TextSecondary");
-            button.Background = key == tab
-                ? new SolidColorBrush(WpfColor.FromRgb(0x1A, 0x24, 0x37))
-                : WpfBrushes.Transparent;
+            button.Background = (WpfBrush)FindResource(key == tab ? "ActiveTabBackgroundBrush" : "TransparentBrush");
         }
     }
 
@@ -1939,6 +1938,23 @@ del ""%~f0""";
         }
     }
 
+    private void NewsVideo_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is MediaElement me)
+        {
+            me.Play();
+        }
+    }
+
+    private void NewsVideo_MediaEnded(object sender, RoutedEventArgs e)
+    {
+        if (sender is MediaElement me)
+        {
+            me.Position = TimeSpan.Zero;
+            me.Play();
+        }
+    }
+
     private void ApplyNewsFilter()
     {
         if (NewsItemsControl == null)
@@ -2002,22 +2018,33 @@ del ""%~f0""";
         {
             new NewsItem
             {
-                Title = "Nauz TERRONE",
-                Category = "GODO",
+                Title = "VanzaKart Launcher UI/UX Revamp!",
+                Category = "UPDATE",
                 Version = $"Launcher v{LauncherConfig.CurrentLauncherVersion}",
                 DateLabel = "Local",
                 IsPinned = true,
-                Summary = "nauz bannato per troppi rossi"
+                Summary = "# Nuovo Revamp UI/UX!\nSiamo lieti di presentare la nuova veste grafica del launcher di **VanzaKart**.\n\n- **Animazioni fluide**: Transizioni e sfondi moderni.\n- **Supporto Markdown & Media**: Ora puoi leggere news formattate e visualizzare video o immagini di gameplay direttamente nel feed!\n- *Corri subito a provare le novità!*",
+                MediaPath = "https://images.unsplash.com/photo-1551103782-8ab07afd45c1?w=800"
             },
             new NewsItem
             {
-                Title = "news test aura",
-                Category = "Feature",
-                Version = "6.7",
+                Title = "Custom Tracks Gameplay Showcase",
+                Category = "SHOWCASE",
+                Version = "v6.7",
+                DateLabel = "Live",
+                IsPinned = false,
+                Summary = "# Gameplay sulle Nuove Piste\nEcco una breve anteprima video di una delle nuove piste che troverai in questa versione. \n\n- Modelli 3D ad alta definizione\n- Ostacoli dinamici\n- Colonna sonora rimasterizzata",
+                MediaPath = "https://cripsum.com/vid/sossiogacha.mp4"
+            },
+            new NewsItem
+            {
+                Title = "Nauz BANNATO per troppi rossi",
+                Category = "COMMUNITY",
+                Version = "v1.0.0",
                 DateLabel = "Local",
                 IsPinned = false,
-                Summary = "W sossio"
-            },
+                Summary = "Nauz è stato ufficialmente bannato dalla community per utilizzo inappropriato dei gusci rossi. **W sossio!**"
+            }
         });
     }
 
