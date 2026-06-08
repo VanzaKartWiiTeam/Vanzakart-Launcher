@@ -747,6 +747,32 @@ public sealed class SaveManagerService
     public async Task SyncMiiToDolphinAsync(LauncherSettings settings, LauncherMiiProfile profile, CancellationToken cancellationToken = default)
     {
         await _mkwiiSaveParserService.AddOrUpdateMiiInDatabaseAsync(settings.UserFolderPath, profile, cancellationToken);
+
+        try
+        {
+            var runtimeService = new MiiRuntimeSetupService();
+            var status = runtimeService.GetStatus();
+            if (status.IsInstalled && !string.IsNullOrWhiteSpace(settings.UserFolderPath) && Directory.Exists(settings.UserFolderPath))
+            {
+                var faceLibDir = Path.Combine(settings.UserFolderPath, "Wii", "shared2", "menu", "FaceLib");
+                Directory.CreateDirectory(faceLibDir);
+
+                var destHigh = Path.Combine(faceLibDir, "FFLResHigh.dat");
+                var destNormal = Path.Combine(faceLibDir, "FFLRes.dat");
+
+                if (!File.Exists(destHigh) || new FileInfo(destHigh).Length != status.SizeBytes)
+                {
+                    File.Copy(status.ResourcePath, destHigh, overwrite: true);
+                }
+                if (!File.Exists(destNormal) || new FileInfo(destNormal).Length != status.SizeBytes)
+                {
+                    File.Copy(status.ResourcePath, destNormal, overwrite: true);
+                }
+            }
+        }
+        catch
+        {
+        }
     }
 
     public Task<bool> EnsureDolphinMiiAvatarCacheAsync(LauncherSettings settings, CancellationToken cancellationToken = default)

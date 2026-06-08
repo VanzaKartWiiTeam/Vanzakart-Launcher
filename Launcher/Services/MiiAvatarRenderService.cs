@@ -10,6 +10,7 @@ namespace VanzaKartLauncher.Services;
 public sealed class MiiAvatarRenderService
 {
     private const string StudioImageEndpoint = "https://studio.mii.nintendo.com/miis/image.png";
+    private const string FallbackImageEndpoint = "https://mii-unsecure.ariankordi.net/miis/image.png";
     private const int MaxAttempts = 3;
     private static readonly TimeSpan AttemptTimeout = TimeSpan.FromSeconds(14);
     private static readonly byte[] PngSignature = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
@@ -39,20 +40,29 @@ public sealed class MiiAvatarRenderService
         return Path.Combine(AppContext.BaseDirectory, "Logs", "mii-renderer.log");
     }
 
-    public string TryGetCachedAvatar(WiiMiiData mii)
+    public string TryGetCachedAvatar(WiiMiiData mii, string type = "face", int rotationY = 0)
     {
-        var key = GetRenderCacheKey(mii);
+        var key = GetRenderCacheKey(mii, type, rotationY);
         var path = string.IsNullOrWhiteSpace(key) ? string.Empty : GetAvatarCachePath(key);
         return File.Exists(path) ? path : string.Empty;
     }
 
     public async Task<string> EnsureAvatarAsync(WiiMiiData mii, CancellationToken cancellationToken = default)
     {
-        var result = await EnsureAvatarRenderAsync(mii, cancellationToken);
+        var result = await EnsureAvatarRenderAsync(mii, "face", 0, cancellationToken);
         return result.IsReady ? result.AvatarPath : string.Empty;
     }
 
     public Task<MiiAvatarRenderResult> EnsureAvatarRenderAsync(WiiMiiData mii, CancellationToken cancellationToken = default)
+    {
+        return EnsureAvatarRenderAsync(mii, "face", 0, cancellationToken);
+    }
+
+    public Task<MiiAvatarRenderResult> EnsureAvatarRenderAsync(
+        WiiMiiData mii,
+        string type,
+        int rotationY,
+        CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(mii.StudioData) || string.IsNullOrWhiteSpace(mii.Sha256))
         {
@@ -61,13 +71,13 @@ public sealed class MiiAvatarRenderService
                 "Mii data is missing the render payload."));
         }
 
-        var cached = TryGetCachedAvatar(mii);
+        var cached = TryGetCachedAvatar(mii, type, rotationY);
         if (!string.IsNullOrWhiteSpace(cached))
         {
             return Task.FromResult(MiiAvatarRenderResult.Ready(cached, 0, "Loaded from cache"));
         }
 
-        var cacheKey = GetRenderCacheKey(mii);
+        var cacheKey = GetRenderCacheKey(mii, type, rotationY);
         if (string.IsNullOrWhiteSpace(cacheKey))
         {
             return Task.FromResult(MiiAvatarRenderResult.FromState(
@@ -75,10 +85,15 @@ public sealed class MiiAvatarRenderService
                 "Mii render cache key could not be created."));
         }
 
-        return InFlightRenders.GetOrAdd(cacheKey, _ => RenderAndCacheAsync(mii, cacheKey, cancellationToken));
+        return InFlightRenders.GetOrAdd(cacheKey, _ => RenderAndCacheAsync(mii, cacheKey, type, rotationY, cancellationToken));
     }
 
-    private async Task<MiiAvatarRenderResult> RenderAndCacheAsync(WiiMiiData mii, string cacheKey, CancellationToken cancellationToken)
+    private async Task<MiiAvatarRenderResult> RenderAndCacheAsync(
+        WiiMiiData mii,
+        string cacheKey,
+        string type,
+        int rotationY,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -95,13 +110,20 @@ public sealed class MiiAvatarRenderService
 
                 try
                 {
-                    await WriteLogAsync($"render start name=\"{mii.Name}\" key={cacheKey} attempt={attempt}", cancellationToken);
-                    var url = BuildStudioImageUrl(mii.StudioData);
+                    var endpoint = attempt switch
+                    {
+                        1 => StudioImageEndpoint,
+                        2 => FallbackImageEndpoint,
+                        _ => StudioImageEndpoint
+                    };
+                    var endpointName = endpoint == StudioImageEndpoint ? "Nintendo Studio" : "ArianKordi Studio";
+                    await WriteLogAsync($"render start name=\"{mii.Name}\" key={cacheKey} attempt={attempt} endpoint=\"{endpointName}\"", cancellationToken);
+                    var url = BuildStudioImageUrl(mii.StudioData, type, rotationY, endpoint);
                     using var response = await _httpClient.GetAsync(url, HttpCompletionOption.ResponseHeadersRead, attemptCts.Token);
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        lastMessage = $"Nintendo Studio returned {(int)response.StatusCode} {response.ReasonPhrase}.";
+                        lastMessage = $"{endpointName} returned {(int)response.StatusCode} {response.ReasonPhrase}.";
                         await WriteLogAsync($"render http-error key={cacheKey} attempt={attempt} status={(int)response.StatusCode} reason=\"{response.ReasonPhrase}\"", cancellationToken);
                         await DelayBeforeRetryAsync(attempt, cancellationToken);
                         continue;
@@ -126,7 +148,7 @@ public sealed class MiiAvatarRenderService
 
                     File.Move(tempPath, targetPath, overwrite: true);
                     await WriteLogAsync($"render ready key={cacheKey} attempt={attempt} path=\"{targetPath}\"", cancellationToken);
-                    return MiiAvatarRenderResult.Ready(targetPath, attempt, "Rendered with Nintendo Studio");
+                    return MiiAvatarRenderResult.Ready(targetPath, attempt, $"Rendered with {endpointName}");
                 }
                 catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
                 {
@@ -151,6 +173,12 @@ public sealed class MiiAvatarRenderService
                 }
             }
 
+            var fallback = GetFallbackSilhouettePath();
+            if (!string.IsNullOrWhiteSpace(fallback))
+            {
+                return MiiAvatarRenderResult.Ready(fallback, MaxAttempts, "Offline fallback (silhouette)");
+            }
+
             return MiiAvatarRenderResult.FromState(MiiAvatarRenderState.Failed, lastMessage, MaxAttempts);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -169,22 +197,51 @@ public sealed class MiiAvatarRenderService
         }
     }
 
-    private static string GetRenderCacheKey(WiiMiiData mii)
+    private static string GetRenderCacheKey(WiiMiiData mii, string type = "face", int rotationY = 0)
     {
         if (!string.IsNullOrWhiteSpace(mii.StudioData))
         {
-            return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(mii.StudioData))).ToLowerInvariant();
+            var composite = $"{mii.StudioData}_{type}_{rotationY}";
+            return Convert.ToHexString(SHA256.HashData(System.Text.Encoding.ASCII.GetBytes(composite))).ToLowerInvariant();
         }
 
         return mii.Sha256;
     }
 
-    private static string BuildStudioImageUrl(string studioData)
+    public string GetFallbackSilhouettePath()
+    {
+        var localPath = Path.Combine(AppContext.BaseDirectory, "Assets", "mii_silhouette.png");
+        var cacheFolder = GetAvatarCacheFolder();
+        var cachePath = Path.Combine(cacheFolder, "mii_silhouette.png");
+
+        try
+        {
+            if (File.Exists(localPath))
+            {
+                if (!File.Exists(cachePath))
+                {
+                    Directory.CreateDirectory(cacheFolder);
+                    File.Copy(localPath, cachePath, true);
+                }
+                return localPath;
+            }
+            if (File.Exists(cachePath))
+            {
+                return cachePath;
+            }
+        }
+        catch
+        {
+        }
+        return string.Empty;
+    }
+
+    private string BuildStudioImageUrl(string studioData, string type, int rotationY, string endpoint)
     {
         var query = new Dictionary<string, string>
         {
             ["data"] = studioData,
-            ["type"] = "face",
+            ["type"] = type,
             ["expression"] = "normal",
             ["width"] = "512",
             ["bgColor"] = "FFFFFF00",
@@ -193,7 +250,7 @@ public sealed class MiiAvatarRenderService
             ["cameraYRotate"] = "0",
             ["cameraZRotate"] = "0",
             ["characterXRotate"] = "0",
-            ["characterYRotate"] = "0",
+            ["characterYRotate"] = rotationY.ToString(),
             ["characterZRotate"] = "0",
             ["lightXDirection"] = "0",
             ["lightYDirection"] = "0",
@@ -201,7 +258,7 @@ public sealed class MiiAvatarRenderService
             ["instanceCount"] = "1"
         };
 
-        return $"{StudioImageEndpoint}?{string.Join("&", query.Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"))}";
+        return $"{endpoint}?{string.Join("&", query.Select(pair => $"{Uri.EscapeDataString(pair.Key)}={Uri.EscapeDataString(pair.Value)}"))}";
     }
 
     private static string? ValidatePng(string path)

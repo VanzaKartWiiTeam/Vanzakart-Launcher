@@ -25,14 +25,14 @@ public sealed class MiiFileParserService
         "#FF8A2A",
         "#FFD166",
         "#9CFF5E",
-        "#39E7FF",
+        "#317a11",
         "#3B82F6",
-        "#A855F7",
-        "#FF5CAB",
         "#8EE7FF",
-        "#6CF0A6",
+        "#FF5CAB",
+        "#A855F7",
+        "#3d260c",
         "#F7FAFF",
-        "#111827"
+        "#03010a"
     ];
 
     private static readonly int[] MakeupMap = [0, 1, 6, 9, 0, 0, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0];

@@ -1,4 +1,5 @@
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using VanzaKartLauncher.Models;
 
@@ -163,10 +164,15 @@ public sealed class MkwiiSaveParserService
                 ? $"License {slot + 1}"
                 : licenseName;
 
+            var gameId = GetGameIdFromPath(rksysPath);
+            var friendCode = profileId != 0 && !string.IsNullOrEmpty(gameId)
+                ? CalculateFriendCode(profileId, gameId)
+                : string.Empty;
+
             cards.Add(new SaveProfileInfo
             {
                 DisplayName = displayName,
-                Subtitle = $"Slot {slot + 1}   {BuildRegionLabel(rksysPath)}",
+                Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
                 FilePath = rksysPath,
                 SourceLabel = "Dolphin save",
                 MiiName = mii?.Name ?? "Mii not found in RFL_DB.dat",
@@ -176,6 +182,7 @@ public sealed class MkwiiSaveParserService
                     ? "Mii not found in Dolphin database"
                     : string.IsNullOrWhiteSpace(mii.AvatarImagePath) ? "Render queued" : "Rendered",
                 AccentColor = mii?.FavoriteColor ?? "#39E7FF",
+                FriendCode = friendCode,
                 ProfileId = profileId,
                 MiiId = miiId,
                 Vr = vr,
@@ -485,7 +492,101 @@ public sealed class MkwiiSaveParserService
 
     private static string BuildRegionLabel(string rksysPath)
     {
+        var gameId = GetGameIdFromPath(rksysPath);
+        if (string.IsNullOrEmpty(gameId) || gameId.Length < 4)
+        {
+            return "Mario Kart Wii";
+        }
+
+        return gameId[3] switch
+        {
+            'P' => "PAL (Europe)",
+            'E' => "NTSC-U (USA)",
+            'J' => "NTSC-J (Japan)",
+            'K' => "NTSC-K (Korea)",
+            _ => $"Region {gameId[3]}"
+        };
+    }
+
+    private static string GetGameIdFromPath(string rksysPath)
+    {
         var parent = Directory.GetParent(rksysPath);
-        return parent?.Name.Length >= 4 ? parent.Name : "Mario Kart Wii";
+        if (parent == null || parent.Name.Length < 4)
+        {
+            return string.Empty;
+        }
+
+        var name = parent.Name;
+
+        // If the folder name is a hex-encoded title ID (e.g. "524d4350" for RMCP), decode it
+        if (name.Length >= 8 && name.All(c => Uri.IsHexDigit(c)))
+        {
+            try
+            {
+                var bytes = new byte[name.Length / 2];
+                for (var i = 0; i < bytes.Length; i++)
+                {
+                    bytes[i] = Convert.ToByte(name.Substring(i * 2, 2), 16);
+                }
+                var decoded = Encoding.ASCII.GetString(bytes);
+                if (decoded.Length >= 4 && decoded.All(c => c >= 0x20 && c < 0x7F))
+                {
+                    return decoded[..4];
+                }
+            }
+            catch
+            {
+            }
+        }
+
+        // If the folder name is already the Game ID (e.g. "RMCP")
+        if (name.Length >= 4 && name[..4].All(c => c >= 0x20 && c < 0x7F))
+        {
+            return name[..4];
+        }
+
+        return string.Empty;
+    }
+
+    private static string CalculateFriendCode(uint profileId, string gameId)
+    {
+        if (profileId == 0 || string.IsNullOrEmpty(gameId) || gameId.Length < 4)
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            // Build the 8-byte buffer: PID (little-endian) + reversed Game ID (ASCII)
+            var buffer = new byte[8];
+            buffer[0] = (byte)(profileId & 0xFF);
+            buffer[1] = (byte)((profileId >> 8) & 0xFF);
+            buffer[2] = (byte)((profileId >> 16) & 0xFF);
+            buffer[3] = (byte)((profileId >> 24) & 0xFF);
+
+            // Reversing "RMCJ" yields "JCMR" -> [0x4A, 0x43, 0x4D, 0x52]
+            // We ALWAYS use "RMCJ" as the game ID for Mario Kart Wii friend codes
+            var targetGameId = "RMCJ";
+            var reversed = targetGameId.ToCharArray();
+            Array.Reverse(reversed);
+            for (var i = 0; i < 4; i++)
+            {
+                buffer[4 + i] = (byte)reversed[i];
+            }
+
+            var hash = MD5.HashData(buffer);
+            var checksum = (byte)(hash[0] >> 1);
+
+            // Friend code = (checksum << 32) | profileId
+            var fc = ((long)checksum << 32) | profileId;
+            var fcStr = fc.ToString().PadLeft(12, '0');
+
+            // Format as XXXX-XXXX-XXXX
+            return $"{fcStr[..4]}-{fcStr[4..8]}-{fcStr[8..12]}";
+        }
+        catch
+        {
+            return string.Empty;
+        }
     }
 }

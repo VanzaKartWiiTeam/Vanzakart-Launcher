@@ -109,6 +109,10 @@ public partial class MainWindow : Window
             {
                 await CheckForUpdatesAsync(showMessages: false);
             }
+            else
+            {
+                await FetchNewsFromServerAsync();
+            }
         };
     }
 
@@ -587,6 +591,37 @@ public partial class MainWindow : Window
         }
     }
 
+    private async void FriendCode_OnMouseLeftButtonDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is not System.Windows.Controls.Border border)
+        {
+            return;
+        }
+
+        if (border.DataContext is not SaveProfileInfo profile || string.IsNullOrWhiteSpace(profile.FriendCode))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(profile.FriendCode);
+
+            // Find the TextBlock displaying the friend code and briefly show "Copied!"
+            if (border.Child is System.Windows.Controls.StackPanel panel && panel.Children.Count >= 2 &&
+                panel.Children[1] is System.Windows.Controls.TextBlock fcText)
+            {
+                var original = fcText.Text;
+                fcText.Text = "Copied!";
+                await Task.Delay(1500);
+                fcText.Text = original;
+            }
+        }
+        catch
+        {
+        }
+    }
+
     private async void QueueLicenseAvatarRender(LauncherSettings settings)
     {
         if (_isRenderingLicenseAvatars || string.IsNullOrWhiteSpace(settings.UserFolderPath))
@@ -645,7 +680,7 @@ public partial class MainWindow : Window
         MiiRuntimeSetupCard.Visibility = status.IsInstalled ? Visibility.Collapsed : Visibility.Visible;
         MiiRuntimeStatusTextBlock.Text = status.IsInstalled
             ? "Renderer assets are installed."
-            : "Install the Mii render asset cache for real avatar previews and future offline rendering.";
+            : "Install the Mii render asset cache for mii previews";
         MiiRuntimeProgressTextBlock.Text = status.IsInstalled
             ? $"Installed: {FormatBytes(status.SizeBytes)}"
             : "This downloads and verifies the render resource automatically.";
@@ -833,19 +868,19 @@ public partial class MainWindow : Window
         var modSubFolder = Path.Combine(modFolder, "VanzaKart");
         var isUpdate = IsModInstalled(settings);
 
-        SetStatus("Connessione al canale di aggiornamento", (WpfBrush)FindResource("TextSecondary"));
-        SetUpdateState("Connessione", "Preparazione download...", 0);
+        SetStatus("Connecting to update channel", (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState("Connecting", "Preparing download...", 0);
         _discordPresence?.SetDownloading();
 
         ModUpdateBackup? backup = null;
 
         try
         {
-            // ── FASE 1: backup dei dati utente (solo se il mod è già installato) ──
+            // ── STEP 1: backup user data (only if the mod is already installed) ──
             if (isUpdate)
             {
-                SetUpdateState("Backup", "Salvataggio patenti, Mii e profili...", 2);
-                SetStatus("Backup dati utente in corso", (WpfBrush)FindResource("TextSecondary"));
+                SetUpdateState("Backup", "Saving licenses, Mii and profiles...", 2);
+                SetStatus("Backing up user data", (WpfBrush)FindResource("TextSecondary"));
 
                 var backupProgress = new Progress<string>(msg =>
                     SetUpdateState("Backup", msg, 3));
@@ -860,37 +895,37 @@ public partial class MainWindow : Window
                 }
             }
 
-            // ── FASE 2: download ──────────────────────────────────────────────────
-            SetUpdateState("Download", "Download del modpack in corso...", 5);
+            // ── STEP 2: download ──────────────────────────────────────────────────────────────
+            SetUpdateState("Download", "Downloading modpack...", 5);
             var downloadProgress = new Progress<(long current, long total)>(
                 p => UpdateDownloadProgress(p.current, p.total));
 
             await _networkService.DownloadFileWithResumeAsync(
                 BuildModMirrorList(), _tempZipPath, downloadProgress);
 
-            // ── FASE 3: verifica integrità ────────────────────────────────────────
-            SetStatus("Verifica archivio scaricato", (WpfBrush)FindResource("TextSecondary"));
-            SetUpdateState("Verifica", "Controllo integrità archivio...", 96);
+            // ── STEP 3: integrity check ────────────────────────────────────────────────
+            SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
+            SetUpdateState("Verifying", "Checking archive integrity...", 96);
             await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
 
-            // ── FASE 4: estrazione selettiva ──────────────────────────────────────
+            // ── STEP 4: selective extraction ──────────────────────────────────────────────
             DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Value = 0;
-            SetStatus("Aggiornamento file modpack", (WpfBrush)FindResource("WarningBrush"));
+            SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
             SetUpdateState(
-                isUpdate ? "Aggiornamento" : "Installazione",
+                isUpdate ? "Updating" : "Installing",
                 isUpdate
-                    ? "Sostituzione file modpack (i dati utente non vengono toccati)..."
-                    : "Scrittura file modpack nella cartella Riivolution...",
+                    ? "Replacing modpack files (user data is not affected)..."
+                    : "Writing modpack files to Riivolution folder...",
                 0);
             _discordPresence?.SetExtracting();
 
             var extractProgress = new Progress<int>(p =>
                 SetUpdateState(
-                    isUpdate ? "Aggiornamento" : "Installazione",
+                    isUpdate ? "Updating" : "Installing",
                     isUpdate
-                        ? $"Aggiornamento file modpack... {p}%"
-                        : $"Scrittura file... {p}%",
+                        ? $"Updating modpack files... {p}%"
+                        : $"Writing files... {p}%",
                     p));
 
             var result = await _modUpdateSafetyService.ApplyZipUpdateAsync(
@@ -900,11 +935,11 @@ public partial class MainWindow : Window
                 settings,
                 extractProgress);
 
-            // ── FASE 5: pulizia ZIP temporaneo ────────────────────────────────────
+            // ── STEP 5: clean up temp ZIP ────────────────────────────────────────────────
             if (File.Exists(_tempZipPath))
                 File.Delete(_tempZipPath);
 
-            // ── FASE 6: scrittura versione ────────────────────────────────────────
+            // ── STEP 6: write version ────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
                 File.WriteAllText(_localModVersionFile, _latestModVersion);
 
@@ -913,18 +948,18 @@ public partial class MainWindow : Window
             _isModUpdateRequired = false;
 
             var summary = BuildSafeUpdateStatusMessage(isUpdate, result, backup);
-            SetUpdateState("Completato", summary, 100);
+            SetUpdateState("Completed", summary, 100);
             SetStatus(
-                isUpdate ? "Aggiornamento completato. Pronti a gareggiare." : "Installazione completata. Pronti a gareggiare.",
+                isUpdate ? "Update completed. Ready to race." : "Installation completed. Ready to race.",
                 (WpfBrush)FindResource("SuccessBrush"));
 
             ShowToast(
-                isUpdate ? "Aggiornamento completato" : "Installazione completata",
+                isUpdate ? "Update completed" : "Installation completed",
                 summary);
 
             // Log del riepilogo
             await WriteUpdateLogAsync(
-                $"Operazione completata – {result}");
+                $"Operation completed – {result}");
 
             RefreshAllState();
             _discordPresence?.SetLauncherIdle();
@@ -936,56 +971,56 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    SetUpdateState("Rollback", "Ripristino dati utente dopo errore...", 0);
-                    SetStatus("Errore – ripristino dati in corso", (WpfBrush)FindResource("DangerBrush"));
+                    SetUpdateState("Rollback", "Restoring user data after error...", 0);
+                    SetStatus("Error – restoring data", (WpfBrush)FindResource("DangerBrush"));
 
                     await _modUpdateSafetyService.RestoreBackupAsync(backup);
 
                     await WriteUpdateLogAsync(
-                        $"Rollback completato (backup {backup.BackupId}): " +
-                        $"{backup.Files.Count} file utente ripristinati.");
+                        $"Rollback completed (backup {backup.BackupId}): " +
+                        $"{backup.Files.Count} user file(s) restored.");
                 }
                 catch (Exception rollbackEx)
                 {
-                    // Il rollback stesso è fallito: avvisa in modo prominente
+                    // Rollback itself failed: warn prominently
                     await WriteUpdateLogAsync(
-                        $"ATTENZIONE – rollback fallito: {rollbackEx.Message}. " +
-                        $"Ripristino manuale da Backups/{backup.BackupId}");
+                        $"WARNING – rollback failed: {rollbackEx.Message}. " +
+                        $"Manual restore from Backups/{backup.BackupId}");
 
                     ShowCustomDialog(
-                        "Attenzione – rollback fallito",
-                        $"L'aggiornamento è fallito E il ripristino automatico non è riuscito.\n\n" +
-                        $"I tuoi dati (patenti, Mii) sono al sicuro nella cartella:\n" +
+                        "Warning – rollback failed",
+                        $"The update failed AND the automatic rollback did not succeed.\n\n" +
+                        $"Your data (licenses, Mii) is safe in the folder:\n" +
                         $"Backups\\ModUpdates\\{backup.BackupId}\n\n" +
-                        $"Copia manualmente i file da lì prima di rilanciare.\n\n" +
-                        $"Errore originale: {ex.Message}\n" +
-                        $"Errore rollback: {rollbackEx.Message}",
+                        $"Manually copy the files from there before relaunching.\n\n" +
+                        $"Original error: {ex.Message}\n" +
+                        $"Rollback error: {rollbackEx.Message}",
                         MessageBoxButton.OK);
 
                     goto Cleanup;
                 }
             }
 
-            // Errore standard (senza backup o rollback riuscito)
+            // Standard error (no backup or rollback succeeded)
             DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Visibility = Visibility.Collapsed;
-            SetStatus("Installazione fallita", (WpfBrush)FindResource("DangerBrush"));
-            SetUpdateState("Errore", ex.Message, 0);
-            ShowCustomDialog("Errore di installazione", ex.Message, MessageBoxButton.OK);
+            SetStatus("Installation failed", (WpfBrush)FindResource("DangerBrush"));
+            SetUpdateState("Error", ex.Message, 0);
+            ShowCustomDialog("Installation error", ex.Message, MessageBoxButton.OK);
 
-            await WriteUpdateLogAsync($"Errore: {ex.Message}");
+            await WriteUpdateLogAsync($"Error: {ex.Message}");
 
         Cleanup:;
         }
         finally
         {
-            // Pulizia ZIP in ogni caso
+            // Clean up ZIP in any case
             try
             {
                 if (File.Exists(_tempZipPath))
                     File.Delete(_tempZipPath);
             }
-            catch { /* ignora */ }
+            catch { /* ignore */ }
 
             SetBusy(false);
         }
@@ -997,16 +1032,16 @@ public partial class MainWindow : Window
         ModUpdateBackup? backup)
     {
         if (!wasUpdate)
-            return $"VanzaKart installato con successo ({result.FilesWritten} file).";
+            return $"VanzaKart successfully installed ({result.FilesWritten} files).";
 
         var sb = new System.Text.StringBuilder();
-        sb.Append($"VanzaKart aggiornato: {result.FilesWritten} file sostituiti");
+        sb.Append($"VanzaKart updated: {result.FilesWritten} files replaced");
 
         if (result.FilesPruned > 0)
-            sb.Append($", {result.FilesPruned} file obsoleti rimossi");
+            sb.Append($", {result.FilesPruned} outdated files removed");
 
         if (result.FilesSkipped > 0)
-            sb.Append($", {result.FilesSkipped} file utente preservati");
+            sb.Append($", {result.FilesSkipped} user files protected");
 
         if (backup?.Files.Count > 0)
             sb.Append($" (backup: {backup.BackupId})");
@@ -1014,14 +1049,10 @@ public partial class MainWindow : Window
         sb.Append('.');
 
         if (result.HasErrors)
-            sb.Append($" Attenzione: {result.Errors.Count} file non aggiornati (vedi log).");
+            sb.Append($" Warning: {result.Errors.Count} files failed to update (see log).");
 
         return sb.ToString();
     }
-
-    // ────────────────────────────────────────────────────────────────────────
-    // Helper: log aggiornamento (riusa WriteLogAsync del servizio se preferito)
-    // ────────────────────────────────────────────────────────────────────────
     private static Task WriteUpdateLogAsync(string message)
     {
         try
@@ -1055,7 +1086,7 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
-            var result = ShowCustomDialog("Aggiornamento consigliato", "È disponibile un aggiornamento per la mod. Si consiglia di installarlo prima di giocare.\n\nVuoi avviare il gioco comunque senza aggiornare?", MessageBoxButton.YesNo);
+            var result = ShowCustomDialog("Update recommended", "A mod update is available. It is recommended to install it before playing.\n\nDo you want to launch the game anyway without updating?", MessageBoxButton.YesNo);
             if (result != MessageBoxResult.Yes)
             {
                 NavigateTo("Mods");
@@ -1152,6 +1183,8 @@ public partial class MainWindow : Window
                 SetStatus("Checking for updates", (WpfBrush)FindResource("TextSecondary"));
                 SetUpdateState("Checking", "Reading VanzaKart update manifest...", 0);
             }
+
+            await FetchNewsFromServerAsync();
 
             var noCacheUrl = $"{LauncherConfig.VersionJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             var json = await _networkService.DownloadStringAsync(noCacheUrl);
@@ -1428,6 +1461,26 @@ del ""%~f0""";
         try
         {
             await _miiRuntimeSetupService.InstallAsync(progress);
+
+            try
+            {
+                var settings = BuildSettingsFromUi();
+                if (!string.IsNullOrWhiteSpace(settings.UserFolderPath) && Directory.Exists(settings.UserFolderPath))
+                {
+                    var faceLibDir = Path.Combine(settings.UserFolderPath, "Wii", "shared2", "menu", "FaceLib");
+                    Directory.CreateDirectory(faceLibDir);
+                    var status = _miiRuntimeSetupService.GetStatus();
+                    if (status.IsInstalled)
+                    {
+                        File.Copy(status.ResourcePath, Path.Combine(faceLibDir, "FFLResHigh.dat"), overwrite: true);
+                        File.Copy(status.ResourcePath, Path.Combine(faceLibDir, "FFLRes.dat"), overwrite: true);
+                    }
+                }
+            }
+            catch
+            {
+            }
+
             ShowToast("Mii setup ready", "Render assets installed successfully.");
         }
         catch (Exception ex)
@@ -1646,7 +1699,7 @@ del ""%~f0""";
             return;
         }
 
-        if (ShowCustomDialog("Delete Mii", $"Delete {selected.Name} from the launcher library?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (ShowCustomDialog("Delete Mii", $"Delete {selected.Name} from the library? this cannot be undone.", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
         {
             return;
         }
@@ -1804,7 +1857,7 @@ del ""%~f0""";
 
         if (imported > 0)
         {
-            ShowToast("Mii import complete", $"{imported} real Mii file(s) imported.");
+            ShowToast("Mii import complete", $"{imported} Mii file(s) imported.");
             RefreshLicenseView();
         }
     }
@@ -2023,7 +2076,7 @@ del ""%~f0""";
                 Version = $"Launcher v{LauncherConfig.CurrentLauncherVersion}",
                 DateLabel = "Local",
                 IsPinned = true,
-                Summary = "# Nuovo Revamp UI/UX!\nSiamo lieti di presentare la nuova veste grafica del launcher di **VanzaKart**.\n\n- **Animazioni fluide**: Transizioni e sfondi moderni.\n- **Supporto Markdown & Media**: Ora puoi leggere news formattate e visualizzare video o immagini di gameplay direttamente nel feed!\n- *Corri subito a provare le novità!*",
+                Summary = "# New UI/UX Revamp!\nWe are pleased to present the brand new look of the **VanzaKart** launcher.\n\n- **Smooth animations**: Modern transitions and backgrounds.\n- **Markdown & Media support**: You can now read formatted news and view gameplay videos or images directly in the feed!\n- *Go try the new features right now!*",
                 MediaPath = "https://images.unsplash.com/photo-1551103782-8ab07afd45c1?w=800"
             },
             new NewsItem
@@ -2033,19 +2086,43 @@ del ""%~f0""";
                 Version = "v6.7",
                 DateLabel = "Live",
                 IsPinned = false,
-                Summary = "# Gameplay sulle Nuove Piste\nEcco una breve anteprima video di una delle nuove piste che troverai in questa versione. \n\n- Modelli 3D ad alta definizione\n- Ostacoli dinamici\n- Colonna sonora rimasterizzata",
+                Summary = "# Gameplay on the New Tracks\nHere is a brief video preview of one of the new tracks you will find in this version.\n\n- High-definition 3D models\n- Dynamic obstacles\n- Remastered soundtrack",
                 MediaPath = "https://cripsum.com/vid/sossiogacha.mp4"
             },
             new NewsItem
             {
-                Title = "Nauz BANNATO per troppi rossi",
+                Title = "Nauz BANNED for too many red shells",
                 Category = "COMMUNITY",
                 Version = "v1.0.0",
                 DateLabel = "Local",
                 IsPinned = false,
-                Summary = "Nauz è stato ufficialmente bannato dalla community per utilizzo inappropriato dei gusci rossi. **W sossio!**"
+                Summary = "Nauz has been officially banned from the community for inappropriate use of red shells. **W sossio!**"
             }
         });
+    }
+
+    private async Task FetchNewsFromServerAsync()
+    {
+        try
+        {
+            var noCacheUrl = $"{LauncherConfig.NewsJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var json = await _networkService.DownloadStringAsync(noCacheUrl);
+            var news = JsonSerializer.Deserialize<List<NewsItem>>(json);
+            if (news != null && news.Count > 0)
+            {
+                var manifestNews = _allNews.Where(item => item.Category == "Manifest").ToList();
+                _allNews.Clear();
+                _allNews.AddRange(news);
+                foreach (var item in manifestNews)
+                {
+                    _allNews.Insert(0, item);
+                }
+                ApplyNewsFilter();
+            }
+        }
+        catch
+        {
+        }
     }
 
     private void MergeManifestNews(VersionInfo info)
