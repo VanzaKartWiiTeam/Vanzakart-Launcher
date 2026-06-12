@@ -130,8 +130,8 @@ public sealed class RoomsViewModel : BaseViewModel
                 
                 if (response.Meta != null)
                 {
-                    ActiveRoomsCount = response.Meta.TotalRooms;
-                    OnlinePlayersCount = response.Meta.TotalPlayers;
+                    ActiveRoomsCount = Math.Max(response.Meta.TotalRooms, Rooms.Count);
+                    OnlinePlayersCount = Math.Max(response.Meta.TotalPlayers, System.Linq.Enumerable.Sum(Rooms, r => r.PlayerCount));
                     ServerStatus = response.Meta.Status ?? "Online";
                     
                     if (DateTime.TryParse(response.Meta.LastUpdated, out var parsedDate))

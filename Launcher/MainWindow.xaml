@@ -1240,7 +1240,7 @@
                                  <!-- ==================================================
                                       ROOMS VIEW
                                       ================================================== -->
-                                 <Grid x:Name="RoomsView" Visibility="Collapsed" Margin="0,0,0,10">
+                                 <Grid x:Name="RoomsView" Visibility="Collapsed" Margin="0,0,0,10" ClipToBounds="False">
                                      <Grid.RowDefinitions>
                                          <RowDefinition Height="Auto"/>
                                          <RowDefinition Height="*"/>
@@ -1342,7 +1342,7 @@
                                          </Grid>
 
                                          <!-- DATA STATE (ROOMS LIST) -->
-                                         <Grid>
+                                         <Grid ClipToBounds="False">
                                              <Grid.Style>
                                                  <Style TargetType="Grid">
                                                      <Setter Property="Visibility" Value="Visible"/>
@@ -1361,10 +1361,10 @@
                                              </Grid.Style>
 
                                              <!-- Scrollable WrapPanel for cards -->
-                                             <ItemsControl ItemsSource="{Binding Rooms}">
+                                             <ItemsControl ItemsSource="{Binding Rooms}" ClipToBounds="False" Margin="8">
                                                  <ItemsControl.ItemsPanel>
                                                      <ItemsPanelTemplate>
-                                                         <WrapPanel Orientation="Horizontal"/>
+                                                         <WrapPanel Orientation="Horizontal" ClipToBounds="False"/>
                                                      </ItemsPanelTemplate>
                                                  </ItemsControl.ItemsPanel>
                                                  <ItemsControl.ItemTemplate>
@@ -1392,7 +1392,7 @@
 
                                                                  <!-- Card Body (Current Track & Info) -->
                                                                  <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,10,0,0">
-                                                                     <TextBlock Text="CIRCUITO ATTUALE" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextFaint}"/>
+                                                                     <TextBlock Text="CURRENT TRACK" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextFaint}"/>
                                                                      <TextBlock Text="{Binding Track}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
                                                                      <TextBlock Text="{Binding Mode}" FontSize="11" Foreground="{StaticResource TextFaint}" Margin="0,4,0,0"/>
                                                                  </StackPanel>
