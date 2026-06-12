@@ -175,31 +175,10 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Margin" Value="0,0,0,10"/>
             <Setter Property="Padding" Value="14,10"/>
-            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
-            <Setter Property="RenderTransform">
-                <Setter.Value>
-                    <ScaleTransform ScaleX="1" ScaleY="1"/>
-                </Setter.Value>
-            </Setter>
             <Style.Triggers>
                 <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#252F48"/>
-                    <Trigger.EnterActions>
-                        <BeginStoryboard>
-                            <Storyboard>
-                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1.015" Duration="0:0:0.12"/>
-                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1.015" Duration="0:0:0.12"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </Trigger.EnterActions>
-                    <Trigger.ExitActions>
-                        <BeginStoryboard>
-                            <Storyboard>
-                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.12"/>
-                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.12"/>
-                            </Storyboard>
-                        </BeginStoryboard>
-                    </Trigger.ExitActions>
+                    <Setter Property="Background" Value="#2A3B5C"/>
+                    <Setter Property="BorderBrush" Value="#00F2FF"/>
                 </Trigger>
                 <DataTrigger Binding="{Binding IsSelf}" Value="True">
                     <Setter Property="BorderBrush" Value="{StaticResource RainbowGradient}"/>
@@ -365,7 +344,7 @@
         </Style>
 
         <Style x:Key="ChromeButton" TargetType="Button">
-            <Setter Property="Width" Value="46"/>
+            <Setter Property="Width" Value="32"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Foreground" Value="#9AA8C6"/>
@@ -377,9 +356,9 @@
                     <ControlTemplate TargetType="Button">
                         <Grid x:Name="RootGrid">
                             <!-- Hover Overlay -->
-                            <Border x:Name="HoverOverlay" Background="White" Opacity="0"/>
+                            <Border x:Name="HoverOverlay" Background="White" CornerRadius="6" Opacity="0"/>
                             <!-- Press Overlay -->
-                            <Border x:Name="PressOverlay" Background="White" Opacity="0"/>
+                            <Border x:Name="PressOverlay" Background="White" CornerRadius="6" Opacity="0"/>
                             <!-- Content -->
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
@@ -389,7 +368,7 @@
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.1" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.12" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.EnterActions>
@@ -411,7 +390,7 @@
         </Style>
 
         <Style x:Key="CloseChromeButton" TargetType="Button">
-            <Setter Property="Width" Value="46"/>
+            <Setter Property="Width" Value="32"/>
             <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
             <Setter Property="Foreground" Value="#9AA8C6"/>
@@ -422,10 +401,10 @@
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
                         <Grid x:Name="RootGrid">
-                            <!-- Hover Overlay (Red) -->
-                            <Border x:Name="HoverOverlay" Background="#E81123" Opacity="0"/>
-                            <!-- Press Overlay (Dark shade) -->
-                            <Border x:Name="PressOverlay" Background="Black" Opacity="0"/>
+                            <!-- Hover Overlay (Translucent Pink) -->
+                            <Border x:Name="HoverOverlay" Background="#FF0066" CornerRadius="6" Opacity="0"/>
+                            <!-- Press Overlay -->
+                            <Border x:Name="PressOverlay" Background="White" CornerRadius="6" Opacity="0"/>
                             <!-- Content -->
                             <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
                         </Grid>
@@ -435,7 +414,7 @@
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.2" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.EnterActions>
@@ -1008,7 +987,7 @@
                         </Border>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
                         <Button x:Name="MinimizeButton" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
                         <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource CloseChromeButton}" Click="CloseButton_Click"/>
                     </StackPanel>
@@ -1464,7 +1443,7 @@
                                          </Grid.ColumnDefinitions>
 
                                          <!-- 2° POSTO (SINISTRA) -->
-                                         <Border Grid.Column="0" Style="{StaticResource Podium2CardStyle}" Padding="16" Height="210" Margin="0,15,10,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="0" Style="{StaticResource Podium2CardStyle}" Padding="16" Height="230" Margin="0,15,10,0" VerticalAlignment="Bottom">
                                              <Border.Effect>
                                                  <DropShadowEffect BlurRadius="22" ShadowDepth="0" Color="#C0C0C0" Opacity="0.18"/>
                                              </Border.Effect>
@@ -1524,13 +1503,13 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="150"/>
                                                      <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <TextBlock Text="{Binding Rank, FallbackValue=Silver}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
 
                                          <!-- 1° POSTO (CENTRO) -->
-                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="18" Height="240" Margin="10,0,10,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="18" Height="260" Margin="10,0,10,0" VerticalAlignment="Bottom">
                                              <Border.Effect>
                                                  <DropShadowEffect BlurRadius="30" ShadowDepth="0" Color="#FFD166" Opacity="0.3"/>
                                              </Border.Effect>
@@ -1597,13 +1576,13 @@
                                                              <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
                                                          </TextBlock.Effect>
                                                      </TextBlock>
-                                                     <TextBlock Text="{Binding Rank, FallbackValue=Diamond}" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="12" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
 
                                          <!-- 3° POSTO (DESTRA) -->
-                                         <Border Grid.Column="2" Style="{StaticResource Podium3CardStyle}" Padding="16" Height="195" Margin="10,15,0,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="2" Style="{StaticResource Podium3CardStyle}" Padding="16" Height="215" Margin="10,15,0,0" VerticalAlignment="Bottom">
                                              <Border.Effect>
                                                  <DropShadowEffect BlurRadius="18" ShadowDepth="0" Color="#CD7F32" Opacity="0.15"/>
                                              </Border.Effect>
@@ -1663,7 +1642,7 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
                                                      <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <TextBlock Text="{Binding Rank, FallbackValue=Gold}" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
@@ -1749,7 +1728,7 @@
                                                          <ColumnDefinition Width="90"/>  <!-- WINS -->
                                                          <ColumnDefinition Width="90"/>  <!-- RACES -->
                                                          <ColumnDefinition Width="90"/>  <!-- WINRATE -->
-                                                         <ColumnDefinition Width="100"/> <!-- RANK -->
+ 
                                                      </Grid.ColumnDefinitions>
                                                      
                                                      <TextBlock Text="POS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
@@ -1758,7 +1737,7 @@
                                                      <TextBlock Text="WINS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
                                                      <TextBlock Text="RACES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
                                                      <TextBlock Text="WINRATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
-                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="7"/>
+ 
                                                  </Grid>
                                                  
                                                  <!-- Scrollable List of Ranks -->
@@ -1780,7 +1759,7 @@
                                                                      <ColumnDefinition Width="90"/>  <!-- Wins -->
                                                                      <ColumnDefinition Width="90"/>  <!-- Races -->
                                                                      <ColumnDefinition Width="90"/>  <!-- Winrate -->
-                                                                     <ColumnDefinition Width="100"/> <!-- Rank -->
+ 
                                                                  </Grid.ColumnDefinitions>
 
                                                                  <!-- Position -->
@@ -1859,11 +1838,6 @@
 
                                                                  <!-- Winrate -->
                                                                  <TextBlock Text="{Binding WinRatePercent}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="6"/>
-
-                                                                 <!-- Rank -->
-                                                                 <Border Background="#152033" CornerRadius="6" Padding="8,4" HorizontalAlignment="Left" VerticalAlignment="Center" Grid.Column="7">
-                                                                     <TextBlock Text="{Binding Rank}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                                 </Border>
                                                              </Grid>
                                                          </Border>
                                                      </DataTemplate>
