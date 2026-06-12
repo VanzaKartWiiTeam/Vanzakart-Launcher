@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
 	<ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <OutputType>WinExe</OutputType>
@@ -29,9 +29,7 @@
     <Resource Include="Assets\mii_silhouette.png" />
   </ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="DiscordRichPresence" Version="1.143.0" />
-  </ItemGroup>
+
 
   <ItemGroup>
     <Resource Include="Assets\discord.png" />

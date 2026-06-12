@@ -9,7 +9,8 @@
         MinHeight="840"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        Background="#0A0F1E"
+        AllowsTransparency="True"
+        Background="Transparent"
         Icon="/Assets/app.ico"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
@@ -19,8 +20,8 @@
     <WindowChrome.WindowChrome>
         <WindowChrome CaptionHeight="48"
                       ResizeBorderThickness="6"
-                      GlassFrameThickness="0,0,0,1"
-                      CornerRadius="0"/>
+                      GlassFrameThickness="0"
+                      CornerRadius="18"/>
     </WindowChrome.WindowChrome>
 
     <Window.Resources>
@@ -976,10 +977,10 @@
                     Background="#D00A0F1E"
                     CornerRadius="18,18,0,0"
                     MouseLeftButtonDown="TitleBar_MouseLeftButtonDown">
-                <Grid Margin="18,0,10,0">
+                <Grid Margin="18,0,8,0">
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*"/>
-                        <ColumnDefinition Width="Auto"/>
+                         <ColumnDefinition Width="*"/>
+                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
 
                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
@@ -993,7 +994,7 @@
                         </Border>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0" WindowChrome.IsHitTestVisibleInChrome="True">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,0,0" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="MinimizeButton" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
                         <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource CloseChromeButton}" Click="CloseButton_Click"/>
                     </StackPanel>
@@ -1021,14 +1022,25 @@
 
 
                         <StackPanel Grid.Row="1">
-                            <Button x:Name="HomeNavButton" Tag="&#xE768;" Content="HOME / PLAY" Style="{StaticResource NavButton}" Click="HomeNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="RoomsNavButton" Tag="&#xE716;" Content="ROOMS" Style="{StaticResource NavButton}" Click="RoomsNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="LeaderboardNavButton" Tag="&#xED39;" Content="LEADERBOARD" Style="{StaticResource NavButton}" Click="LeaderboardNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="NewsNavButton" Tag="&#xE8A5;" Content="NEWS" Style="{StaticResource NavButton}" Click="NewsNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="ModsNavButton" Tag="&#xE7B8;" Content="MODS" Style="{StaticResource NavButton}" Click="ModsNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="LicensesNavButton" Tag="&#xE77B;" Content="MII &amp; LICENSES" Style="{StaticResource NavButton}" Click="LicensesNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="SettingsNavButton" Tag="&#xE713;" Content="SETTINGS" Style="{StaticResource NavButton}" Click="SettingsNavButton_Click" Margin="0,0,0,7"/>
-                            <Button x:Name="DebugNavButton" Tag="&#xE943;" Content="DEBUG" Style="{StaticResource NavButton}" Click="DebugNavButton_Click" Visibility="Collapsed"/>
+                            <!-- General -->
+                            <TextBlock Text="General" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextFaint}" Margin="12,0,0,8"/>
+                            <Button x:Name="HomeNavButton" Tag="&#xE768;" Content="HOME / PLAY" Style="{StaticResource NavButton}" Click="HomeNavButton_Click" Margin="0,0,0,4"/>
+                            <Button x:Name="NewsNavButton" Tag="&#xE8A5;" Content="NEWS" Style="{StaticResource NavButton}" Click="NewsNavButton_Click" Margin="0,0,0,4"/>
+
+                            <!-- Online -->
+                            <TextBlock Text="Online" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextFaint}" Margin="12,14,0,8"/>
+                            <Button x:Name="RoomsNavButton" Tag="&#xE716;" Content="ROOMS" Style="{StaticResource NavButton}" Click="RoomsNavButton_Click" Margin="0,0,0,4"/>
+                            <Button x:Name="LeaderboardNavButton" Tag="&#xED39;" Content="LEADERBOARD" Style="{StaticResource NavButton}" Click="LeaderboardNavButton_Click" Margin="0,0,0,4"/>
+
+                            <!-- Customize -->
+                            <TextBlock Text="Customize" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextFaint}" Margin="12,14,0,8"/>
+                            <Button x:Name="ModsNavButton" Tag="&#xE7B8;" Content="MODS" Style="{StaticResource NavButton}" Click="ModsNavButton_Click" Margin="0,0,0,4"/>
+                            <Button x:Name="LicensesNavButton" Tag="&#xE77B;" Content="MII &amp; LICENSES" Style="{StaticResource NavButton}" Click="LicensesNavButton_Click" Margin="0,0,0,4"/>
+
+                            <!-- Other -->
+                            <TextBlock Text="Other" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextFaint}" Margin="12,14,0,8"/>
+                            <Button x:Name="SettingsNavButton" Tag="&#xE713;" Content="SETTINGS" Style="{StaticResource NavButton}" Click="SettingsNavButton_Click" Margin="0,0,0,4"/>
+                            <Button x:Name="DebugNavButton" Tag="&#xE943;" Content="DEBUG" Style="{StaticResource NavButton}" Click="DebugNavButton_Click" Visibility="Collapsed" Margin="0,0,0,4"/>
                         </StackPanel>
 
                         <Border Grid.Row="2" Style="{StaticResource MiniCard}" Padding="14">
@@ -1136,7 +1148,7 @@
                                                 <ColumnDefinition Width="0.95*"/>
                                             </Grid.ColumnDefinitions>
 
-                                            <Border Style="{StaticResource GlassCard}" Margin="0,0,10,0">
+                                            <Border Style="{StaticResource GlassCard}" Margin="0,0,10,119">
                                                 <Grid>
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
@@ -1310,7 +1322,7 @@
                                                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                                      <TextBlock Text="&#xF133;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
                                                      <TextBlock Text="NO ACTIVE ROOMS" FontSize="18" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
-                                                     <TextBlock Text="There are no active multiplayer rooms at the moment. Launch the game and create a room to start!" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="450"/>
+                                                     <TextBlock Text="There are no active multiplayer rooms at the moment. Launch the game and create a room to start!" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="450" TextWrapping="Wrap"/>
                                                      <Button Content="Refresh Rooms" Style="{StaticResource ActionButton}" Width="160" Padding="12" Click="RoomsRefresh_Click"/>
                                                  </StackPanel>
                                              </Border>
@@ -1322,7 +1334,7 @@
                                                  <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                                      <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="{StaticResource DangerBrush}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
                                                      <TextBlock Text="CONNECTION ERROR" FontSize="18" FontWeight="Black" Foreground="{StaticResource DangerBrush}" HorizontalAlignment="Center"/>
-                                                     <TextBlock Text="{Binding ErrorMessage}" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="500"/>
+                                                     <TextBlock Text="{Binding ErrorMessage}" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="500" TextWrapping="Wrap"/>
                                                      <Button Content="Retry Connection" Style="{StaticResource ActionButton}" Width="180" Padding="12" Click="RoomsRefresh_Click"/>
                                                  </StackPanel>
                                              </Border>
@@ -1867,7 +1879,8 @@
                                                     <Button Content="All" Tag="All" Style="{StaticResource ActionButton}" Margin="0,0,8,0" Click="NewsFilterButton_Click"/>
                                                     <Button Content="Updates" Tag="Update" Style="{StaticResource ActionButton}" Margin="0,0,8,0" Click="NewsFilterButton_Click"/>
                                                     <Button Content="Events" Tag="Event" Style="{StaticResource ActionButton}" Margin="0,0,8,0" Click="NewsFilterButton_Click"/>
-                                                    <Button Content="Pinned" Tag="Pinned" Style="{StaticResource ActionButton}" Click="NewsFilterButton_Click"/>
+                                                    <Button Content="Pinned" Tag="Pinned" Style="{StaticResource ActionButton}" Margin="0,0,8,0" Click="NewsFilterButton_Click"/>
+                                                    <Button x:Name="RefreshNewsButton" Content="&#xE72C;" FontFamily="Segoe MDL2 Assets" FontSize="14" ToolTip="Refresh News" Style="{StaticResource ActionButton}" Click="RefreshNewsButton_Click" Width="42" Padding="0"/>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>
@@ -2526,8 +2539,7 @@
                                                 <Border x:Name="LauncherSettingsCard" Style="{StaticResource GlassCard}" Margin="0,0,10,18">
                                                     <StackPanel>
                                                         <TextBlock Text="LAUNCHER" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                        <CheckBox x:Name="DiscordRpcCheckBox" Content="Discord Rich Presence" Margin="0,14,0,12" Checked="DiscordSetting_Changed" Unchecked="DiscordSetting_Changed"/>
-                                                        <CheckBox x:Name="AutoUpdateCheckBox" Content="Check updates on startup" Margin="0,0,0,12" Checked="AutoUpdateSetting_Changed" Unchecked="AutoUpdateSetting_Changed"/>
+                                                        <CheckBox x:Name="AutoUpdateCheckBox" Content="Check updates on startup" Margin="0,14,0,12" Checked="AutoUpdateSetting_Changed" Unchecked="AutoUpdateSetting_Changed"/>
                                                         <CheckBox x:Name="SeparateSaveDefaultCheckBox" Content="Separate savegame by default" Checked="SeparateSaveDefault_Changed" Unchecked="SeparateSaveDefault_Changed"/>
                                                     </StackPanel>
                                                 </Border>

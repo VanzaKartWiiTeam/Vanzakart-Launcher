@@ -54,7 +54,6 @@ public partial class MainWindow : Window
     private FileSystemWatcher? _profileFileWatcher;
     private CancellationTokenSource? _filesystemRefreshCts;
 
-    private DiscordPresenceService? _discordPresence;
     private UserPreferences _userPreferences;
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
@@ -109,9 +108,6 @@ public partial class MainWindow : Window
 
         LoadSettingsIntoUi();
         ApplyWindowBounds();
-
-        _discordPresence = new DiscordPresenceService(_userPreferences);
-        _discordPresence.Initialize();
 
         RefreshAllState();
         NavigateTo("Home", animate: false);
@@ -246,27 +242,27 @@ public partial class MainWindow : Window
             case "Rooms":
                 view = RoomsView;
                 PageTitleTextBlock.Text = "Rooms";
-                PageSubtitleTextBlock.Text = "Stanze attive in tempo reale.";
+                PageSubtitleTextBlock.Text = "Live Room List";
                 _roomsViewModel?.StartAutoRefresh();
                 _ = _roomsViewModel?.RefreshAsync();
                 break;
             case "Leaderboard":
                 view = LeaderboardView;
                 PageTitleTextBlock.Text = "Leaderboard";
-                PageSubtitleTextBlock.Text = "Classifica globale dei giocatori.";
+                PageSubtitleTextBlock.Text = "Global player ranking";
                 _leaderboardViewModel?.UpdateLocalFriendCodes(_allLicenseCards.Select(c => c.FriendCode));
                 _ = _leaderboardViewModel?.RefreshAsync();
                 break;
             case "Mods":
                 view = ModsView;
                 PageTitleTextBlock.Text = "Mods";
-                PageSubtitleTextBlock.Text = "Install, repair, and addons.";
+                PageSubtitleTextBlock.Text = "Install, repair, and add custom textures.";
                 RefreshModsView();
                 break;
             case "Licenses":
                 view = LicensesView;
                 PageTitleTextBlock.Text = "Mii & Licenses";
-                PageSubtitleTextBlock.Text = "Back up or import local saves.";
+                PageSubtitleTextBlock.Text = "Back up or import your saves and customize your miis.";
                 RefreshLicenseView();
                 break;
             case "Settings":
@@ -370,7 +366,6 @@ public partial class MainWindow : Window
         UserFolderTextBox.Text = settings.UserFolderPath;
         RomPathTextBox.Text = settings.RomPath;
 
-        DiscordRpcCheckBox.IsChecked = _userPreferences.DiscordRpcEnabled;
         AutoUpdateCheckBox.IsChecked = _userPreferences.AutoCheckUpdates;
         SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
         SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
@@ -927,7 +922,6 @@ public partial class MainWindow : Window
 
         SetStatus("Connecting to update channel", (WpfBrush)FindResource("TextSecondary"));
         SetUpdateState("Connecting", "Preparing download...", 0);
-        _discordPresence?.SetDownloading();
 
         ModUpdateBackup? backup = null;
 
@@ -975,7 +969,6 @@ public partial class MainWindow : Window
                     ? "Replacing modpack files (user data is not affected)..."
                     : "Writing modpack files to Riivolution folder...",
                 0);
-            _discordPresence?.SetExtracting();
 
             var extractProgress = new Progress<int>(p =>
                 SetUpdateState(
@@ -1023,7 +1016,6 @@ public partial class MainWindow : Window
                 $"Operation completed – {result}");
 
             RefreshAllState();
-            _discordPresence?.SetLauncherIdle();
         }
         catch (Exception ex)
         {
@@ -1225,7 +1217,6 @@ public partial class MainWindow : Window
             SetBusy(_isBusy);
 
             TrackGameSession(process);
-            _discordPresence?.Deactivate();
             SetStatus("Game launched. Enjoy VanzaKart.", (WpfBrush)FindResource("SuccessBrush"));
             ShowToast("Race started", "Vanzakart is launching.");
             RefreshPlayStats();
@@ -2047,16 +2038,7 @@ del ""%~f0""";
         OpenFileLocation(_preferencesService.GetPreferencesPath());
     }
 
-    private void DiscordSetting_Changed(object sender, RoutedEventArgs e)
-    {
-        _userPreferences.DiscordRpcEnabled = DiscordRpcCheckBox.IsChecked == true;
-        _preferencesService.Save(_userPreferences);
-        _discordPresence?.UpdatePreferences(_userPreferences);
-        if (_userPreferences.DiscordRpcEnabled)
-        {
-            _discordPresence?.SetLauncherIdle();
-        }
-    }
+
 
     private void AutoUpdateSetting_Changed(object sender, RoutedEventArgs e)
     {
@@ -2095,6 +2077,32 @@ del ""%~f0""";
         {
             _newsFilter = tag;
             ApplyNewsFilter();
+        }
+    }
+
+    private async void RefreshNewsButton_Click(object sender, RoutedEventArgs e)
+    {
+        var btn = sender as WpfButton;
+        if (btn != null)
+        {
+            btn.IsEnabled = false;
+        }
+
+        try
+        {
+            await FetchNewsFromServerAsync();
+            ShowToast("News updated", "The news feed has been refreshed successfully.");
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Update error", "Could not refresh news: " + ex.Message, MessageBoxButton.OK);
+        }
+        finally
+        {
+            if (btn != null)
+            {
+                btn.IsEnabled = true;
+            }
         }
     }
 
@@ -2159,7 +2167,7 @@ del ""%~f0""";
     {
         var query = SettingsSearchTextBox.Text.Trim();
         SetCardVisibility(GamePathsSettingsCard, query, "paths dolphin rom user folder game");
-        SetCardVisibility(LauncherSettingsCard, query, "launcher discord startup updates preferences");
+        SetCardVisibility(LauncherSettingsCard, query, "launcher startup updates preferences");
         SetCardVisibility(GameSettingsCard, query, "game mod texture graphics grafiche save separate");
     }
 
@@ -2277,7 +2285,6 @@ del ""%~f0""";
                     var minutes = Math.Max(1, (DateTime.UtcNow - sessionStart).TotalMinutes);
                     _userPreferences.TotalPlayTimeMinutes += minutes;
                     _preferencesService.Save(_userPreferences);
-                    _discordPresence?.Initialize();
                     RefreshPlayStats();
                     SetBusy(_isBusy);
                 });
@@ -2633,7 +2640,6 @@ del ""%~f0""";
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         SaveWindowBounds();
-        _discordPresence?.Dispose();
         base.OnClosing(e);
     }
 }
