@@ -2217,8 +2217,8 @@
                                                     <Button Content="Restore" ToolTip="Restore a previous backup" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="RestoreBackupButton_OnClick"/>
                                                     <Button Content="Import" ToolTip="Import rksys.dat" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="ImportSaveButton_OnClick"/>
                                                     <Button Content="Export" ToolTip="Export current save" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="ExportSaveButton_OnClick"/>
-                                                    <Button Content="Folder" ToolTip="Open save folder" Style="{StaticResource CompactButton}" Click="OpenSavesFolderButton_OnClick"/>
-                                                    <Button Content="Friends" ToolTip="Open friend management" Style="{StaticResource CompactButton}" Click="OpenFriendsViewButton_OnClick" Margin="0,0,8,8"/>
+                                                    <Button Content="Folder" ToolTip="Open save folder" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="OpenSavesFolderButton_OnClick"/>
+                                                    <Button Content="Friends" ToolTip="Open friend management" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="OpenFriendsViewButton_OnClick"/>
                                                 </WrapPanel>
                                             </StackPanel>
                                         </Grid>

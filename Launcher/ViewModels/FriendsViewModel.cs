@@ -173,43 +173,56 @@ public sealed class FriendsViewModel : BaseViewModel
             return;
         }
 
-        try
+        var filePath = ActiveLicense.FilePath;
+        var slotIndex = ActiveLicense.SlotIndex;
+
+        _ = Task.Run(async () =>
         {
-            var friends = RksysManager.ReadFriends(ActiveLicense.FilePath, ActiveLicense.SlotIndex, _miiFileParserService);
-            foreach (var f in friends)
+            try
             {
-                FriendsList.Add(new FriendPlayerInfo
+                var friends = RksysManager.ReadFriends(filePath, slotIndex, _miiFileParserService);
+                
+                await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
-                    SlotIndex = f.SlotIndex,
-                    ProfileId = f.ProfileId,
-                    FriendCode = f.FriendCode,
-                    LocalMiiName = f.MiiName,
-                    DisplayName = f.MiiName,
-                    Vr = f.RaceRating,
-                    Br = f.BattleRating,
-                    Wins = f.Wins,
-                    Losses = f.Losses,
-                    Status = f.IsPending ? "Pending" : "Offline",
-                    MiiData = f.MiiData,
-                    ParsedMii = f.ParsedMii,
-                    RosterIndex = f.RosterIndex,
-                    GameRegion = f.GameRegion,
-                    CountryId = f.CountryId,
-                    RegionId = f.RegionId,
-                    CityId = f.CityId,
-                    GlobeX = f.GlobeX,
-                    GlobeY = f.GlobeY,
-                    IsPending = f.IsPending
+                    foreach (var f in friends)
+                    {
+                        FriendsList.Add(new FriendPlayerInfo
+                        {
+                            SlotIndex = f.SlotIndex,
+                            ProfileId = f.ProfileId,
+                            FriendCode = f.FriendCode,
+                            LocalMiiName = f.MiiName,
+                            DisplayName = f.MiiName,
+                            Vr = f.RaceRating,
+                            Br = f.BattleRating,
+                            Wins = f.Wins,
+                            Losses = f.Losses,
+                            Status = f.IsPending ? "Pending" : "Offline",
+                            MiiData = f.MiiData,
+                            ParsedMii = f.ParsedMii,
+                            RosterIndex = f.RosterIndex,
+                            GameRegion = f.GameRegion,
+                            CountryId = f.CountryId,
+                            RegionId = f.RegionId,
+                            CityId = f.CityId,
+                            GlobeX = f.GlobeX,
+                            GlobeY = f.GlobeY,
+                            IsPending = f.IsPending
+                        });
+                    }
+                });
+
+                _ = ResolveOnlineDetailsAsync();
+            }
+            catch (Exception ex)
+            {
+                await Application.Current.Dispatcher.InvokeAsync(() =>
+                {
+                    HasError = true;
+                    ErrorMessage = $"Unable to load friend list: {ex.Message}";
                 });
             }
-
-            _ = ResolveOnlineDetailsAsync();
-        }
-        catch (Exception ex)
-        {
-            HasError = true;
-            ErrorMessage = $"Unable to load friend list: {ex.Message}";
-        }
+        });
     }
 
     public async Task AddFriendAsync()
