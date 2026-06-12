@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>1.0.7</Version>
+    <Version>1.1.0</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>

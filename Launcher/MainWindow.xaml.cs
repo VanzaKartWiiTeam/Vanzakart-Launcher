@@ -36,6 +36,8 @@ public partial class MainWindow : Window
     private readonly LauncherNavigationService _navigationService = new();
     private readonly MiiRuntimeSetupService _miiRuntimeSetupService = new();
     private readonly ShellViewModel _shellViewModel = new();
+    private readonly RoomsViewModel _roomsViewModel;
+    private readonly LeaderboardViewModel _leaderboardViewModel;
     private readonly ObservableCollection<NewsItem> _visibleNews = new();
     private readonly List<NewsItem> _allNews = new();
     private readonly ObservableCollection<SaveProfileInfo> _licenseCards = new();
@@ -77,7 +79,22 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         _userPreferences = _preferencesService.Load();
+
+        _roomsViewModel = new RoomsViewModel(_networkService);
+        _leaderboardViewModel = new LeaderboardViewModel(_networkService);
+
+        // Verify if a mod update is required based on last known version from check
+        var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
+        if (!string.IsNullOrWhiteSpace(_userPreferences.LastKnownLatestModVersion) && _userPreferences.LastKnownLatestModVersion != localVersion)
+        {
+            _isModUpdateRequired = true;
+            _latestModVersion = _userPreferences.LastKnownLatestModVersion;
+        }
+
         InitializeComponent();
+
+        RoomsView.DataContext = _roomsViewModel;
+        LeaderboardView.DataContext = _leaderboardViewModel;
 
         VersionBadgeTextBlock.Text = $"Launcher v{LauncherConfig.CurrentLauncherVersion}";
         DebugNavButton.Visibility = Debugger.IsAttached ? Visibility.Visible : Visibility.Collapsed;
@@ -165,12 +182,6 @@ public partial class MainWindow : Window
 
     private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
     {
-        if (e.ClickCount == 2)
-        {
-            MaximizeButton_Click(sender, e);
-            return;
-        }
-
         if (e.ButtonState == MouseButtonState.Pressed)
         {
             DragMove();
@@ -178,18 +189,45 @@ public partial class MainWindow : Window
     }
 
     private void HomeNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Home");
+    private void RoomsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Rooms");
+    private void LeaderboardNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Leaderboard");
     private void NewsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("News");
     private void ModsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Mods");
     private void LicensesNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Licenses");
     private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Settings");
     private void DebugNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Debug");
 
+    private async void RoomsRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        if (_roomsViewModel != null)
+        {
+            await _roomsViewModel.RefreshAsync();
+        }
+    }
+
+    private async void LeaderboardRefresh_Click(object sender, RoutedEventArgs e)
+    {
+        if (_leaderboardViewModel != null)
+        {
+            _leaderboardViewModel.UpdateLocalFriendCodes(_allLicenseCards.Select(c => c.FriendCode));
+            await _leaderboardViewModel.RefreshAsync();
+        }
+    }
+
     private void NavigateTo(string tab, bool animate = true)
     {
         _currentTab = tab;
         _shellViewModel.CurrentTab = tab;
+        _navigationService.CurrentTab = tab;
+
+        if (tab != "Rooms")
+        {
+            _roomsViewModel?.StopAutoRefresh();
+        }
 
         PlayView.Visibility = Visibility.Collapsed;
+        RoomsView.Visibility = Visibility.Collapsed;
+        LeaderboardView.Visibility = Visibility.Collapsed;
         NewsView.Visibility = Visibility.Collapsed;
         ModsView.Visibility = Visibility.Collapsed;
         LicensesView.Visibility = Visibility.Collapsed;
@@ -204,6 +242,20 @@ public partial class MainWindow : Window
                 PageTitleTextBlock.Text = "News";
                 PageSubtitleTextBlock.Text = "Updates and changelog.";
                 ApplyNewsFilter();
+                break;
+            case "Rooms":
+                view = RoomsView;
+                PageTitleTextBlock.Text = "Rooms";
+                PageSubtitleTextBlock.Text = "Stanze attive in tempo reale.";
+                _roomsViewModel?.StartAutoRefresh();
+                _ = _roomsViewModel?.RefreshAsync();
+                break;
+            case "Leaderboard":
+                view = LeaderboardView;
+                PageTitleTextBlock.Text = "Leaderboard";
+                PageSubtitleTextBlock.Text = "Classifica globale dei giocatori.";
+                _leaderboardViewModel?.UpdateLocalFriendCodes(_allLicenseCards.Select(c => c.FriendCode));
+                _ = _leaderboardViewModel?.RefreshAsync();
                 break;
             case "Mods":
                 view = ModsView;
@@ -236,10 +288,13 @@ public partial class MainWindow : Window
                 break;
         }
 
-        view.Visibility = Visibility.Visible;
-        if (animate)
+        if (view != null)
         {
-            AnimateViewTransition(view);
+            view.Visibility = Visibility.Visible;
+            if (animate)
+            {
+                AnimateViewTransition(view);
+            }
         }
 
         SetActiveTab(tab);
@@ -250,6 +305,8 @@ public partial class MainWindow : Window
         var buttons = new Dictionary<string, WpfButton>
         {
             ["Home"] = HomeNavButton,
+            ["Rooms"] = RoomsNavButton,
+            ["Leaderboard"] = LeaderboardNavButton,
             ["News"] = NewsNavButton,
             ["Mods"] = ModsNavButton,
             ["Licenses"] = LicensesNavButton,
@@ -832,7 +889,7 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
             ShowCustomDialog("Setup required", "Select the Dolphin User folder first in Settings.", MessageBoxButton.OK);
-            NavigateTo("Settings");
+            _navigationService.Navigate("Settings");
             return;
         }
 
@@ -941,7 +998,11 @@ public partial class MainWindow : Window
 
             // ── STEP 6: write version ────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
+            {
                 File.WriteAllText(_localModVersionFile, _latestModVersion);
+                _userPreferences.LastKnownLatestModVersion = _latestModVersion;
+                _preferencesService.Save(_userPreferences);
+            }
 
             // ── Completato ────────────────────────────────────────────────────────
             DownloadProgressBar.Value = 100;
@@ -1086,30 +1147,33 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
-            var result = ShowCustomDialog("Update recommended", "A mod update is available. It is recommended to install it before playing.\n\nDo you want to launch the game anyway without updating?", MessageBoxButton.YesNo);
+            var result = ShowCustomDialog(
+                "Update available",
+                "The installed mod version is not the latest. Do you want to launch the game anyway?",
+                MessageBoxButton.YesNo);
             if (result != MessageBoxResult.Yes)
             {
-                NavigateTo("Mods");
+                _navigationService.Navigate("Mods");
                 return;
             }
         }
 
         var settings = BuildSettingsFromUi();
-        if (string.IsNullOrWhiteSpace(settings.DolphinPath) ||
+        if (string.IsNullOrWhiteSpace(settings.DolphinPath) ||  
             string.IsNullOrWhiteSpace(settings.RomPath) ||
             string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
             ShowCustomDialog("Setup required", "Configure Dolphin, the User folder, and the Mario Kart Wii ROM in Settings.", MessageBoxButton.OK);
-            NavigateTo("Settings");
+            _navigationService.Navigate("Settings");
             return;
         }
-
+            
         var rootDir = Path.Combine(settings.GetModFolder(), "VanzaKart");
         var xmlPath = Path.Combine(rootDir, "Riivolution", "VanzaKart.xml");
         if (!File.Exists(xmlPath))
         {
             ShowCustomDialog("Mod not found", "Install the VanzaKart modpack before launching.", MessageBoxButton.OK);
-            NavigateTo("Mods");
+            _navigationService.Navigate("Mods");
             return;
         }
 
@@ -1135,7 +1199,7 @@ public partial class MainWindow : Window
       {{
         ""options"": [
           {{ ""choice"": 1, ""option-name"": ""Pack"", ""section-name"": ""VanzaKart"" }},
-          {(optionChoice == 2 ? "{ \"choice\": 2, \"option-name\": \"My Stuff\", \"section-name\": \"VanzaKart\" }," : "")}
+          {(optionChoice == 2 ? "{ \"choice\": 2, \"option-name\": \"MyStuff\", \"section-name\": \"VanzaKart\" }," : "")}
           {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""VanzaKart"" }}
         ],
         ""root"": ""{EscapeJsonValue(rootDir)}"",
@@ -1193,6 +1257,8 @@ public partial class MainWindow : Window
             _lastUpdateError = string.Empty;
 
             _latestModVersion = info.ModVersion;
+            _userPreferences.LastKnownLatestModVersion = info.ModVersion;
+            _preferencesService.Save(_userPreferences);
             _latestModUrl = string.IsNullOrWhiteSpace(info.ModUrl) ? LauncherConfig.ModUrl : info.ModUrl;
             _latestModMirrors = info.ModMirrors ?? Array.Empty<string>();
             _latestModSha256 = info.ModSha256;
@@ -1751,6 +1817,47 @@ del ""%~f0""";
         {
             OpenMiiEditor(selected.Id);
         }
+    }
+
+    private void MiiCardsListBox_PreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (!e.Handled)
+        {
+            var scrollViewer = FindParent<ScrollViewer>(MiiCardsListBox);
+            if (scrollViewer != null)
+            {
+                e.Handled = true;
+                int lines = Math.Abs(e.Delta) / 40;
+                if (lines == 0) lines = 1;
+                for (int i = 0; i < lines; i++)
+                {
+                    if (e.Delta < 0)
+                    {
+                        scrollViewer.LineDown();
+                    }
+                    else
+                    {
+                        scrollViewer.LineUp();
+                    }
+                }
+            }
+        }
+    }
+
+    private static T? FindParent<T>(DependencyObject child) where T : DependencyObject
+    {
+        var parentDep = VisualTreeHelper.GetParent(child);
+        if (parentDep == null)
+        {
+            return null;
+        }
+
+        if (parentDep is T parent)
+        {
+            return parent;
+        }
+
+        return FindParent<T>(parentDep);
     }
 
     private void OpenMiiEditor(string miiId)
@@ -2535,36 +2642,68 @@ public sealed class CustomDialog : Window
 {
     private MessageBoxResult _result = MessageBoxResult.None;
     private readonly MessageBoxButton _buttons;
+    private readonly Border root;
 
     public CustomDialog(string title, string message, MessageBoxButton buttons)
     {
         _buttons = buttons;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Width = 460;
-        Height = 230;
+        Width = 560;
+        Height = 330;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None;
-        Background = new SolidColorBrush(WpfColor.FromRgb(0x13, 0x1B, 0x2C));
+        AllowsTransparency = true;
+        Background = WpfBrushes.Transparent;
         Topmost = true;
         Focusable = true;
 
-        var root = new Border
+        var rotateTransform = new RotateTransform(0, 0.5, 0.5);
+        var borderBrush = new LinearGradientBrush
         {
-            Padding = new Thickness(24),
-            CornerRadius = new CornerRadius(8),
-            Background = Background,
-            BorderBrush = new LinearGradientBrush
+            StartPoint = new System.Windows.Point(0, 0),
+            EndPoint = new System.Windows.Point(1, 0),
+            RelativeTransform = rotateTransform,
+            GradientStops =
             {
-                StartPoint = new System.Windows.Point(0, 0),
-                EndPoint = new System.Windows.Point(1, 0),
-                GradientStops =
-                {
-                    new GradientStop(WpfColor.FromRgb(0xFF, 0x3B, 0x7A), 0),
-                    new GradientStop(WpfColor.FromRgb(0x39, 0xE7, 0xFF), 0.55),
-                    new GradientStop(WpfColor.FromRgb(0xC6, 0x5C, 0xFF), 1)
-                }
-            },
-            BorderThickness = new Thickness(1)
+                new GradientStop(WpfColor.FromRgb(0xFF, 0x00, 0x66), 0.00),
+                new GradientStop(WpfColor.FromRgb(0xFF, 0x88, 0x00), 0.18),
+                new GradientStop(WpfColor.FromRgb(0xFF, 0xEA, 0x00), 0.34),
+                new GradientStop(WpfColor.FromRgb(0x00, 0xFF, 0x66), 0.50),
+                new GradientStop(WpfColor.FromRgb(0x00, 0xF2, 0xFF), 0.67),
+                new GradientStop(WpfColor.FromRgb(0x33, 0x00, 0xFF), 0.84),
+                new GradientStop(WpfColor.FromRgb(0xB0, 0x00, 0xFF), 1.00)
+            }
+        };
+
+        var rotateAnim = new DoubleAnimation(0, 360, TimeSpan.FromSeconds(6))
+        {
+            RepeatBehavior = RepeatBehavior.Forever
+        };
+        rotateTransform.BeginAnimation(RotateTransform.AngleProperty, rotateAnim);
+
+        var translateTransform = new TranslateTransform(0, 20);
+
+        root = new Border
+        {
+            Width = 460,
+            Height = 230,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+            VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            Opacity = 0,
+            Padding = new Thickness(24),
+            CornerRadius = new CornerRadius(16),
+            Background = new SolidColorBrush(WpfColor.FromRgb(0x11, 0x18, 0x27)),
+            BorderBrush = borderBrush,
+            BorderThickness = new Thickness(1.8),
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            RenderTransform = translateTransform,
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 36,
+                ShadowDepth = 0,
+                Opacity = 0.75,
+                Color = WpfColor.FromRgb(0x00, 0xF2, 0xFF)
+            }
         };
 
         var stack = new StackPanel();
@@ -2574,7 +2713,8 @@ public sealed class CustomDialog : Window
             FontSize = 20,
             FontWeight = FontWeights.Black,
             Foreground = WpfBrushes.White,
-            Margin = new Thickness(0, 0, 0, 12)
+            Margin = new Thickness(0, 0, 0, 12),
+            FontFamily = new FontFamily("Segoe UI")
         });
         stack.Children.Add(new TextBlock
         {
@@ -2582,7 +2722,8 @@ public sealed class CustomDialog : Window
             FontSize = 14,
             Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 24)
+            Margin = new Thickness(0, 0, 0, 24),
+            FontFamily = new FontFamily("Segoe UI")
         });
 
         var buttonPanel = new StackPanel
@@ -2613,13 +2754,27 @@ public sealed class CustomDialog : Window
 
         stack.Children.Add(buttonPanel);
         root.Child = stack;
-        Content = root;
-        Loaded += (_, _) => Focus();
+        var container = new Grid { Background = WpfBrushes.Transparent };
+        container.Children.Add(root);
+        Content = container;
+        
+        Loaded += (_, _) =>
+        {
+            Focus();
+            var duration = TimeSpan.FromMilliseconds(200);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+
+            var opacityAnim = new DoubleAnimation(0, 1, duration) { EasingFunction = ease };
+            var translateYAnim = new DoubleAnimation(20, 0, duration) { EasingFunction = ease };
+
+            root.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+            translateTransform.BeginAnimation(TranslateTransform.YProperty, translateYAnim);
+        };
     }
 
     private static WpfButton CreateDialogButton(string content, bool primary)
     {
-        return new WpfButton
+        var btn = new WpfButton
         {
             Content = content,
             MinWidth = 96,
@@ -2629,11 +2784,256 @@ public sealed class CustomDialog : Window
             Cursor = System.Windows.Input.Cursors.Hand,
             Foreground = WpfBrushes.White,
             Background = primary
-                ? new LinearGradientBrush(WpfColor.FromRgb(0xFF, 0x3B, 0x7A), WpfColor.FromRgb(0x39, 0xE7, 0xFF), 0)
-                : new SolidColorBrush(WpfColor.FromRgb(0x21, 0x2B, 0x43)),
-            BorderBrush = new SolidColorBrush(WpfColor.FromRgb(0x43, 0x51, 0x70)),
-            BorderThickness = new Thickness(1)
+                ? new SolidColorBrush(WpfColor.FromRgb(0x15, 0x1E, 0x33))
+                : new SolidColorBrush(WpfColor.FromRgb(0x1B, 0x26, 0x40)),
+            BorderBrush = primary 
+                ? new LinearGradientBrush
+                {
+                    StartPoint = new System.Windows.Point(0, 0),
+                    EndPoint = new System.Windows.Point(1, 0),
+                    GradientStops =
+                    {
+                        new GradientStop(WpfColor.FromRgb(0xFF, 0x00, 0x66), 0.00),
+                        new GradientStop(WpfColor.FromRgb(0xFF, 0x88, 0x00), 0.18),
+                        new GradientStop(WpfColor.FromRgb(0xFF, 0xEA, 0x00), 0.34),
+                        new GradientStop(WpfColor.FromRgb(0x00, 0xFF, 0x66), 0.50),
+                        new GradientStop(WpfColor.FromRgb(0x00, 0xF2, 0xFF), 0.67),
+                        new GradientStop(WpfColor.FromRgb(0x33, 0x00, 0xFF), 0.84),
+                        new GradientStop(WpfColor.FromRgb(0xB0, 0x00, 0xFF), 1.00)
+                    }
+                }
+                : new SolidColorBrush(WpfColor.FromRgb(0x33, 0x40, 0x5D)),
+            BorderThickness = new Thickness(primary ? 1.8 : 1),
+            RenderTransformOrigin = new System.Windows.Point(0.5, 0.5),
+            RenderTransform = new ScaleTransform(1, 1)
         };
+
+        var template = new ControlTemplate(typeof(WpfButton));
+        
+        var gridFactory = new FrameworkElementFactory(typeof(Grid));
+        gridFactory.SetValue(Grid.MarginProperty, new Thickness(2));
+
+        if (primary)
+        {
+            var glowBorderFactory = new FrameworkElementFactory(typeof(Border));
+            glowBorderFactory.Name = "GlowBorder";
+            glowBorderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(10));
+            glowBorderFactory.SetValue(Border.MarginProperty, new Thickness(-4));
+            glowBorderFactory.SetValue(Border.OpacityProperty, 0.25);
+            
+            var glowRainbow = new LinearGradientBrush
+            {
+                StartPoint = new System.Windows.Point(0, 0),
+                EndPoint = new System.Windows.Point(1, 0),
+                GradientStops =
+                {
+                    new GradientStop(WpfColor.FromRgb(0xFF, 0x00, 0x66), 0.00),
+                    new GradientStop(WpfColor.FromRgb(0xFF, 0x88, 0x00), 0.18),
+                    new GradientStop(WpfColor.FromRgb(0xFF, 0xEA, 0x00), 0.34),
+                    new GradientStop(WpfColor.FromRgb(0x00, 0xFF, 0x66), 0.50),
+                    new GradientStop(WpfColor.FromRgb(0x00, 0xF2, 0xFF), 0.67),
+                    new GradientStop(WpfColor.FromRgb(0x33, 0x00, 0xFF), 0.84),
+                    new GradientStop(WpfColor.FromRgb(0xB0, 0x00, 0xFF), 1.00)
+                }
+            };
+            glowBorderFactory.SetValue(Border.BackgroundProperty, glowRainbow);
+            
+            var blur = new System.Windows.Media.Effects.BlurEffect { Radius = 10 };
+            glowBorderFactory.SetValue(UIElement.EffectProperty, blur);
+            
+            gridFactory.AppendChild(glowBorderFactory);
+        }
+
+        var cardBorderFactory = new FrameworkElementFactory(typeof(Border));
+        cardBorderFactory.Name = "CardBorder";
+        cardBorderFactory.SetValue(Border.BackgroundProperty, new TemplateBindingExtension(WpfButton.BackgroundProperty));
+        cardBorderFactory.SetValue(Border.BorderBrushProperty, new TemplateBindingExtension(WpfButton.BorderBrushProperty));
+        cardBorderFactory.SetValue(Border.BorderThicknessProperty, new TemplateBindingExtension(WpfButton.BorderThicknessProperty));
+        cardBorderFactory.SetValue(Border.CornerRadiusProperty, new CornerRadius(8));
+
+        var presenterFactory = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenterFactory.SetValue(ContentPresenter.HorizontalAlignmentProperty, System.Windows.HorizontalAlignment.Center);
+        presenterFactory.SetValue(ContentPresenter.VerticalAlignmentProperty, System.Windows.VerticalAlignment.Center);
+        presenterFactory.SetValue(ContentPresenter.MarginProperty, new TemplateBindingExtension(WpfButton.PaddingProperty));
+        
+        if (primary)
+        {
+            var textShadow = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                BlurRadius = 2,
+                ShadowDepth = 1,
+                Direction = 315,
+                Opacity = 0.6,
+                Color = WpfColor.FromRgb(0, 0, 0)
+            };
+            presenterFactory.SetValue(UIElement.EffectProperty, textShadow);
+        }
+
+        cardBorderFactory.AppendChild(presenterFactory);
+        gridFactory.AppendChild(cardBorderFactory);
+        
+        template.VisualTree = gridFactory;
+        btn.Template = template;
+
+        btn.MouseEnter += (s, e) =>
+        {
+            var scale = btn.RenderTransform as ScaleTransform;
+            if (scale != null)
+            {
+                var duration = TimeSpan.FromMilliseconds(120);
+                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.04, duration) { EasingFunction = ease });
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.04, duration) { EasingFunction = ease });
+            }
+
+            if (primary)
+            {
+                var bgBrush = btn.Background as SolidColorBrush;
+                if (bgBrush != null && !bgBrush.IsFrozen)
+                {
+                    var bgAnim = new ColorAnimation(WpfColor.FromRgb(0x1F, 0x2C, 0x4C), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, bgAnim);
+                }
+                
+                var glowBorder = btn.Template.FindName("GlowBorder", btn) as Border;
+                if (glowBorder != null)
+                {
+                    var glowAnim = new DoubleAnimation(0.65, TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    glowBorder.BeginAnimation(UIElement.OpacityProperty, glowAnim);
+                }
+            }
+            else
+            {
+                var bgBrush = btn.Background as SolidColorBrush;
+                if (bgBrush != null && !bgBrush.IsFrozen)
+                {
+                    bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(WpfColor.FromRgb(0x25, 0x35, 0x5C), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                }
+                var borderBrush = btn.BorderBrush as SolidColorBrush;
+                if (borderBrush != null && !borderBrush.IsFrozen)
+                {
+                    borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(WpfColor.FromRgb(0x4A, 0x5E, 0x8C), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                }
+            }
+        };
+
+        btn.MouseLeave += (s, e) =>
+        {
+            var scale = btn.RenderTransform as ScaleTransform;
+            if (scale != null)
+            {
+                var duration = TimeSpan.FromMilliseconds(120);
+                var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, duration) { EasingFunction = ease });
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, duration) { EasingFunction = ease });
+            }
+
+            if (primary)
+            {
+                var bgBrush = btn.Background as SolidColorBrush;
+                if (bgBrush != null && !bgBrush.IsFrozen)
+                {
+                    var bgAnim = new ColorAnimation(WpfColor.FromRgb(0x15, 0x1E, 0x33), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, bgAnim);
+                }
+                
+                var glowBorder = btn.Template.FindName("GlowBorder", btn) as Border;
+                if (glowBorder != null)
+                {
+                    var glowAnim = new DoubleAnimation(0.25, TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    };
+                    glowBorder.BeginAnimation(UIElement.OpacityProperty, glowAnim);
+                }
+            }
+            else
+            {
+                var bgBrush = btn.Background as SolidColorBrush;
+                if (bgBrush != null && !bgBrush.IsFrozen)
+                {
+                    bgBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(WpfColor.FromRgb(0x1B, 0x26, 0x40), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                }
+                var borderBrush = btn.BorderBrush as SolidColorBrush;
+                if (borderBrush != null && !borderBrush.IsFrozen)
+                {
+                    borderBrush.BeginAnimation(SolidColorBrush.ColorProperty, new ColorAnimation(WpfColor.FromRgb(0x33, 0x40, 0x5D), TimeSpan.FromMilliseconds(150))
+                    {
+                        EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
+                    });
+                }
+            }
+        };
+
+        btn.PreviewMouseDown += (s, e) =>
+        {
+            var scale = btn.RenderTransform as ScaleTransform;
+            if (scale != null)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(60)));
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.95, TimeSpan.FromMilliseconds(60)));
+            }
+        };
+
+        btn.PreviewMouseUp += (s, e) =>
+        {
+            var scale = btn.RenderTransform as ScaleTransform;
+            if (scale != null)
+            {
+                scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(80)));
+                scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(1.0, TimeSpan.FromMilliseconds(80)));
+            }
+        };
+
+        return btn;
+    }
+
+    private bool _isClosingAnimated = false;
+    protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
+    {
+        if (!_isClosingAnimated)
+        {
+            e.Cancel = true;
+            _isClosingAnimated = true;
+            
+            var duration = TimeSpan.FromMilliseconds(150);
+            var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+
+            var opacityAnim = new DoubleAnimation(0, duration) { EasingFunction = ease };
+            var translateYAnim = new DoubleAnimation(15, duration) { EasingFunction = ease };
+
+            var translateTransform = root.RenderTransform as TranslateTransform;
+            
+            opacityAnim.Completed += (s, ev) => base.Close();
+            
+            root.BeginAnimation(UIElement.OpacityProperty, opacityAnim);
+            if (translateTransform != null)
+            {
+                translateTransform.BeginAnimation(TranslateTransform.YProperty, translateYAnim);
+            }
+        }
+        else
+        {
+            base.OnClosing(e);
+        }
     }
 
     protected override void OnKeyDown(WpfKeyEventArgs e)

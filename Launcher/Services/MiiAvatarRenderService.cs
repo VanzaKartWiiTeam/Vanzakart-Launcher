@@ -197,7 +197,7 @@ public sealed class MiiAvatarRenderService
         }
     }
 
-    private static string GetRenderCacheKey(WiiMiiData mii, string type = "face", int rotationY = 0)
+    public static string GetRenderCacheKey(WiiMiiData mii, string type = "face", int rotationY = 0)
     {
         if (!string.IsNullOrWhiteSpace(mii.StudioData))
         {

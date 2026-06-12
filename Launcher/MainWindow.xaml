@@ -18,6 +18,7 @@
         RenderOptions.BitmapScalingMode="HighQuality">
 
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
         <SolidColorBrush x:Key="TextPrimary" Color="#F7FAFF"/>
         <SolidColorBrush x:Key="TextSecondary" Color="#9AA8C6"/>
         <SolidColorBrush x:Key="TextFaint" Color="#64718C"/>
@@ -41,29 +42,34 @@
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="RainbowGradient" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Offset="0.00" Color="#FF3B7A"/>
-            <GradientStop Offset="0.18" Color="#FFB84A"/>
-            <GradientStop Offset="0.34" Color="#F7FF57"/>
-            <GradientStop Offset="0.50" Color="#4DFF8D"/>
-            <GradientStop Offset="0.67" Color="#39E7FF"/>
-            <GradientStop Offset="0.84" Color="#5A6DFF"/>
-            <GradientStop Offset="1.00" Color="#C65CFF"/>
+            <GradientStop Offset="0.00" Color="#FF0066"/>
+            <GradientStop Offset="0.18" Color="#FF8800"/>
+            <GradientStop Offset="0.34" Color="#FFEA00"/>
+            <GradientStop Offset="0.50" Color="#00FF66"/>
+            <GradientStop Offset="0.67" Color="#00F2FF"/>
+            <GradientStop Offset="0.84" Color="#3300FF"/>
+            <GradientStop Offset="1.00" Color="#B000FF"/>
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="PlayGradient" StartPoint="0,0" EndPoint="1,1">
-            <GradientStop Offset="0.00" Color="#FF2F73"/>
-            <GradientStop Offset="0.35" Color="#FFB347"/>
-            <GradientStop Offset="0.68" Color="#39E7FF"/>
-            <GradientStop Offset="1.00" Color="#9D5CFF"/>
+            <GradientStop Offset="0.00" Color="#FF0066"/>
+            <GradientStop Offset="0.35" Color="#FF8800"/>
+            <GradientStop Offset="0.68" Color="#00F2FF"/>
+            <GradientStop Offset="1.00" Color="#B000FF"/>
         </LinearGradientBrush>
 
-        <DropShadowEffect x:Key="CardShadow" BlurRadius="32" ShadowDepth="0" Opacity="0.35" Color="#000000"/>
-        <DropShadowEffect x:Key="NeonGlow" BlurRadius="24" ShadowDepth="0" Opacity="0.50" Color="#39E7FF"/>
-        <DropShadowEffect x:Key="PinkGlow" BlurRadius="24" ShadowDepth="0" Opacity="0.45" Color="#FF3B7A"/>
+        <DropShadowEffect x:Key="CardShadow" BlurRadius="28" ShadowDepth="0" Opacity="0.32" Color="#000000"/>
+        <DropShadowEffect x:Key="NeonGlow" BlurRadius="26" ShadowDepth="0" Opacity="0.70" Color="#00F2FF"/>
+        <DropShadowEffect x:Key="PinkGlow" BlurRadius="26" ShadowDepth="0" Opacity="0.65" Color="#FF0066"/>
 
         <Style TargetType="TextBlock">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
             <Setter Property="FontFamily" Value="Segoe UI"/>
+        </Style>
+
+        <Style TargetType="Image">
+            <Setter Property="RenderOptions.BitmapScalingMode" Value="Fant"/>
+            <Setter Property="UseLayoutRounding" Value="True"/>
         </Style>
 
         <Style TargetType="ScrollViewer">
@@ -111,6 +117,114 @@
             <Setter Property="Effect" Value="{x:Null}"/>
         </Style>
 
+        <Style x:Key="SkeletonCard" TargetType="Border" BasedOn="{StaticResource GlassCard}">
+            <Setter Property="Opacity" Value="0.4"/>
+            <Style.Triggers>
+                <EventTrigger RoutedEvent="Loaded">
+                    <BeginStoryboard>
+                        <Storyboard>
+                            <DoubleAnimation Storyboard.TargetProperty="Opacity"
+                                             From="0.3" To="0.7" Duration="0:0:1.2"
+                                             AutoReverse="True" RepeatBehavior="Forever"/>
+                        </Storyboard>
+                    </BeginStoryboard>
+                </EventTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="RoomCardBorder" TargetType="Border" BasedOn="{StaticResource GlassCard}">
+            <Setter Property="Padding" Value="18"/>
+            <Setter Property="CornerRadius" Value="14"/>
+            <Setter Property="Margin" Value="0,0,14,14"/>
+            <Setter Property="Width" Value="290"/>
+            <Setter Property="Height" Value="176"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="BorderBrush" Value="#00F2FF"/>
+                    <Setter Property="Background" Value="#1A2235"/>
+                    <Setter Property="Effect" Value="{StaticResource NeonGlow}"/>
+                    <Trigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1.03" Duration="0:0:0.15"/>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1.03" Duration="0:0:0.15"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.EnterActions>
+                    <Trigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.15"/>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.15"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.ExitActions>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="LeaderboardRowBorder" TargetType="Border" BasedOn="{StaticResource MiniCard}">
+            <Setter Property="Background" Value="{StaticResource PanelGlassBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Margin" Value="0,0,0,10"/>
+            <Setter Property="Padding" Value="14,10"/>
+            <Setter Property="RenderTransformOrigin" Value="0.5,0.5"/>
+            <Setter Property="RenderTransform">
+                <Setter.Value>
+                    <ScaleTransform ScaleX="1" ScaleY="1"/>
+                </Setter.Value>
+            </Setter>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#252F48"/>
+                    <Trigger.EnterActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1.015" Duration="0:0:0.12"/>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1.015" Duration="0:0:0.12"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.EnterActions>
+                    <Trigger.ExitActions>
+                        <BeginStoryboard>
+                            <Storyboard>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleX)" To="1" Duration="0:0:0.12"/>
+                                <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(ScaleTransform.ScaleY)" To="1" Duration="0:0:0.12"/>
+                            </Storyboard>
+                        </BeginStoryboard>
+                    </Trigger.ExitActions>
+                </Trigger>
+                <DataTrigger Binding="{Binding IsSelf}" Value="True">
+                    <Setter Property="BorderBrush" Value="{StaticResource RainbowGradient}"/>
+                    <Setter Property="BorderThickness" Value="1.5"/>
+                    <Setter Property="Background" Value="#EE1D142D"/>
+                    <Setter Property="Effect" Value="{StaticResource NeonGlow}"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
+        <Style x:Key="Podium1CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
+            <Setter Property="BorderBrush" Value="#FFD166"/>
+            <Setter Property="BorderThickness" Value="0,0,0,5"/>
+        </Style>
+
+        <Style x:Key="Podium2CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
+            <Setter Property="BorderBrush" Value="#C0C0C0"/>
+            <Setter Property="BorderThickness" Value="0,0,0,4"/>
+        </Style>
+
+        <Style x:Key="Podium3CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
+            <Setter Property="BorderBrush" Value="#CD7F32"/>
+            <Setter Property="BorderThickness" Value="0,0,0,4"/>
+        </Style>
+
         <Style x:Key="NavButton" TargetType="Button">
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
@@ -134,7 +248,7 @@
                             </Border.RenderTransform>
                             <Grid>
                                 <!-- Hover Background Overlay -->
-                                <Border x:Name="HoverOverlay" Background="#22304C" CornerRadius="11" Opacity="0"/>
+                                <Border x:Name="HoverOverlay" Background="#20FFFFFF" CornerRadius="11" Opacity="0"/>
                                 <!-- Active Background Overlay -->
                                 <Border x:Name="ActiveOverlay" Background="#1E2A42" CornerRadius="11" Opacity="0"/>
 
@@ -251,57 +365,90 @@
         </Style>
 
         <Style x:Key="ChromeButton" TargetType="Button">
-            <Setter Property="Width" Value="38"/>
-            <Setter Property="Height" Value="30"/>
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
             <Setter Property="Padding" Value="0"/>
-            <Setter Property="Foreground" Value="{StaticResource TextSecondary}"/>
+            <Setter Property="Foreground" Value="#9AA8C6"/>
             <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="FontWeight" Value="Black"/>
-            <Setter Property="FontSize" Value="14"/>
             <Setter Property="BorderThickness" Value="0"/>
             <Setter Property="Cursor" Value="Hand"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
-                        <Border x:Name="Root"
-                                Background="{TemplateBinding Background}"
-                                BorderBrush="{TemplateBinding BorderBrush}"
-                                BorderThickness="{TemplateBinding BorderThickness}"
-                                CornerRadius="8"
-                                RenderTransformOrigin="0.5,0.5">
-                            <Border.RenderTransform>
-                                <ScaleTransform x:Name="RootScale" ScaleX="1" ScaleY="1"/>
-                            </Border.RenderTransform>
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center">
-                                <ContentPresenter.Effect>
-                                    <DropShadowEffect BlurRadius="5" ShadowDepth="2" Direction="315" Opacity="1.0" Color="Black"/>
-                                </ContentPresenter.Effect>
-                            </ContentPresenter>
-                        </Border>
+                        <Grid x:Name="RootGrid">
+                            <!-- Hover Overlay -->
+                            <Border x:Name="HoverOverlay" Background="White" Opacity="0"/>
+                            <!-- Press Overlay -->
+                            <Border x:Name="PressOverlay" Background="White" Opacity="0"/>
+                            <!-- Content -->
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="White"/>
                                 <Trigger.EnterActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="RootScale" Storyboard.TargetProperty="ScaleX" To="1.05" Duration="0:0:0.12"/>
-                                            <DoubleAnimation Storyboard.TargetName="RootScale" Storyboard.TargetProperty="ScaleY" To="1.05" Duration="0:0:0.12"/>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0.1" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.EnterActions>
                                 <Trigger.ExitActions>
                                     <BeginStoryboard>
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="RootScale" Storyboard.TargetProperty="ScaleX" To="1.0" Duration="0:0:0.12"/>
-                                            <DoubleAnimation Storyboard.TargetName="RootScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.12"/>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
                             </Trigger>
                             <Trigger Property="IsPressed" Value="True">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.8"/>
+                                <Setter TargetName="PressOverlay" Property="Opacity" Value="0.15"/>
                             </Trigger>
-                            <Trigger Property="IsEnabled" Value="False">
-                                <Setter TargetName="Root" Property="Opacity" Value="0.45"/>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="CloseChromeButton" TargetType="Button">
+            <Setter Property="Width" Value="46"/>
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Foreground" Value="#9AA8C6"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Grid x:Name="RootGrid">
+                            <!-- Hover Overlay (Red) -->
+                            <Border x:Name="HoverOverlay" Background="#E81123" Opacity="0"/>
+                            <!-- Press Overlay (Dark shade) -->
+                            <Border x:Name="PressOverlay" Background="Black" Opacity="0"/>
+                            <!-- Content -->
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Foreground" Value="White"/>
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="1.0" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard>
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="HoverOverlay" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.15"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="PressOverlay" Property="Opacity" Value="0.15"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -771,7 +918,7 @@
             </Grid.RowDefinitions>
 
             <!-- Dual-layer background parallax animation -->
-            <Canvas x:Name="AmbientParticleCanvas" Grid.RowSpan="2" IsHitTestVisible="False" Opacity="0.45">
+            <Canvas x:Name="AmbientParticleCanvas" Grid.RowSpan="2" IsHitTestVisible="False" Opacity="0.85">
                 <Canvas.RenderTransform>
                     <TranslateTransform x:Name="AmbientParticleTransform"/>
                 </Canvas.RenderTransform>
@@ -779,36 +926,61 @@
                 <!-- Glowing Layer 1 (Deep/Thick/Soft) -->
                 <Path Data="M-120,130 C180,20 330,260 650,112 S1040,160 1460,48"
                       Stroke="{StaticResource RainbowGradient}"
-                      StrokeThickness="6"
-                      Opacity="0.08"/>
+                      StrokeThickness="20"
+                      Opacity="0.5">
+                    <Path.Effect>
+                        <BlurEffect Radius="28"/>
+                    </Path.Effect>
+                </Path>
                 <!-- Glowing Layer 1 (Thin/Solid) -->
                 <Path Data="M-120,130 C180,20 330,260 650,112 S1040,160 1460,48"
                       Stroke="{StaticResource RainbowGradient}"
-                      StrokeThickness="2"
-                      Opacity="0.22"/>
+                      StrokeThickness="3.0"
+                      Opacity="0.8">
+                    <Path.Effect>
+                        <DropShadowEffect Color="#FF007F" BlurRadius="12" ShadowDepth="0" Opacity="0.65"/>
+                    </Path.Effect>
+                </Path>
 
                 <!-- Glowing Layer 2 (Deep/Thick/Soft) -->
                 <Path Data="M-80,650 C250,500 430,720 720,560 S1060,540 1420,430"
-                      Stroke="#39E7FF"
-                      StrokeThickness="5"
-                      Opacity="0.07"/>
+                      Stroke="#00F2FF"
+                      StrokeThickness="18"
+                      Opacity="0.45">
+                    <Path.Effect>
+                        <BlurEffect Radius="24"/>
+                    </Path.Effect>
+                </Path>
                 <!-- Glowing Layer 2 (Thin/Solid) -->
                 <Path Data="M-80,650 C250,500 430,720 720,560 S1060,540 1420,430"
-                      Stroke="#39E7FF"
-                      StrokeThickness="1.5"
-                      Opacity="0.18"/>
+                      Stroke="#00F2FF"
+                      StrokeThickness="2.5"
+                      Opacity="0.75">
+                    <Path.Effect>
+                        <DropShadowEffect Color="#00F2FF" BlurRadius="10" ShadowDepth="0" Opacity="0.7"/>
+                    </Path.Effect>
+                </Path>
 
-                <Rectangle Width="260" Height="2" RadiusX="1" RadiusY="1" Fill="#39E7FF" Opacity="0.25" Canvas.Left="880" Canvas.Top="154">
+                <Rectangle Width="260" Height="2" RadiusX="1" RadiusY="1" Fill="#39E7FF" Opacity="0.4" Canvas.Left="880" Canvas.Top="154">
+                    <Rectangle.Effect>
+                        <DropShadowEffect Color="#39E7FF" BlurRadius="12" ShadowDepth="0" Opacity="0.85"/>
+                    </Rectangle.Effect>
                     <Rectangle.RenderTransform>
                         <TranslateTransform x:Name="AmbientStreakTransformA"/>
                     </Rectangle.RenderTransform>
                 </Rectangle>
-                <Rectangle Width="180" Height="2" RadiusX="1" RadiusY="1" Fill="#FF3B7A" Opacity="0.22" Canvas.Left="620" Canvas.Top="690">
+                <Rectangle Width="180" Height="2" RadiusX="1" RadiusY="1" Fill="#FF3B7A" Opacity="0.35" Canvas.Left="620" Canvas.Top="690">
+                    <Rectangle.Effect>
+                        <DropShadowEffect Color="#FF3B7A" BlurRadius="12" ShadowDepth="0" Opacity="0.85"/>
+                    </Rectangle.Effect>
                     <Rectangle.RenderTransform>
                         <TranslateTransform x:Name="AmbientStreakTransformB"/>
                     </Rectangle.RenderTransform>
                 </Rectangle>
-                <Rectangle Width="140" Height="2" RadiusX="1" RadiusY="1" Fill="#FFD166" Opacity="0.18" Canvas.Left="1120" Canvas.Top="420">
+                <Rectangle Width="140" Height="2" RadiusX="1" RadiusY="1" Fill="#FFD166" Opacity="0.3" Canvas.Left="1120" Canvas.Top="420">
+                    <Rectangle.Effect>
+                        <DropShadowEffect Color="#FFD166" BlurRadius="12" ShadowDepth="0" Opacity="0.85"/>
+                    </Rectangle.Effect>
                     <Rectangle.RenderTransform>
                         <TranslateTransform x:Name="AmbientStreakTransformC"/>
                     </Rectangle.RenderTransform>
@@ -836,10 +1008,9 @@
                         </Border>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Top">
                         <Button x:Name="MinimizeButton" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
-                        <Button x:Name="MaximizeButton" Content="&#xE922;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MaximizeButton_Click"/>
-                        <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Foreground="{StaticResource DangerBrush}" Click="CloseButton_Click"/>
+                        <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource CloseChromeButton}" Click="CloseButton_Click"/>
                     </StackPanel>
                 </Grid>
             </Border>
@@ -866,6 +1037,8 @@
 
                         <StackPanel Grid.Row="1">
                             <Button x:Name="HomeNavButton" Tag="&#xE768;" Content="HOME / PLAY" Style="{StaticResource NavButton}" Click="HomeNavButton_Click" Margin="0,0,0,7"/>
+                            <Button x:Name="RoomsNavButton" Tag="&#xE716;" Content="ROOMS" Style="{StaticResource NavButton}" Click="RoomsNavButton_Click" Margin="0,0,0,7"/>
+                            <Button x:Name="LeaderboardNavButton" Tag="&#xED39;" Content="LEADERBOARD" Style="{StaticResource NavButton}" Click="LeaderboardNavButton_Click" Margin="0,0,0,7"/>
                             <Button x:Name="NewsNavButton" Tag="&#xE8A5;" Content="NEWS" Style="{StaticResource NavButton}" Click="NewsNavButton_Click" Margin="0,0,0,7"/>
                             <Button x:Name="ModsNavButton" Tag="&#xE7B8;" Content="MODS" Style="{StaticResource NavButton}" Click="ModsNavButton_Click" Margin="0,0,0,7"/>
                             <Button x:Name="LicensesNavButton" Tag="&#xE77B;" Content="MII &amp; LICENSES" Style="{StaticResource NavButton}" Click="LicensesNavButton_Click" Margin="0,0,0,7"/>
@@ -1064,7 +1237,642 @@
                                             </Border>
                                         </Grid>
                                     </StackPanel>
-                                </Grid>
+                                 </Grid>
+
+                                 <!-- ==================================================
+                                      ROOMS VIEW
+                                      ================================================== -->
+                                 <Grid x:Name="RoomsView" Visibility="Collapsed" Margin="0,0,0,10">
+                                     <Grid.RowDefinitions>
+                                         <RowDefinition Height="Auto"/>
+                                         <RowDefinition Height="*"/>
+                                     </Grid.RowDefinitions>
+
+                                     <!-- HERO STATISTICS CARD -->
+                                     <Border Grid.Row="0" Style="{StaticResource GlassCard}" Padding="0" Margin="0,0,0,18" ClipToBounds="True">
+                                         <Grid MinHeight="100">
+                                             <!-- Rainbow ambient overlay -->
+                                             <Border CornerRadius="15" Opacity="0.08">
+                                                 <Border.Background>
+                                                     <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                         <GradientStop Color="#FF0066" Offset="0.0"/>
+                                                         <GradientStop Color="#00F2FF" Offset="0.5"/>
+                                                         <GradientStop Color="#B000FF" Offset="1.0"/>
+                                                     </LinearGradientBrush>
+                                                 </Border.Background>
+                                             </Border>
+
+                                             <UniformGrid Columns="4" Margin="24,14">
+                                                 <!-- Active Rooms -->
+                                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                     <TextBlock Text="ACTIVE ROOMS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding ActiveRoomsCount, FallbackValue=0}" FontSize="32" FontWeight="Black" Foreground="#FFD166" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                                         <TextBlock.Effect>
+                                                             <DropShadowEffect BlurRadius="12" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
+                                                         </TextBlock.Effect>
+                                                     </TextBlock>
+                                                 </StackPanel>
+
+                                                 <!-- Online Players -->
+                                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                     <TextBlock Text="PLAYERS ONLINE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding OnlinePlayersCount, FallbackValue=0}" FontSize="32" FontWeight="Black" Foreground="#00F2FF" HorizontalAlignment="Center" Margin="0,4,0,0">
+                                                         <TextBlock.Effect>
+                                                             <DropShadowEffect BlurRadius="12" ShadowDepth="0" Color="#00F2FF" Opacity="0.5"/>
+                                                         </TextBlock.Effect>
+                                                     </TextBlock>
+                                                 </StackPanel>
+
+                                                 <!-- Server Status -->
+                                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                     <TextBlock Text="SERVER STATUS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"/>
+                                                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                         <!-- Glowing online dot -->
+                                                         <Ellipse Width="10" Height="10" Fill="#4DFFB0" VerticalAlignment="Center" Margin="0,0,8,0">
+                                                             <Ellipse.Effect>
+                                                                 <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#4DFFB0" Opacity="0.8"/>
+                                                             </Ellipse.Effect>
+                                                         </Ellipse>
+                                                         <TextBlock Text="{Binding ServerStatus, FallbackValue=ONLINE}" FontSize="18" FontWeight="Bold" Foreground="#4DFFB0" VerticalAlignment="Center"/>
+                                                     </StackPanel>
+                                                 </StackPanel>
+
+                                                 <!-- Last Updated -->
+                                                 <StackPanel VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                     <TextBlock Text="LAST UPDATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding LastUpdatedText, FallbackValue='--:--:--'}" FontSize="18" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" Margin="0,8,0,0"/>
+                                                 </StackPanel>
+                                             </UniformGrid>
+                                         </Grid>
+                                     </Border>
+
+                                     <!-- MAIN ROOM CONTENT (GRID ROW 1) -->
+                                     <Grid Grid.Row="1" MinHeight="400">
+
+                                         <!-- SKELETON LOADING STATE -->
+                                         <Grid Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                             <WrapPanel Orientation="Horizontal">
+                                                 <Border Style="{StaticResource SkeletonCard}" Width="290" Height="176" Margin="0,0,14,14"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Width="290" Height="176" Margin="0,0,14,14"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Width="290" Height="176" Margin="0,0,14,14"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Width="290" Height="176" Margin="0,0,14,14"/>
+                                             </WrapPanel>
+                                         </Grid>
+
+                                         <!-- EMPTY STATE -->
+                                         <Grid Visibility="{Binding IsEmpty, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                             <Border Style="{StaticResource GlassCard}" Padding="32" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="0,10">
+                                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                     <TextBlock Text="&#xF133;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                                                     <TextBlock Text="NO ACTIVE ROOMS" FontSize="18" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="There are no active multiplayer rooms at the moment. Launch the game and create a room to start!" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="450"/>
+                                                     <Button Content="Refresh Rooms" Style="{StaticResource ActionButton}" Width="160" Padding="12" Click="RoomsRefresh_Click"/>
+                                                 </StackPanel>
+                                             </Border>
+                                         </Grid>
+
+                                         <!-- ERROR STATE -->
+                                         <Grid Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                             <Border Style="{StaticResource GlassCard}" Padding="32" HorizontalAlignment="Stretch" VerticalAlignment="Top" Margin="0,10" BorderBrush="{StaticResource DangerBrush}">
+                                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                     <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="54" Foreground="{StaticResource DangerBrush}" HorizontalAlignment="Center" Margin="0,0,0,16"/>
+                                                     <TextBlock Text="CONNECTION ERROR" FontSize="18" FontWeight="Black" Foreground="{StaticResource DangerBrush}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding ErrorMessage}" FontSize="13" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,8,0,24" TextAlignment="Center" MaxWidth="500"/>
+                                                     <Button Content="Retry Connection" Style="{StaticResource ActionButton}" Width="180" Padding="12" Click="RoomsRefresh_Click"/>
+                                                 </StackPanel>
+                                             </Border>
+                                         </Grid>
+
+                                         <!-- DATA STATE (ROOMS LIST) -->
+                                         <Grid>
+                                             <Grid.Style>
+                                                 <Style TargetType="Grid">
+                                                     <Setter Property="Visibility" Value="Visible"/>
+                                                     <Style.Triggers>
+                                                         <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding IsEmpty}" Value="True">
+                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                         </DataTrigger>
+                                                     </Style.Triggers>
+                                                 </Style>
+                                             </Grid.Style>
+
+                                             <!-- Scrollable WrapPanel for cards -->
+                                             <ItemsControl ItemsSource="{Binding Rooms}">
+                                                 <ItemsControl.ItemsPanel>
+                                                     <ItemsPanelTemplate>
+                                                         <WrapPanel Orientation="Horizontal"/>
+                                                     </ItemsPanelTemplate>
+                                                 </ItemsControl.ItemsPanel>
+                                                 <ItemsControl.ItemTemplate>
+                                                     <DataTemplate>
+                                                         <Border Style="{StaticResource RoomCardBorder}">
+                                                             <Grid>
+                                                                 <Grid.RowDefinitions>
+                                                                     <RowDefinition Height="Auto"/>
+                                                                     <RowDefinition Height="*"/>
+                                                                     <RowDefinition Height="Auto"/>
+                                                                 </Grid.RowDefinitions>
+
+                                                                 <!-- Card Header -->
+                                                                 <Grid Grid.Row="0">
+                                                                     <Grid.ColumnDefinitions>
+                                                                         <ColumnDefinition Width="*"/>
+                                                                         <ColumnDefinition Width="Auto"/>
+                                                                     </Grid.ColumnDefinitions>
+                                                                     <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="15" Foreground="{StaticResource TextPrimary}" Grid.Column="0" TextTrimming="CharacterEllipsis"/>
+                                                                     <!-- Player Count Pill -->
+                                                                     <Border Grid.Column="1" Background="#202A42" CornerRadius="8" Padding="7,3" VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding DisplayPlayerCount}" FontSize="11.5" FontWeight="Bold" Foreground="#39E7FF"/>
+                                                                     </Border>
+                                                                 </Grid>
+
+                                                                 <!-- Card Body (Current Track & Info) -->
+                                                                 <StackPanel Grid.Row="1" VerticalAlignment="Center" Margin="0,10,0,0">
+                                                                     <TextBlock Text="CIRCUITO ATTUALE" FontSize="9" FontWeight="Bold" Foreground="{StaticResource TextFaint}"/>
+                                                                     <TextBlock Text="{Binding Track}" FontSize="13.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0" TextTrimming="CharacterEllipsis"/>
+                                                                     <TextBlock Text="{Binding Mode}" FontSize="11" Foreground="{StaticResource TextFaint}" Margin="0,4,0,0"/>
+                                                                 </StackPanel>
+
+                                                                 <!-- Card Footer -->
+                                                                 <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                                     <Grid.ColumnDefinitions>
+                                                                         <ColumnDefinition Width="*"/>
+                                                                         <ColumnDefinition Width="Auto"/>
+                                                                     </Grid.ColumnDefinitions>
+
+                                                                     <TextBlock Text="{Binding Region}" FontSize="11" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Grid.Column="0"/>
+                                                                     
+                                                                     <!-- Game status badge -->
+                                                                     <StackPanel Orientation="Horizontal" Grid.Column="1" VerticalAlignment="Center">
+                                                                         <Ellipse Width="7" Height="7" VerticalAlignment="Center" Margin="0,0,5,0">
+                                                                             <Ellipse.Style>
+                                                                                 <Style TargetType="Ellipse">
+                                                                                     <Setter Property="Fill" Value="#FFD166"/>
+                                                                                     <Style.Triggers>
+                                                                                         <DataTrigger Binding="{Binding IsRacing}" Value="True">
+                                                                                             <Setter Property="Fill" Value="#4DFFB0"/>
+                                                                                         </DataTrigger>
+                                                                                     </Style.Triggers>
+                                                                                 </Style>
+                                                                             </Ellipse.Style>
+                                                                         </Ellipse>
+                                                                         <TextBlock Text="{Binding Status}" FontSize="11.5" FontWeight="SemiBold" VerticalAlignment="Center">
+                                                                             <TextBlock.Style>
+                                                                                 <Style TargetType="TextBlock">
+                                                                                     <Setter Property="Foreground" Value="#FFD166"/>
+                                                                                     <Style.Triggers>
+                                                                                         <DataTrigger Binding="{Binding IsRacing}" Value="True">
+                                                                                             <Setter Property="Foreground" Value="#4DFFB0"/>
+                                                                                         </DataTrigger>
+                                                                                     </Style.Triggers>
+                                                                                 </Style>
+                                                                             </TextBlock.Style>
+                                                                         </TextBlock>
+                                                                     </StackPanel>
+                                                                 </Grid>
+                                                             </Grid>
+                                                         </Border>
+                                                     </DataTemplate>
+                                                 </ItemsControl.ItemTemplate>
+                                             </ItemsControl>
+                                         </Grid>
+                                     </Grid>
+                                 </Grid>
+
+                                 <!-- ==================================================
+                                      LEADERBOARD VIEW
+                                      ================================================== -->
+                                 <Grid x:Name="LeaderboardView" Visibility="Collapsed" Margin="0,0,0,10">
+                                     <Grid.RowDefinitions>
+                                         <RowDefinition Height="Auto"/> <!-- Podium -->
+                                         <RowDefinition Height="Auto"/> <!-- Filter toolbar -->
+                                         <RowDefinition Height="*"/>    <!-- Classifica completa -->
+                                     </Grid.RowDefinitions>
+
+                                     <!-- TOP 3 PODIUM -->
+                                     <Grid Grid.Row="0" Margin="0,0,0,24">
+                                         <Grid.ColumnDefinitions>
+                                             <ColumnDefinition Width="*"/>   <!-- 2nd Place -->
+                                             <ColumnDefinition Width="1.1*"/> <!-- 1st Place -->
+                                             <ColumnDefinition Width="*"/>   <!-- 3rd Place -->
+                                         </Grid.ColumnDefinitions>
+
+                                         <!-- 2° POSTO (SINISTRA) -->
+                                         <Border Grid.Column="0" Style="{StaticResource Podium2CardStyle}" Padding="16" Height="210" Margin="0,15,10,0" VerticalAlignment="Bottom">
+                                             <Border.Effect>
+                                                 <DropShadowEffect BlurRadius="22" ShadowDepth="0" Color="#C0C0C0" Opacity="0.18"/>
+                                             </Border.Effect>
+                                             <Grid DataContext="{Binding Top2}">
+                                                 <Grid.Style>
+                                                     <Style TargetType="Grid">
+                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                         <Style.Triggers>
+                                                             <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                                 <Setter Property="Visibility" Value="Hidden"/>
+                                                             </DataTrigger>
+                                                         </Style.Triggers>
+                                                     </Style>
+                                                 </Grid.Style>
+                                                 <StackPanel VerticalAlignment="Center">
+                                                     <!-- Circle badge for position -->
+                                                     <Border Width="30" Height="30" CornerRadius="15" Background="#88C0C0C0" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                         <TextBlock Text="2" FontSize="15" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                     </Border>
+                                                     <!-- Mii Avatar / Initials Avatar -->
+                                                     <Border Width="80" Height="80" CornerRadius="40" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True">
+                                                         <Border.Background>
+                                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                 <GradientStop Color="{Binding AvatarGradientStart, FallbackValue=#00F2FF}" Offset="0"/>
+                                                                 <GradientStop Color="{Binding AvatarGradientEnd, FallbackValue=#B000FF}" Offset="1"/>
+                                                             </LinearGradientBrush>
+                                                         </Border.Background>
+                                                         <Grid>
+                                                             <TextBlock Text="{Binding AvatarInitial, FallbackValue=?}" FontSize="28" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                 <TextBlock.Style>
+                                                                     <Style TargetType="TextBlock">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="False">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </TextBlock.Style>
+                                                             </TextBlock>
+                                                             <Image Source="{Binding AvatarImagePath}" Stretch="Uniform" RenderTransformOrigin="0.5,0.5">
+                                                                 <Image.RenderTransform>
+                                                                     <ScaleTransform ScaleX="1.28" ScaleY="1.28"/>
+                                                                 </Image.RenderTransform>
+                                                                 <Image.Style>
+                                                                     <Style TargetType="Image">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </Image.Style>
+                                                             </Image>
+                                                         </Grid>
+                                                     </Border>
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="150"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding Rank, FallbackValue=Silver}" FontSize="10" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                 </StackPanel>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- 1° POSTO (CENTRO) -->
+                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="18" Height="240" Margin="10,0,10,0" VerticalAlignment="Bottom">
+                                             <Border.Effect>
+                                                 <DropShadowEffect BlurRadius="30" ShadowDepth="0" Color="#FFD166" Opacity="0.3"/>
+                                             </Border.Effect>
+                                             <Grid DataContext="{Binding Top1}">
+                                                 <Grid.Style>
+                                                     <Style TargetType="Grid">
+                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                         <Style.Triggers>
+                                                             <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                                 <Setter Property="Visibility" Value="Hidden"/>
+                                                             </DataTrigger>
+                                                         </Style.Triggers>
+                                                     </Style>
+                                                 </Grid.Style>
+                                                 <StackPanel VerticalAlignment="Center">
+                                                     <!-- Trophy/Position Badge (coppa) -->
+                                                     <Border Width="36" Height="36" CornerRadius="18" Background="#FFD166" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                         <Border.Effect>
+                                                             <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#FFD166" Opacity="0.75"/>
+                                                         </Border.Effect>
+                                                         <TextBlock Text="&#xE94B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                     </Border>
+                                                     <!-- Mii Avatar / Initials Avatar -->
+                                                     <Border Width="96" Height="96" CornerRadius="48" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True">
+                                                         <Border.Background>
+                                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                 <GradientStop Color="{Binding AvatarGradientStart, FallbackValue=#FF0066}" Offset="0"/>
+                                                                 <GradientStop Color="{Binding AvatarGradientEnd, FallbackValue=#FF7A00}" Offset="1"/>
+                                                             </LinearGradientBrush>
+                                                         </Border.Background>
+                                                         <Grid>
+                                                             <TextBlock Text="{Binding AvatarInitial, FallbackValue=?}" FontSize="32" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                 <TextBlock.Style>
+                                                                     <Style TargetType="TextBlock">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="False">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </TextBlock.Style>
+                                                             </TextBlock>
+                                                             <Image Source="{Binding AvatarImagePath}" Stretch="Uniform" RenderTransformOrigin="0.5,0.5">
+                                                                 <Image.RenderTransform>
+                                                                     <ScaleTransform ScaleX="1.28" ScaleY="1.28"/>
+                                                                 </Image.RenderTransform>
+                                                                 <Image.Style>
+                                                                     <Style TargetType="Image">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </Image.Style>
+                                                             </Image>
+                                                         </Grid>
+                                                     </Border>
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="17" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="13.5" FontWeight="Bold" Foreground="#FFD166" HorizontalAlignment="Center" Margin="0,3,0,0">
+                                                         <TextBlock.Effect>
+                                                             <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
+                                                         </TextBlock.Effect>
+                                                     </TextBlock>
+                                                     <TextBlock Text="{Binding Rank, FallbackValue=Diamond}" FontSize="10.5" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                 </StackPanel>
+                                             </Grid>
+                                         </Border>
+
+                                         <!-- 3° POSTO (DESTRA) -->
+                                         <Border Grid.Column="2" Style="{StaticResource Podium3CardStyle}" Padding="16" Height="195" Margin="10,15,0,0" VerticalAlignment="Bottom">
+                                             <Border.Effect>
+                                                 <DropShadowEffect BlurRadius="18" ShadowDepth="0" Color="#CD7F32" Opacity="0.15"/>
+                                             </Border.Effect>
+                                             <Grid DataContext="{Binding Top3}">
+                                                 <Grid.Style>
+                                                     <Style TargetType="Grid">
+                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                         <Style.Triggers>
+                                                             <DataTrigger Binding="{Binding}" Value="{x:Null}">
+                                                                 <Setter Property="Visibility" Value="Hidden"/>
+                                                             </DataTrigger>
+                                                         </Style.Triggers>
+                                                     </Style>
+                                                 </Grid.Style>
+                                                 <StackPanel VerticalAlignment="Center">
+                                                     <!-- Circle badge for position -->
+                                                     <Border Width="28" Height="28" CornerRadius="14" Background="#88CD7F32" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                         <TextBlock Text="3" FontSize="14" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                     </Border>
+                                                     <!-- Mii Avatar / Initials Avatar -->
+                                                     <Border Width="80" Height="80" CornerRadius="40" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True">
+                                                         <Border.Background>
+                                                             <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                 <GradientStop Color="{Binding AvatarGradientStart, FallbackValue=#00FF66}" Offset="0"/>
+                                                                 <GradientStop Color="{Binding AvatarGradientEnd, FallbackValue=#00F2FF}" Offset="1"/>
+                                                             </LinearGradientBrush>
+                                                         </Border.Background>
+                                                         <Grid>
+                                                             <TextBlock Text="{Binding AvatarInitial, FallbackValue=?}" FontSize="28" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                 <TextBlock.Style>
+                                                                     <Style TargetType="TextBlock">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="False">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </TextBlock.Style>
+                                                             </TextBlock>
+                                                             <Image Source="{Binding AvatarImagePath}" Stretch="Uniform" RenderTransformOrigin="0.5,0.5">
+                                                                 <Image.RenderTransform>
+                                                                     <ScaleTransform ScaleX="1.28" ScaleY="1.28"/>
+                                                                 </Image.RenderTransform>
+                                                                 <Image.Style>
+                                                                     <Style TargetType="Image">
+                                                                         <Setter Property="Visibility" Value="Collapsed"/>
+                                                                         <Style.Triggers>
+                                                                             <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                                 <Setter Property="Visibility" Value="Visible"/>
+                                                                             </DataTrigger>
+                                                                         </Style.Triggers>
+                                                                     </Style>
+                                                                 </Image.Style>
+                                                             </Image>
+                                                         </Grid>
+                                                     </Border>
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding Rank, FallbackValue=Gold}" FontSize="9.5" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                 </StackPanel>
+                                             </Grid>
+                                         </Border>
+                                     </Grid>
+
+                                     <!-- FILTER TOOLBAR (ROW 1) -->
+                                     <Border Grid.Row="1" Style="{StaticResource GlassCard}" Padding="12" Margin="0,0,0,16">
+                                         <Grid>
+                                             <Grid.ColumnDefinitions>
+                                                 <ColumnDefinition Width="*"/>      <!-- Search -->
+                                                 <ColumnDefinition Width="Auto"/>   <!-- Sort combo -->
+                                                 <ColumnDefinition Width="Auto"/>   <!-- Reload button -->
+                                             </Grid.ColumnDefinitions>
+
+                                             <!-- Search input -->
+                                             <Border Background="{StaticResource InputBrush}" CornerRadius="8" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" Grid.Column="0" Height="36" Margin="0,0,10,0">
+                                                 <Grid Margin="10,0">
+                                                     <Grid.ColumnDefinitions>
+                                                         <ColumnDefinition Width="Auto"/>
+                                                         <ColumnDefinition Width="*"/>
+                                                     </Grid.ColumnDefinitions>
+                                                     <TextBlock Text="&#xE11A;" FontFamily="Segoe MDL2 Assets" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                     <TextBox Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}" Background="Transparent" BorderThickness="0" Foreground="White" CaretBrush="White" VerticalContentAlignment="Center" Grid.Column="1" FontSize="13"/>
+                                                 </Grid>
+                                             </Border>
+
+                                             <!-- Sort combo -->
+                                             <ComboBox ItemsSource="{Binding Sorts}" SelectedItem="{Binding SelectedSort}" Style="{StaticResource CustomComboBox}" Width="150" Height="36" Margin="0,0,10,0" Grid.Column="1" VerticalContentAlignment="Center"/>
+
+                                             <!-- Manual Reload Button -->
+                                             <Button Content="&#xE149;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource ActionButton}" Padding="0" Width="36" Height="36" FontSize="14" Grid.Column="2" Click="LeaderboardRefresh_Click" ToolTip="Reload Rankings"/>
+                                         </Grid>
+                                     </Border>
+
+                                     <!-- CLASSIFICA COMPLETA (ROW 2) -->
+                                     <Grid Grid.Row="2" MinHeight="250">
+                                         <!-- Loading state -->
+                                         <Grid Visibility="{Binding IsLoading, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                             <StackPanel>
+                                                 <Border Style="{StaticResource SkeletonCard}" Height="48" Margin="0,0,0,10"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Height="48" Margin="0,0,0,10"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Height="48" Margin="0,0,0,10"/>
+                                                 <Border Style="{StaticResource SkeletonCard}" Height="48" Margin="0,0,0,10"/>
+                                             </StackPanel>
+                                         </Grid>
+
+                                         <!-- Error State -->
+                                         <Grid Visibility="{Binding HasError, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                             <Border Style="{StaticResource GlassCard}" Padding="24" BorderBrush="{StaticResource DangerBrush}" Margin="0,10">
+                                                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                     <TextBlock Text="&#xE783;" FontFamily="Segoe MDL2 Assets" FontSize="44" Foreground="{StaticResource DangerBrush}" HorizontalAlignment="Center" Margin="0,0,0,12"/>
+                                                     <TextBlock Text="COULD NOT LOAD LEADERBOARD" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
+                                                     <TextBlock Text="{Binding ErrorMessage}" FontSize="12" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,6,0,18" TextAlignment="Center"/>
+                                                     <Button Content="Retry" Style="{StaticResource ActionButton}" Width="120" Padding="10" Click="LeaderboardRefresh_Click"/>
+                                                 </StackPanel>
+                                             </Border>
+                                         </Grid>
+
+                                         <!-- Rankings List -->
+                                         <Grid>
+                                             <Grid.Style>
+                                                 <Style TargetType="Grid">
+                                                     <Setter Property="Visibility" Value="Visible"/>
+                                                     <Style.Triggers>
+                                                         <DataTrigger Binding="{Binding IsLoading}" Value="True">
+                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                         </DataTrigger>
+                                                         <DataTrigger Binding="{Binding HasError}" Value="True">
+                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                         </DataTrigger>
+                                                     </Style.Triggers>
+                                                 </Style>
+                                             </Grid.Style>
+
+                                             <DockPanel>
+                                                 <!-- Column Headers -->
+                                                 <Grid DockPanel.Dock="Top" Margin="14,0,14,8">
+                                                     <Grid.ColumnDefinitions>
+                                                         <ColumnDefinition Width="45"/>  <!-- POS -->
+                                                         <ColumnDefinition Width="72"/>  <!-- Avatar -->
+                                                         <ColumnDefinition Width="*"/>   <!-- Player Name -->
+                                                         <ColumnDefinition Width="110"/> <!-- POINTS -->
+                                                         <ColumnDefinition Width="90"/>  <!-- WINS -->
+                                                         <ColumnDefinition Width="90"/>  <!-- RACES -->
+                                                         <ColumnDefinition Width="90"/>  <!-- WINRATE -->
+                                                         <ColumnDefinition Width="100"/> <!-- RANK -->
+                                                     </Grid.ColumnDefinitions>
+                                                     
+                                                     <TextBlock Text="POS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
+                                                     <TextBlock Text="PLAYER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left"/>
+                                                     <TextBlock Text="POINTS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="3"/>
+                                                     <TextBlock Text="WINS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
+                                                     <TextBlock Text="RACES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
+                                                     <TextBlock Text="WINRATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
+                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="7"/>
+                                                 </Grid>
+                                                 
+                                                 <!-- Scrollable List of Ranks -->
+                                                 <ItemsControl ItemsSource="{Binding Players}">
+                                                 <ItemsControl.ItemsPanel>
+                                                     <ItemsPanelTemplate>
+                                                         <VirtualizingStackPanel/>
+                                                     </ItemsPanelTemplate>
+                                                 </ItemsControl.ItemsPanel>
+                                                 <ItemsControl.ItemTemplate>
+                                                     <DataTemplate>
+                                                         <Border Style="{StaticResource LeaderboardRowBorder}">
+                                                             <Grid>
+                                                                 <Grid.ColumnDefinitions>
+                                                                     <ColumnDefinition Width="45"/>  <!-- Position -->
+                                                                     <ColumnDefinition Width="72"/>  <!-- Avatar -->
+                                                                     <ColumnDefinition Width="*"/>   <!-- Player Name -->
+                                                                     <ColumnDefinition Width="110"/> <!-- Points -->
+                                                                     <ColumnDefinition Width="90"/>  <!-- Wins -->
+                                                                     <ColumnDefinition Width="90"/>  <!-- Races -->
+                                                                     <ColumnDefinition Width="90"/>  <!-- Winrate -->
+                                                                     <ColumnDefinition Width="100"/> <!-- Rank -->
+                                                                 </Grid.ColumnDefinitions>
+
+                                                                 <!-- Position -->
+                                                                 <TextBlock Text="{Binding Position}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Grid.Column="0">
+                                                                     <TextBlock.Style>
+                                                                         <Style TargetType="TextBlock">
+                                                                             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
+                                                                             <Style.Triggers>
+                                                                                 <DataTrigger Binding="{Binding IsSelf}" Value="True">
+                                                                                     <Setter Property="Foreground" Value="#00F2FF"/>
+                                                                                 </DataTrigger>
+                                                                             </Style.Triggers>
+                                                                         </Style>
+                                                                     </TextBlock.Style>
+                                                                 </TextBlock>
+
+                                                                 <!-- Avatar -->
+                                                                 <Border Grid.Column="1" Width="56" Height="56" CornerRadius="28" HorizontalAlignment="Left" VerticalAlignment="Center" ClipToBounds="True">
+                                                                     <Border.Background>
+                                                                         <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
+                                                                             <GradientStop Color="{Binding AvatarGradientStart}" Offset="0"/>
+                                                                             <GradientStop Color="{Binding AvatarGradientEnd}" Offset="1"/>
+                                                                         </LinearGradientBrush>
+                                                                     </Border.Background>
+                                                                     <Grid>
+                                                                         <TextBlock Text="{Binding AvatarInitial}" FontSize="20" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                                             <TextBlock.Style>
+                                                                                 <Style TargetType="TextBlock">
+                                                                                     <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                     <Style.Triggers>
+                                                                                         <DataTrigger Binding="{Binding HasAvatarImage}" Value="False">
+                                                                                             <Setter Property="Visibility" Value="Visible"/>
+                                                                                         </DataTrigger>
+                                                                                     </Style.Triggers>
+                                                                                 </Style>
+                                                                             </TextBlock.Style>
+                                                                         </TextBlock>
+                                                                         <Image Source="{Binding AvatarImagePath}" Stretch="Uniform" RenderTransformOrigin="0.5,0.5">
+                                                                             <Image.RenderTransform>
+                                                                                 <ScaleTransform ScaleX="1.28" ScaleY="1.28"/>
+                                                                             </Image.RenderTransform>
+                                                                             <Image.Style>
+                                                                                 <Style TargetType="Image">
+                                                                                     <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                     <Style.Triggers>
+                                                                                         <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                                             <Setter Property="Visibility" Value="Visible"/>
+                                                                                         </DataTrigger>
+                                                                                     </Style.Triggers>
+                                                                                 </Style>
+                                                                             </Image.Style>
+                                                                         </Image>
+                                                                     </Grid>
+                                                                 </Border>
+
+                                                                 <!-- Player Name -->
+                                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                                     <StackPanel Orientation="Horizontal">
+                                                                         <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
+                                                                         <!-- "YOU" Badge -->
+                                                                         <Border Background="{StaticResource RainbowGradient}" CornerRadius="4" Padding="5,2" Margin="10,0,0,0" VerticalAlignment="Center" Visibility="{Binding IsSelf, Converter={StaticResource BooleanToVisibilityConverter}}">
+                                                                             <TextBlock Text="YOU" FontSize="9.5" FontWeight="Black" Foreground="White"/>
+                                                                         </Border>
+                                                                     </StackPanel>
+                                                                     <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0"/>
+                                                                 </StackPanel>
+
+                                                                 <!-- Points -->
+                                                                 <TextBlock Text="{Binding DisplayPoints}" FontSize="13.5" FontWeight="Bold" Foreground="#00F2FF" VerticalAlignment="Center" Grid.Column="3"/>
+
+                                                                 <!-- Wins -->
+                                                                 <TextBlock Text="{Binding Wins}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="4"/>
+
+                                                                 <!-- Races -->
+                                                                 <TextBlock Text="{Binding Races}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="5"/>
+
+                                                                 <!-- Winrate -->
+                                                                 <TextBlock Text="{Binding WinRatePercent}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="6"/>
+
+                                                                 <!-- Rank -->
+                                                                 <Border Background="#152033" CornerRadius="6" Padding="8,4" HorizontalAlignment="Left" VerticalAlignment="Center" Grid.Column="7">
+                                                                     <TextBlock Text="{Binding Rank}" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                                 </Border>
+                                                             </Grid>
+                                                         </Border>
+                                                     </DataTemplate>
+                                                 </ItemsControl.ItemTemplate>
+                                             </ItemsControl>
+                                         </DockPanel>
+                                     </Grid>
+                                 </Grid>
+                             </Grid>
 
                                 <Grid x:Name="NewsView" Visibility="Collapsed">
                                     <StackPanel MaxWidth="920" MinWidth="700" HorizontalAlignment="Center">
@@ -1319,10 +2127,10 @@
                                                                                               </Style.Triggers>
                                                                                           </Style>
                                                                                       </Border.Style>
-                                                                                      <StackPanel Orientation="Horizontal">
-                                                                                          <TextBlock Text="&#xE168;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="#39E7FF" VerticalAlignment="Center" Margin="0,0,6,0"/>
-                                                                                          <TextBlock Text="{Binding FriendCode}" FontFamily="Consolas" FontSize="13" FontWeight="Bold" Foreground="#39E7FF" VerticalAlignment="Center"/>
-                                                                                      </StackPanel>
+                                                                                       <StackPanel Orientation="Horizontal">
+                                                                                           <TextBlock Text="FC" FontFamily="Segoe UI" FontSize="11" FontWeight="Black" Foreground="#39E7FF" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                                                           <TextBlock Text="{Binding FriendCode}" FontFamily="Consolas" FontSize="13" FontWeight="Bold" Foreground="#39E7FF" VerticalAlignment="Center"/>
+                                                                                       </StackPanel>
                                                                                   </Border>
                                                                                   <TextBlock Text="{Binding Subtitle}" Foreground="{StaticResource TextFaint}" FontSize="12" TextWrapping="Wrap" Margin="0,7,0,0"/>
                                                                                   <!-- Hide AvatarStatus when rendered or avatar is loaded -->
@@ -1434,7 +2242,8 @@
                                                           ScrollViewer.HorizontalScrollBarVisibility="Disabled"
                                                           ScrollViewer.VerticalScrollBarVisibility="Disabled"
                                                           SelectionChanged="MiiCardsListBox_SelectionChanged"
-                                                          MouseDoubleClick="MiiCardsListBox_MouseDoubleClick">
+                                                          MouseDoubleClick="MiiCardsListBox_MouseDoubleClick"
+                                                          PreviewMouseWheel="MiiCardsListBox_PreviewMouseWheel">
                                                      <ListBox.Template>
                                                          <ControlTemplate TargetType="ListBox">
                                                              <Border Name="Bd" Background="Transparent" BorderThickness="0" ClipToBounds="False">

@@ -997,6 +997,30 @@ public partial class MiiEditorWindow : Window
 
 
 
+    private void ScrollViewer_PreviewMouseWheel(object sender, System.Windows.Input.MouseWheelEventArgs e)
+    {
+        if (sender is ScrollViewer scrollViewer)
+        {
+            if (scrollViewer.VerticalScrollBarVisibility != ScrollBarVisibility.Disabled && scrollViewer.ScrollableHeight > 0)
+            {
+                e.Handled = true;
+                int lines = Math.Abs(e.Delta) / 40;
+                if (lines == 0) lines = 1;
+                for (int i = 0; i < lines; i++)
+                {
+                    if (e.Delta < 0)
+                    {
+                        scrollViewer.LineDown();
+                    }
+                    else
+                    {
+                        scrollViewer.LineUp();
+                    }
+                }
+            }
+        }
+    }
+
     private MessageBoxResult ShowCustomDialog(string title, string message, MessageBoxButton buttons = MessageBoxButton.OK)
     {
         var dialog = new CustomDialog(title, message, buttons)

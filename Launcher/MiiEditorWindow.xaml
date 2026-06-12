@@ -23,13 +23,13 @@
         <SolidColorBrush x:Key="EditorStroke" Color="#31405F"/>
 
         <LinearGradientBrush x:Key="EditorRainbow" StartPoint="0,0" EndPoint="1,0">
-            <GradientStop Offset="0.00" Color="#FF3B7A"/>
-            <GradientStop Offset="0.18" Color="#FFB84A"/>
-            <GradientStop Offset="0.35" Color="#F7FF57"/>
-            <GradientStop Offset="0.52" Color="#4DFF8D"/>
-            <GradientStop Offset="0.68" Color="#39E7FF"/>
-            <GradientStop Offset="0.84" Color="#5A6DFF"/>
-            <GradientStop Offset="1.00" Color="#C65CFF"/>
+            <GradientStop Offset="0.00" Color="#FF0066"/>
+            <GradientStop Offset="0.18" Color="#FF8800"/>
+            <GradientStop Offset="0.35" Color="#FFEA00"/>
+            <GradientStop Offset="0.52" Color="#00FF66"/>
+            <GradientStop Offset="0.68" Color="#00F2FF"/>
+            <GradientStop Offset="0.84" Color="#3300FF"/>
+            <GradientStop Offset="1.00" Color="#B000FF"/>
         </LinearGradientBrush>
 
         <LinearGradientBrush x:Key="EditorBackground" StartPoint="0,0" EndPoint="1,1">
@@ -141,7 +141,7 @@
                     <ControlTemplate TargetType="Button">
                         <Grid Margin="2">
                             <!-- Rainbow Neon Glow Backdrop -->
-                            <Border x:Name="GlowBorder" CornerRadius="10" Background="{StaticResource EditorRainbow}" Opacity="0.25" Margin="-4">
+                            <Border x:Name="GlowBorder" CornerRadius="10" Background="{StaticResource EditorRainbow}" Opacity="0.35" Margin="-4">
                                 <Border.Effect>
                                     <BlurEffect Radius="10"/>
                                 </Border.Effect>
@@ -175,7 +175,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1.03" Duration="0:0:0.15">
                                                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                             </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="GlowBorder" Storyboard.TargetProperty="Opacity" To="0.65" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetName="GlowBorder" Storyboard.TargetProperty="Opacity" To="0.80" Duration="0:0:0.15"/>
                                             <ColorAnimation Storyboard.TargetName="CardBorder" Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)" To="#1F2C4C" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -189,7 +189,7 @@
                                             <DoubleAnimation Storyboard.TargetName="ButtonScale" Storyboard.TargetProperty="ScaleY" To="1.0" Duration="0:0:0.15">
                                                 <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                             </DoubleAnimation>
-                                            <DoubleAnimation Storyboard.TargetName="GlowBorder" Storyboard.TargetProperty="Opacity" To="0.25" Duration="0:0:0.15"/>
+                                            <DoubleAnimation Storyboard.TargetName="GlowBorder" Storyboard.TargetProperty="Opacity" To="0.35" Duration="0:0:0.15"/>
                                             <ColorAnimation Storyboard.TargetName="CardBorder" Storyboard.TargetProperty="(Border.Background).(SolidColorBrush.Color)" To="#151E33" Duration="0:0:0.15"/>
                                         </Storyboard>
                                     </BeginStoryboard>
@@ -525,6 +525,10 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <Style TargetType="ScrollViewer">
+            <EventSetter Event="PreviewMouseWheel" Handler="ScrollViewer_PreviewMouseWheel"/>
+        </Style>
     </Window.Resources>
 
     <Grid Background="{StaticResource EditorBackground}">
@@ -575,7 +579,7 @@
                             <Border CornerRadius="12" Background="#0B1020" BorderBrush="#3A4A6D" BorderThickness="1.5" ClipToBounds="True" Effect="{StaticResource EditorSoftShadow}">
                                 <Grid>
                                     <Rectangle Fill="{StaticResource EditorRainbow}" Opacity="0.14"/>
-                                    <Image x:Name="PreviewImage" Stretch="Uniform" Margin="14" RenderOptions.BitmapScalingMode="HighQuality"/>
+                                    <Image x:Name="PreviewImage" Stretch="Uniform" Margin="14" RenderOptions.BitmapScalingMode="Fant" UseLayoutRounding="True"/>
                                     <TextBlock x:Name="PreviewPlaceholderTextBlock" Text="Rendering..." FontSize="16" FontWeight="Black" Foreground="{StaticResource EditorTextSecondary}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                 </Grid>
                             </Border>

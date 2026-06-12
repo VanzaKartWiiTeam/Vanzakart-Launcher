@@ -4,7 +4,7 @@ public sealed class LauncherNavigationService
 {
     public event Action<string>? Navigated;
 
-    public string CurrentTab { get; private set; } = "Home";
+    public string CurrentTab { get; set; } = "Home";
 
     public void Navigate(string tab)
     {

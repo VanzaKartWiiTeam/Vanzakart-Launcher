@@ -13,4 +13,5 @@ public class UserPreferences
     public DateTime? LastPlayedUtc { get; set; }
     public int LaunchCount { get; set; }
     public double TotalPlayTimeMinutes { get; set; }
+    public string LastKnownLatestModVersion { get; set; } = string.Empty;
 }
