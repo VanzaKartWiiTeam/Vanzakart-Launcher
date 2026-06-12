@@ -1096,8 +1096,7 @@
                                                 </Border>
 
                                                 <StackPanel Margin="34,32" VerticalAlignment="Center">
-                                                    <TextBlock Text="VANZAKART" FontSize="50" FontWeight="Black"/>
-                                                    <TextBlock Text="Arcade racing, one click away." FontSize="17" Foreground="{StaticResource TextSecondary}" Margin="0,8,0,30"/>
+                                                    <TextBlock Text="VANZAKART" FontSize="50" FontWeight="Black" Height="86"/>
 
                                                     <Button x:Name="LaunchButton"
                                                             Content="PLAY"
