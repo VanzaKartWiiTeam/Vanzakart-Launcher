@@ -38,6 +38,7 @@ public partial class MainWindow : Window
     private readonly ShellViewModel _shellViewModel = new();
     private readonly RoomsViewModel _roomsViewModel;
     private readonly LeaderboardViewModel _leaderboardViewModel;
+    private readonly FriendsViewModel _friendsViewModel;
     private readonly ObservableCollection<NewsItem> _visibleNews = new();
     private readonly List<NewsItem> _allNews = new();
     private readonly ObservableCollection<SaveProfileInfo> _licenseCards = new();
@@ -81,6 +82,7 @@ public partial class MainWindow : Window
 
         _roomsViewModel = new RoomsViewModel(_networkService);
         _leaderboardViewModel = new LeaderboardViewModel(_networkService);
+        _friendsViewModel = new FriendsViewModel(_networkService);
 
         // Verify if a mod update is required based on last known version from check
         var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
@@ -94,6 +96,7 @@ public partial class MainWindow : Window
 
         RoomsView.DataContext = _roomsViewModel;
         LeaderboardView.DataContext = _leaderboardViewModel;
+        FriendsView.DataContext = _friendsViewModel;
 
         VersionBadgeTextBlock.Text = $"Launcher v{LauncherConfig.CurrentLauncherVersion}";
         DebugNavButton.Visibility = Debugger.IsAttached ? Visibility.Visible : Visibility.Collapsed;
@@ -190,6 +193,7 @@ public partial class MainWindow : Window
     private void NewsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("News");
     private void ModsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Mods");
     private void LicensesNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Licenses");
+    private void FriendsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Friends");
     private void SettingsNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Settings");
     private void DebugNavButton_Click(object sender, RoutedEventArgs e) => _navigationService.Navigate("Debug");
 
@@ -227,6 +231,7 @@ public partial class MainWindow : Window
         NewsView.Visibility = Visibility.Collapsed;
         ModsView.Visibility = Visibility.Collapsed;
         LicensesView.Visibility = Visibility.Collapsed;
+        FriendsView.Visibility = Visibility.Collapsed;
         SettingsView.Visibility = Visibility.Collapsed;
         DebugView.Visibility = Visibility.Collapsed;
 
@@ -264,6 +269,12 @@ public partial class MainWindow : Window
                 PageTitleTextBlock.Text = "Mii & Licenses";
                 PageSubtitleTextBlock.Text = "Back up or import your saves and customize your miis.";
                 RefreshLicenseView();
+                break;
+            case "Friends":
+                view = FriendsView;
+                PageTitleTextBlock.Text = "Friends";
+                PageSubtitleTextBlock.Text = "Manage your Dolphin friend list locally.";
+                _friendsViewModel?.LoadFriends();
                 break;
             case "Settings":
                 view = SettingsView;
@@ -306,6 +317,7 @@ public partial class MainWindow : Window
             ["News"] = NewsNavButton,
             ["Mods"] = ModsNavButton,
             ["Licenses"] = LicensesNavButton,
+            ["Friends"] = FriendsNavButton,
             ["Settings"] = SettingsNavButton,
             ["Debug"] = DebugNavButton
         };
@@ -586,11 +598,42 @@ public partial class MainWindow : Window
             PrimaryLicenseTextBlock.Text = "No local license detected yet.";
             PrimaryLicensePathTextBlock.Text = string.Empty;
             QueueLicenseAvatarRender(settings);
+            if (_friendsViewModel != null)
+            {
+                _friendsViewModel.ActiveLicense = null;
+            }
             return;
         }
 
         LicenseSummaryTextBlock.Text = $"{profiles.Count} Dolphin license card(s) detected.";
-        var selected = profiles.FirstOrDefault();
+
+        var previousActiveSlot = _friendsViewModel?.ActiveLicense?.SlotIndex;
+        var previousActivePath = _friendsViewModel?.ActiveLicense?.FilePath;
+
+        SaveProfileInfo? newActive = null;
+        if (previousActiveSlot.HasValue && !string.IsNullOrEmpty(previousActivePath))
+        {
+            newActive = _allLicenseCards.FirstOrDefault(p => p.SlotIndex == previousActiveSlot.Value && p.FilePath == previousActivePath && !p.IsEmpty);
+        }
+
+        if (newActive == null)
+        {
+            newActive = _allLicenseCards.FirstOrDefault(p => !p.IsEmpty);
+        }
+
+        if (newActive != null)
+        {
+            SetActiveLicense(newActive);
+        }
+        else
+        {
+            if (_friendsViewModel != null)
+            {
+                _friendsViewModel.ActiveLicense = null;
+            }
+        }
+
+        var selected = newActive ?? profiles.FirstOrDefault();
         PrimaryLicenseTextBlock.Text = selected == null
             ? string.Empty
             : $"{selected.DisplayName} - {FormatBytes(selected.SizeBytes)} - {selected.LastModifiedUtc.ToLocalTime():g}";
@@ -672,6 +715,63 @@ public partial class MainWindow : Window
         catch
         {
         }
+    }
+
+    private void LicenseCard_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.DataContext is SaveProfileInfo profile)
+        {
+            if (profile.IsEmpty)
+            {
+                return;
+            }
+            SetActiveLicense(profile);
+        }
+    }
+
+    private void SetActiveLicense(SaveProfileInfo profile)
+    {
+        foreach (var card in _allLicenseCards)
+        {
+            card.IsActive = (card == profile);
+        }
+        foreach (var card in _licenseCards)
+        {
+            card.IsActive = (card == profile);
+        }
+        if (_friendsViewModel != null)
+        {
+            _friendsViewModel.ActiveLicense = profile;
+        }
+    }
+
+    private async void AddFriendButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_friendsViewModel != null)
+        {
+            await _friendsViewModel.AddFriendAsync();
+        }
+    }
+
+    private async void RemoveFriendButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is FrameworkElement element && element.DataContext is FriendPlayerInfo friend)
+        {
+            if (_friendsViewModel != null)
+            {
+                await _friendsViewModel.RemoveFriendAsync(friend);
+            }
+        }
+    }
+
+    private void SelectLicenseRedirect_Click(object sender, RoutedEventArgs e)
+    {
+        _navigationService.Navigate("Licenses");
+    }
+
+    private void OpenFriendsViewButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        _navigationService.Navigate("Friends");
     }
 
     private async void QueueLicenseAvatarRender(LauncherSettings settings)

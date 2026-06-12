@@ -143,6 +143,30 @@ public sealed class MkwiiSaveParserService
 
             if (Encoding.ASCII.GetString(data, rkpdOffset, RkpdMagic.Length) != RkpdMagic)
             {
+                cards.Add(new SaveProfileInfo
+                {
+                    DisplayName = "Vuota",
+                    Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
+                    FilePath = rksysPath,
+                    SourceLabel = "Dolphin save",
+                    MiiName = "Nessun Mii",
+                    AvatarInitial = " ",
+                    AvatarImagePath = string.Empty,
+                    AvatarStatus = "Empty slot",
+                    AccentColor = "#555555",
+                    FriendCode = string.Empty,
+                    ProfileId = 0,
+                    MiiId = 0,
+                    Vr = 0,
+                    Br = 0,
+                    Races = 0,
+                    Wins = 0,
+                    LastModifiedUtc = fileInfo.LastWriteTimeUtc,
+                    SizeBytes = fileInfo.Length,
+                    IsLauncherManaged = false,
+                    SlotIndex = slot,
+                    IsEmpty = true
+                });
                 continue;
             }
 
@@ -157,6 +181,30 @@ public sealed class MkwiiSaveParserService
             miiDatabase.TryGetValue(miiId, out var mii);
             if (string.IsNullOrWhiteSpace(licenseName) && mii == null && profileId == 0)
             {
+                cards.Add(new SaveProfileInfo
+                {
+                    DisplayName = "Vuota",
+                    Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
+                    FilePath = rksysPath,
+                    SourceLabel = "Dolphin save",
+                    MiiName = "Nessun Mii",
+                    AvatarInitial = " ",
+                    AvatarImagePath = string.Empty,
+                    AvatarStatus = "Empty slot",
+                    AccentColor = "#555555",
+                    FriendCode = string.Empty,
+                    ProfileId = 0,
+                    MiiId = 0,
+                    Vr = 0,
+                    Br = 0,
+                    Races = 0,
+                    Wins = 0,
+                    LastModifiedUtc = fileInfo.LastWriteTimeUtc,
+                    SizeBytes = fileInfo.Length,
+                    IsLauncherManaged = false,
+                    SlotIndex = slot,
+                    IsEmpty = true
+                });
                 continue;
             }
 
@@ -191,7 +239,9 @@ public sealed class MkwiiSaveParserService
                 Wins = wins,
                 LastModifiedUtc = fileInfo.LastWriteTimeUtc,
                 SizeBytes = fileInfo.Length,
-                IsLauncherManaged = false
+                IsLauncherManaged = false,
+                SlotIndex = slot,
+                IsEmpty = false
             });
         }
 
