@@ -9,13 +9,19 @@
         MinHeight="840"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None"
-        AllowsTransparency="True"
-        Background="Transparent"
+        Background="#0A0F1E"
         Icon="/Assets/app.ico"
         UseLayoutRounding="True"
         TextOptions.TextFormattingMode="Display"
         TextOptions.TextRenderingMode="ClearType"
         RenderOptions.BitmapScalingMode="HighQuality">
+
+    <WindowChrome.WindowChrome>
+        <WindowChrome CaptionHeight="48"
+                      ResizeBorderThickness="6"
+                      GlassFrameThickness="0,0,0,1"
+                      CornerRadius="0"/>
+    </WindowChrome.WindowChrome>
 
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BooleanToVisibilityConverter"/>
@@ -987,7 +993,7 @@
                         </Border>
                     </StackPanel>
 
-                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0">
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,6,0" WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="MinimizeButton" Content="&#xE921;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource ChromeButton}" Click="MinimizeButton_Click"/>
                         <Button x:Name="CloseButton" Content="&#xE8BB;" FontFamily="Segoe MDL2 Assets" FontSize="10" Style="{StaticResource CloseChromeButton}" Click="CloseButton_Click"/>
                     </StackPanel>
@@ -1530,7 +1536,7 @@
                                                          <Border.Effect>
                                                              <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#FFD166" Opacity="0.75"/>
                                                          </Border.Effect>
-                                                         <TextBlock Text="&#xE94B;" FontFamily="Segoe MDL2 Assets" FontSize="18" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                         <TextBlock Text="1" FontSize="18" FontWeight="Black" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                      </Border>
                                                      <!-- Mii Avatar / Initials Avatar -->
                                                      <Border Width="96" Height="96" CornerRadius="48" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True">
