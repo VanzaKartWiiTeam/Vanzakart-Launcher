@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text.Json;
 using System.Windows;
@@ -64,6 +65,9 @@ public partial class MainWindow : Window
     private string _latestModUrl = LauncherConfig.ModUrl;
     private string[] _latestModMirrors = Array.Empty<string>();
     private string _latestModSha256 = string.Empty;
+    private string _latestModManifestUrl = LauncherConfig.ModManifestUrl;
+    private string _latestModFilesUrl = LauncherConfig.ModFilesUrl;
+    private string[] _latestModFilesMirrors = Array.Empty<string>();
     private string _latestLauncherUrl = LauncherConfig.LauncherZipUrl;
     private string[] _latestLauncherMirrors = Array.Empty<string>();
     private string[] _latestChangelog = Array.Empty<string>();
@@ -1046,48 +1050,177 @@ public partial class MainWindow : Window
                 }
             }
 
-            // ── STEP 2: download ──────────────────────────────────────────────────────────────
-            SetUpdateState("Download", "Downloading modpack...", 5);
-            var downloadProgress = new Progress<(long current, long total)>(
-                p => UpdateDownloadProgress(p.current, p.total));
+            ModUpdateResult result;
+            ModManifest? manifest = null;
 
-            await _networkService.DownloadFileWithResumeAsync(
-                BuildModMirrorList(), _tempZipPath, downloadProgress);
+            if (isUpdate && !string.IsNullOrWhiteSpace(_latestModManifestUrl))
+            {
+                try
+                {
+                    SetUpdateState("Download", "Downloading update manifest...", 5);
+                    SetStatus("Fetching update manifest", (WpfBrush)FindResource("TextSecondary"));
 
-            // ── STEP 3: integrity check ────────────────────────────────────────────────
-            SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
-            SetUpdateState("Verifying", "Checking archive integrity...", 96);
-            await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
+                    var manifestJson = await _networkService.DownloadStringAsync(_latestModManifestUrl);
+                    manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson);
+                }
+                catch (Exception ex)
+                {
+                    await WriteUpdateLogAsync($"Manifest download failed: {ex.Message}. Falling back to full ZIP.");
+                }
+            }
 
-            // ── STEP 4: selective extraction ──────────────────────────────────────────────
-            DownloadProgressBar.IsIndeterminate = false;
-            DownloadProgressBar.Value = 0;
-            SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
-            SetUpdateState(
-                isUpdate ? "Updating" : "Installing",
-                isUpdate
-                    ? "Replacing modpack files (user data is not affected)..."
-                    : "Writing modpack files to Riivolution folder...",
-                0);
+            if (isUpdate && manifest != null)
+            {
+                // ── STEP 2: differential update ──
+                SetUpdateState("Verifying", "Scanning local files...", 8);
+                SetStatus("Verifying local installation", (WpfBrush)FindResource("TextSecondary"));
 
-            var extractProgress = new Progress<int>(p =>
+                var localFiles = await _modUpdateSafetyService.ScanLocalFilesAsync(modSubFolder);
+
+                // Diff files
+                var filesToDownload = new List<ModManifestFile>();
+                var filesToDelete = new List<string>();
+
+                foreach (var serverFile in manifest.Files)
+                {
+                    var local = localFiles.FirstOrDefault(f => f.Path.Equals(serverFile.Path, StringComparison.OrdinalIgnoreCase));
+                    if (local == null || local.Sha256 != serverFile.Sha256)
+                    {
+                        filesToDownload.Add(serverFile);
+                    }
+                }
+
+                foreach (var localFile in localFiles)
+                {
+                    var serverHasIt = manifest.Files.Any(f => f.Path.Equals(localFile.Path, StringComparison.OrdinalIgnoreCase));
+                    if (!serverHasIt)
+                    {
+                        filesToDelete.Add(localFile.Path);
+                    }
+                }
+
+                long totalBytesToDownload = Math.Max(1, filesToDownload.Sum(f => f.Size));
+                long downloadedBytes = 0;
+
+                await WriteUpdateLogAsync($"Incremental update started: {filesToDownload.Count} files to download ({FormatBytes(totalBytesToDownload)}), {filesToDelete.Count} files to delete.");
+
+                int fileIndex = 0;
+                foreach (var file in filesToDownload)
+                {
+                    fileIndex++;
+
+                    var localPath = Path.Combine(modSubFolder, file.Path.Replace('/', Path.DirectorySeparatorChar));
+
+                    SetStatus($"Downloading {fileIndex}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}", (WpfBrush)FindResource("TextSecondary"));
+                    
+                    var fileProgress = new Progress<(long current, long total)>(p =>
+                    {
+                        long currentTotalDownloaded = downloadedBytes + p.current;
+                        UpdateDownloadProgress(currentTotalDownloaded, totalBytesToDownload);
+                    });
+
+                    var tempFile = localPath + ".tmp";
+                    Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
+                    
+                    if (File.Exists(tempFile))
+                        File.Delete(tempFile);
+
+                    try
+                    {
+                        var mirrors = BuildModFileMirrorList(file.Path);
+                        await _networkService.DownloadFileWithResumeAsync(mirrors, tempFile, fileProgress);
+                        
+                        var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(tempFile, default);
+                        if (downloadedHash != file.Sha256)
+                        {
+                            throw new InvalidDataException($"Hash mismatch for downloaded file: {file.Path}. Expected {file.Sha256}, got {downloadedHash}");
+                        }
+
+                        if (File.Exists(localPath))
+                            File.Delete(localPath);
+
+                        File.Move(tempFile, localPath);
+                    }
+                    finally
+                    {
+                        if (File.Exists(tempFile))
+                            File.Delete(tempFile);
+                    }
+
+                    downloadedBytes += file.Size;
+                }
+
+                // Delete obsolete files
+                int deletedCount = 0;
+                foreach (var fileToDelete in filesToDelete)
+                {
+                    var localPath = Path.Combine(modSubFolder, fileToDelete.Replace('/', Path.DirectorySeparatorChar));
+                    if (File.Exists(localPath))
+                    {
+                        File.Delete(localPath);
+                        deletedCount++;
+                        await WriteUpdateLogAsync($"pruned (obsolete): {fileToDelete}");
+                    }
+                }
+
+                // Clean up empty directories
+                _modUpdateSafetyService.RemoveEmptyDirectories(
+                    modSubFolder,
+                    modSubFolder,
+                    _modUpdateSafetyService.BuildProtectedAbsolutePaths(settings, modSubFolder));
+
+                result = new ModUpdateResult
+                {
+                    FilesWritten = filesToDownload.Count,
+                    FilesSkipped = 0,
+                    FilesPruned = deletedCount
+                };
+            }
+            else
+            {
+                // ── STEP 2: download ──
+                SetUpdateState("Download", "Downloading modpack...", 5);
+                var downloadProgress = new Progress<(long current, long total)>(
+                    p => UpdateDownloadProgress(p.current, p.total));
+
+                await _networkService.DownloadFileWithResumeAsync(
+                    BuildModMirrorList(), _tempZipPath, downloadProgress);
+
+                // ── STEP 3: integrity check ──
+                SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
+                SetUpdateState("Verifying", "Checking archive integrity...", 96);
+                await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
+
+                // ── STEP 4: selective extraction ──
+                DownloadProgressBar.IsIndeterminate = false;
+                DownloadProgressBar.Value = 0;
+                SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
                 SetUpdateState(
                     isUpdate ? "Updating" : "Installing",
                     isUpdate
-                        ? $"Updating modpack files... {p}%"
-                        : $"Writing files... {p}%",
-                    p));
+                        ? "Replacing modpack files (user data is not affected)..."
+                        : "Writing modpack files to Riivolution folder...",
+                    0);
 
-            var result = await _modUpdateSafetyService.ApplyZipUpdateAsync(
-                _tempZipPath,
-                modFolder,
-                modSubFolder,
-                settings,
-                extractProgress);
+                var extractProgress = new Progress<int>(p =>
+                    SetUpdateState(
+                        isUpdate ? "Updating" : "Installing",
+                        isUpdate
+                            ? $"Updating modpack files... {p}%"
+                            : $"Writing files... {p}%",
+                        p));
 
-            // ── STEP 5: clean up temp ZIP ────────────────────────────────────────────────
-            if (File.Exists(_tempZipPath))
-                File.Delete(_tempZipPath);
+                result = await _modUpdateSafetyService.ApplyZipUpdateAsync(
+                    _tempZipPath,
+                    modFolder,
+                    modSubFolder,
+                    settings,
+                    extractProgress);
+
+                // ── STEP 5: clean up temp ZIP ──
+                if (File.Exists(_tempZipPath))
+                    File.Delete(_tempZipPath);
+            }
 
             // ── STEP 6: write version ────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
@@ -1353,6 +1486,9 @@ public partial class MainWindow : Window
             _latestModUrl = string.IsNullOrWhiteSpace(info.ModUrl) ? LauncherConfig.ModUrl : info.ModUrl;
             _latestModMirrors = info.ModMirrors ?? Array.Empty<string>();
             _latestModSha256 = info.ModSha256;
+            _latestModManifestUrl = string.IsNullOrWhiteSpace(info.ModManifestUrl) ? LauncherConfig.ModManifestUrl : info.ModManifestUrl;
+            _latestModFilesUrl = string.IsNullOrWhiteSpace(info.ModFilesUrl) ? LauncherConfig.ModFilesUrl : info.ModFilesUrl;
+            _latestModFilesMirrors = info.ModFilesMirrors ?? Array.Empty<string>();
             _latestLauncherUrl = string.IsNullOrWhiteSpace(info.LauncherUrl) ? LauncherConfig.LauncherZipUrl : info.LauncherUrl;
             _latestLauncherMirrors = info.LauncherMirrors ?? Array.Empty<string>();
             _latestChangelog = info.Changelog ?? Array.Empty<string>();
@@ -1481,6 +1617,33 @@ del ""%~f0""";
             yield return mirror;
         }
         yield return LauncherConfig.ModUrl;
+    }
+
+    private IEnumerable<string> BuildModFileMirrorList(string fileRelativePath)
+    {
+        var escapedPath = fileRelativePath.Replace('\\', '/');
+
+        if (!string.IsNullOrWhiteSpace(_latestModFilesUrl))
+        {
+            yield return $"{_latestModFilesUrl.TrimEnd('/')}/{escapedPath}";
+        }
+
+        if (_latestModFilesMirrors != null)
+        {
+            foreach (var mirror in _latestModFilesMirrors)
+            {
+                if (!string.IsNullOrWhiteSpace(mirror))
+                {
+                    yield return $"{mirror.TrimEnd('/')}/{escapedPath}";
+                }
+            }
+        }
+
+        var defaultFilesUrl = LauncherConfig.ModFilesUrl;
+        if (!string.IsNullOrWhiteSpace(defaultFilesUrl) && defaultFilesUrl != _latestModFilesUrl)
+        {
+            yield return $"{defaultFilesUrl.TrimEnd('/')}/{escapedPath}";
+        }
     }
 
     private IEnumerable<string> BuildLauncherMirrorList()

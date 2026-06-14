@@ -27,4 +27,13 @@ public sealed class VersionInfo
 
     [JsonPropertyName("changelog")]
     public string[] Changelog { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("mod_manifest_url")]
+    public string ModManifestUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("mod_files_url")]
+    public string ModFilesUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("mod_files_mirrors")]
+    public string[] ModFilesMirrors { get; set; } = Array.Empty<string>();
 }

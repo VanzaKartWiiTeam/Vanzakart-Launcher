@@ -49,6 +49,37 @@ public sealed class ModUpdateSafetyService
     public string GetModRoot(LauncherSettings settings)
         => Path.Combine(settings.GetModFolder(), "VanzaKart");
 
+    public async Task<List<ModManifestFile>> ScanLocalFilesAsync(
+        string modSubFolder,
+        CancellationToken cancellationToken = default)
+    {
+        var result = new List<ModManifestFile>();
+        if (!Directory.Exists(modSubFolder))
+            return result;
+
+        var files = Directory.EnumerateFiles(modSubFolder, "*", SearchOption.AllDirectories);
+        foreach (var file in files)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var relative = Path.GetRelativePath(modSubFolder, file);
+
+            if (IsProtectedRelativePath(relative))
+                continue;
+
+            var size = new FileInfo(file).Length;
+            var sha256 = await ComputeSha256Async(file, cancellationToken);
+
+            result.Add(new ModManifestFile
+            {
+                Path = relative.Replace(Path.DirectorySeparatorChar, '/'),
+                Sha256 = sha256,
+                Size = size
+            });
+        }
+
+        return result;
+    }
+
     public string GetUserDataRoot(LauncherSettings settings)
         => Path.Combine(settings.GetModFolder(), "VanzaKart_UserData");
 
@@ -315,7 +346,7 @@ public sealed class ModUpdateSafetyService
         await WriteLogAsync($"Migration: {migrated} user files copied to {userDataRoot}", cancellationToken);
     }
 
-    private IReadOnlyList<string> BuildProtectedAbsolutePaths(LauncherSettings settings, string modRoot)
+    internal IReadOnlyList<string> BuildProtectedAbsolutePaths(LauncherSettings settings, string modRoot)
     {
         var list = new List<string>
         {
@@ -412,7 +443,7 @@ public sealed class ModUpdateSafetyService
             || relative.Contains("profile", StringComparison.OrdinalIgnoreCase);
     }
 
-    private void RemoveEmptyDirectories(
+    internal void RemoveEmptyDirectories(
         string root,
         string modRoot,
         IReadOnlyList<string> protectedAbsolutePaths)
@@ -461,7 +492,7 @@ public sealed class ModUpdateSafetyService
         await input.CopyToAsync(output, cancellationToken);
     }
 
-    private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
+    internal static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)
     {
         await using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, true);
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken)).ToLowerInvariant();
