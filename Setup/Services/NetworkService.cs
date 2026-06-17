@@ -17,6 +17,35 @@ public sealed class NetworkService
         };
     }
 
+    public async Task<bool> CheckInternetAsync(CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, "https://sitodaking.it/");
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            return response.IsSuccessStatusCode;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    public async Task<long> GetContentLengthAsync(string url, CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            using var request = new HttpRequestMessage(HttpMethod.Head, url);
+            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            response.EnsureSuccessStatusCode();
+            return response.Content.Headers.ContentLength ?? 0L;
+        }
+        catch
+        {
+            return 0L;
+        }
+    }
+
     public async Task DownloadFileAsync(
         string url,
         string destinationPath,

@@ -27,7 +27,7 @@ param (
 $ErrorActionPreference = "Stop"
 
 # Liste di esclusione (devono corrispondere a quelle del Launcher in C#)
-$ProtectedDirs = @("My Stuff", "UserData", "userdata", "Saves", "Save", "Licenses", "License", "Patenti", "Profiles", "Miis", "Mii")
+$ProtectedDirs = @("My Stuff", "UserData", "userdata", "Saves", "Save", "Licenses", "License", "Patenti", "Profiles", "Miis", "Mii", "private")
 $ProtectedFiles = @("rksys.dat", "RFL_DB.dat", "active_mii.txt", "mii_profile.json")
 $ProtectedExts = @(".mii", ".miigx", ".mae", ".vk-mii")
 $ProtectedSubstrings = @("save", "license", "patent", "mii", "profile")

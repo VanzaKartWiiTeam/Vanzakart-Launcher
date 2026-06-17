@@ -20,7 +20,8 @@ public sealed class ModUpdateSafetyService
         "Patenti",
         "Profiles",
         "Miis",
-        "Mii"
+        "Mii",
+        "private"
     ];
 
     private static readonly string[] ProtectedFileNames =

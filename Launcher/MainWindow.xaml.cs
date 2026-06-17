@@ -1141,6 +1141,12 @@ public partial class MainWindow : Window
 
                         File.Move(tempFile, localPath);
                     }
+                    catch (Exception ex)
+                    {
+                        var primaryUrl = $"{_latestModFilesUrl.TrimEnd('/')}/{file.Path.Replace('\\', '/')}";
+                        await WriteUpdateLogAsync($"Failed to download file '{file.Path}' from URL '{primaryUrl}'. Error: {ex.Message}");
+                        throw;
+                    }
                     finally
                     {
                         if (File.Exists(tempFile))
@@ -1296,7 +1302,16 @@ public partial class MainWindow : Window
 
             await WriteUpdateLogAsync($"Error: {ex.Message}");
 
-        Cleanup:;
+        Cleanup:
+            if (!isUpdate && Directory.Exists(modSubFolder))
+            {
+                try
+                {
+                    Directory.Delete(modSubFolder, true);
+                }
+                catch { }
+            }
+            RefreshAllState();
         }
         finally
         {
@@ -1597,7 +1612,7 @@ del ""%~f0""";
         var actual = await ComputeSha256Async(zipPath);
         if (!actual.Equals(expectedSha256, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidDataException("The downloaded archive hash does not match the manifest.");
+            throw new InvalidDataException($"The downloaded archive hash does not match the manifest.\nExpected: {expectedSha256}\nActual: {actual}");
         }
     }
 
