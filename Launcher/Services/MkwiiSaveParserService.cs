@@ -10,6 +10,8 @@ public sealed class MkwiiSaveParserService
     private const string RksysMagic = "RKSD0006";
     private const string RkpdMagic = "RKPD";
     private const int RkpdSize = 0x8CC0;
+    private const int RksysChecksumDataLength = 0x27FFC;
+    private const int RksysChecksumOffset = 0x27FFC;
     private const int MaxLicenseSlots = 4;
     private const int MiiDbHeaderOffset = 0x04;
     private const int MiiDbSlots = 100;
@@ -311,6 +313,64 @@ public sealed class MkwiiSaveParserService
         await File.WriteAllBytesAsync(dbPath, db, cancellationToken);
     }
 
+    public async Task UpdateLicenseMiiAsync(
+        string rksysPath,
+        int slotIndex,
+        LauncherMiiProfile profile,
+        CancellationToken cancellationToken = default)
+    {
+        if (slotIndex < 0 || slotIndex >= MaxLicenseSlots)
+        {
+            throw new ArgumentOutOfRangeException(nameof(slotIndex), "License slot is outside the valid Mario Kart Wii range.");
+        }
+
+        if (!File.Exists(rksysPath))
+        {
+            throw new FileNotFoundException("The selected save file does not exist.", rksysPath);
+        }
+
+        if (string.IsNullOrWhiteSpace(profile.RawMiiBase64))
+        {
+            throw new InvalidOperationException("Selected Mii does not contain real Wii Mii data.");
+        }
+
+        var rawMii = Convert.FromBase64String(profile.RawMiiBase64);
+        if (rawMii.Length != MiiFileParserService.WiiMiiBlockSize)
+        {
+            throw new InvalidDataException("Selected Mii data is not a valid Wii Mii block.");
+        }
+
+        var data = await File.ReadAllBytesAsync(rksysPath, cancellationToken);
+        if (data.Length < RksysMagic.Length || Encoding.ASCII.GetString(data, 0, RksysMagic.Length) != RksysMagic)
+        {
+            throw new InvalidDataException("The selected file is not a valid Mario Kart Wii save.");
+        }
+
+        if (!TryGetRksysChecksumMode(data, out var checksumMode))
+        {
+            throw new InvalidDataException("The selected save checksum could not be verified. The file was not modified.");
+        }
+
+        var rkpdOffset = RksysMagic.Length + slotIndex * RkpdSize;
+        if (rkpdOffset + RkpdSize > data.Length || Encoding.ASCII.GetString(data, rkpdOffset, RkpdMagic.Length) != RkpdMagic)
+        {
+            throw new InvalidOperationException("The selected license slot is empty or invalid.");
+        }
+
+        var miiId = profile.MiiId != 0 ? profile.MiiId : ReadUInt32BigEndian(rawMii, 0x18);
+        if (miiId == 0)
+        {
+            throw new InvalidOperationException("Selected Mii does not have a valid Mii ID.");
+        }
+
+        WriteMiiString(data, rkpdOffset + 0x14, profile.Name);
+        WriteUInt32BigEndian(data, rkpdOffset + 0x28, miiId);
+        Buffer.BlockCopy(rawMii, 0x1C, data, rkpdOffset + 0x2C, 4);
+        WriteRksysChecksum(data, checksumMode);
+
+        await File.WriteAllBytesAsync(rksysPath, data, cancellationToken);
+    }
+
     public void DeleteMiiFromDatabase(string userFolderPath, uint miiId)
     {
         if (string.IsNullOrWhiteSpace(userFolderPath) || miiId == 0)
@@ -514,11 +574,97 @@ public sealed class MkwiiSaveParserService
             : (ushort)0;
     }
 
+    private static bool TryGetRksysChecksumMode(byte[] data, out Crc32Mode mode)
+    {
+        mode = Crc32Mode.ReflectedInitFFFFFFFFXorFFFFFFFF;
+        if (data.Length < RksysChecksumOffset + 4)
+        {
+            return false;
+        }
+
+        var stored = ReadUInt32BigEndian(data, RksysChecksumOffset);
+        foreach (var candidate in Enum.GetValues<Crc32Mode>())
+        {
+            if (ComputeRksysCrc32(data, candidate) == stored)
+            {
+                mode = candidate;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static void WriteRksysChecksum(byte[] data, Crc32Mode mode)
+    {
+        if (data.Length < RksysChecksumOffset + 4)
+        {
+            throw new InvalidDataException("The selected save file is too small to contain an rksys checksum.");
+        }
+
+        WriteUInt32BigEndian(data, RksysChecksumOffset, ComputeRksysCrc32(data, mode));
+    }
+
+    private static uint ComputeRksysCrc32(byte[] data, Crc32Mode mode)
+    {
+        var length = Math.Min(RksysChecksumDataLength, data.Length);
+        return mode switch
+        {
+            Crc32Mode.ReflectedInit00000000Xor00000000 => ComputeReflectedCrc32(data, length, 0x00000000, 0x00000000),
+            Crc32Mode.NormalInitFFFFFFFFXorFFFFFFFF => ComputeNormalCrc32(data, length, 0xFFFFFFFF, 0xFFFFFFFF),
+            Crc32Mode.NormalInit00000000Xor00000000 => ComputeNormalCrc32(data, length, 0x00000000, 0x00000000),
+            _ => ComputeReflectedCrc32(data, length, 0xFFFFFFFF, 0xFFFFFFFF)
+        };
+    }
+
+    private static uint ComputeReflectedCrc32(byte[] data, int length, uint initial, uint xorOut)
+    {
+        var crc = initial;
+        for (var i = 0; i < length; i++)
+        {
+            crc ^= data[i];
+            for (var bit = 0; bit < 8; bit++)
+            {
+                crc = (crc & 1) != 0 ? (crc >> 1) ^ 0xEDB88320u : crc >> 1;
+            }
+        }
+
+        return crc ^ xorOut;
+    }
+
+    private static uint ComputeNormalCrc32(byte[] data, int length, uint initial, uint xorOut)
+    {
+        var crc = initial;
+        for (var i = 0; i < length; i++)
+        {
+            crc ^= (uint)data[i] << 24;
+            for (var bit = 0; bit < 8; bit++)
+            {
+                crc = (crc & 0x80000000u) != 0 ? (crc << 1) ^ 0x04C11DB7u : crc << 1;
+            }
+        }
+
+        return crc ^ xorOut;
+    }
+
     private static uint ReadUInt32BigEndian(byte[] bytes, int offset)
     {
         return offset + 3 < bytes.Length
             ? ((uint)bytes[offset] << 24) | ((uint)bytes[offset + 1] << 16) | ((uint)bytes[offset + 2] << 8) | bytes[offset + 3]
             : 0;
+    }
+
+    private static void WriteUInt32BigEndian(byte[] bytes, int offset, uint value)
+    {
+        if (offset + 3 >= bytes.Length)
+        {
+            return;
+        }
+
+        bytes[offset] = (byte)(value >> 24);
+        bytes[offset + 1] = (byte)(value >> 16);
+        bytes[offset + 2] = (byte)(value >> 8);
+        bytes[offset + 3] = (byte)value;
     }
 
     private static string ReadUtf16BigEndian(byte[] bytes, int offset, int byteCount)
@@ -531,6 +677,24 @@ public sealed class MkwiiSaveParserService
         return Encoding.BigEndianUnicode.GetString(bytes, offset, byteCount)
             .Replace("\0", string.Empty, StringComparison.Ordinal)
             .Trim();
+    }
+
+    private static void WriteMiiString(byte[] bytes, int offset, string value)
+    {
+        if (offset < 0 || offset + 20 > bytes.Length)
+        {
+            return;
+        }
+
+        Array.Clear(bytes, offset, 20);
+        var name = string.IsNullOrWhiteSpace(value) ? "Mii" : value.Trim();
+        if (name.Length > 10)
+        {
+            name = name[..10];
+        }
+
+        var encoded = Encoding.BigEndianUnicode.GetBytes(name);
+        Buffer.BlockCopy(encoded, 0, bytes, offset, Math.Min(encoded.Length, 20));
     }
 
     private static string BuildInitial(string value)
@@ -638,5 +802,13 @@ public sealed class MkwiiSaveParserService
         {
             return string.Empty;
         }
+    }
+
+    private enum Crc32Mode
+    {
+        ReflectedInitFFFFFFFFXorFFFFFFFF,
+        ReflectedInit00000000Xor00000000,
+        NormalInitFFFFFFFFXorFFFFFFFF,
+        NormalInit00000000Xor00000000
     }
 }

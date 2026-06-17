@@ -775,6 +775,33 @@ public sealed class SaveManagerService
         }
     }
 
+    public async Task<string> ApplyMiiToLicenseAsync(
+        LauncherSettings settings,
+        SaveProfileInfo license,
+        LauncherMiiProfile mii,
+        CancellationToken cancellationToken = default)
+    {
+        if (license.IsEmpty || string.IsNullOrWhiteSpace(license.FilePath) || !File.Exists(license.FilePath))
+        {
+            throw new InvalidOperationException("Select a valid license before switching its Mii.");
+        }
+
+        if (string.IsNullOrWhiteSpace(settings.UserFolderPath) || !Directory.Exists(settings.UserFolderPath))
+        {
+            throw new InvalidOperationException("Configure a valid Dolphin user folder before switching a license Mii.");
+        }
+
+        if (!mii.IsRealMii)
+        {
+            throw new InvalidOperationException("Selected Mii does not contain real Wii Mii data.");
+        }
+
+        var backupPath = await BackupSaveFileAsync(license.FilePath, cancellationToken);
+        await SyncMiiToDolphinAsync(settings, mii, cancellationToken);
+        await _mkwiiSaveParserService.UpdateLicenseMiiAsync(license.FilePath, license.SlotIndex, mii, cancellationToken);
+        return backupPath;
+    }
+
     public Task<bool> EnsureDolphinMiiAvatarCacheAsync(LauncherSettings settings, CancellationToken cancellationToken = default)
     {
         return _mkwiiSaveParserService.EnsureMiiDatabaseAvatarCacheAsync(settings.UserFolderPath, cancellationToken);
@@ -838,13 +865,23 @@ public sealed class SaveManagerService
         var profile = GetPrimarySaveProfile(settings)
             ?? throw new InvalidOperationException("No Mario Kart Wii save was found in the selected Dolphin user folder.");
 
+        return await BackupSaveFileAsync(profile.FilePath, cancellationToken);
+    }
+
+    private async Task<string> BackupSaveFileAsync(string sourceFile, CancellationToken cancellationToken = default)
+    {
+        if (!File.Exists(sourceFile))
+        {
+            throw new FileNotFoundException("The selected save file does not exist.", sourceFile);
+        }
+
         var backupFolder = GetBackupFolder();
         Directory.CreateDirectory(backupFolder);
 
         var fileName = $"rksys_{DateTime.Now:yyyyMMdd_HHmmss}.dat";
         var destination = Path.Combine(backupFolder, fileName);
 
-        await CopyFileAsync(profile.FilePath, destination, cancellationToken);
+        await CopyFileAsync(sourceFile, destination, cancellationToken);
         return destination;
     }
 

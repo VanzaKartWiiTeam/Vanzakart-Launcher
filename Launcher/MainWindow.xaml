@@ -2202,23 +2202,19 @@
                                                         <TextBlock x:Name="LicensesCountTextBlock" Text="0" FontWeight="Bold"/>
                                                         <TextBlock Text="   Mii DB " Foreground="{StaticResource TextSecondary}"/>
                                                         <TextBlock x:Name="MiiStateTextBlock" Text="Unknown" FontWeight="Bold"/>
-                                                        <TextBlock Text="   Backups " Foreground="{StaticResource TextSecondary}"/>
-                                                        <TextBlock x:Name="BackupCountTextBlock" Text="0" FontWeight="Bold"/>
                                                     </StackPanel>
-                                                    <TextBlock x:Name="LatestBackupTextBlock" Text="No backups yet" Foreground="{StaticResource TextFaint}" FontSize="12" Margin="0,8,0,0"/>
                                                 </StackPanel>
                                             </Border>
 
                                             <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="10,0,0,0">
                                                 <WrapPanel>
                                                     <Button Content="New Mii" ToolTip="Create a real Wii Mii and sync it to Dolphin" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="CreateMiiButton_OnClick"/>
-                                                    <Button Content="New Lic." ToolTip="Create a save-backed license when a real save is available" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="CreateLicenseButton_OnClick"/>
+                                                    <Button Content="Switch Mii" ToolTip="Assign one of your saved Miis to the selected license" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="SwitchLicenseMiiButton_OnClick"/>
+                                                    <Button Content="Friends" ToolTip="Open friend management for the selected license" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="OpenFriendsViewButton_OnClick"/>
                                                     <Button Content="Backup" ToolTip="Backup current Dolphin save" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="BackupSaveButton_OnClick"/>
-                                                    <Button Content="Restore" ToolTip="Restore a previous backup" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="RestoreBackupButton_OnClick"/>
+                                                    <Button Content="Folder" ToolTip="Open the folder that contains the detected license save" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="OpenSavesFolderButton_OnClick"/>
                                                     <Button Content="Import" ToolTip="Import rksys.dat" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="ImportSaveButton_OnClick"/>
                                                     <Button Content="Export" ToolTip="Export current save" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="ExportSaveButton_OnClick"/>
-                                                    <Button Content="Folder" ToolTip="Open save folder" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="OpenSavesFolderButton_OnClick"/>
-                                                    <Button Content="Friends" ToolTip="Open friend management" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="OpenFriendsViewButton_OnClick"/>
                                                 </WrapPanel>
                                             </StackPanel>
                                         </Grid>
@@ -2482,14 +2478,6 @@
                                                  </ListBox>
                                              </StackPanel>
                                          </Border>
-
-                                        <Border Style="{StaticResource GlassCard}" Padding="18" Margin="0,0,0,18">
-                                            <StackPanel>
-                                                <TextBlock Text="Save Recovery" FontSize="18" FontWeight="Black"/>
-                                                <TextBlock Text="Recent backups are restored with an automatic safety backup first." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" FontSize="12" Margin="0,5,0,12"/>
-                                                <ComboBox x:Name="BackupRestoreComboBox" Style="{StaticResource CustomComboBox}" Height="38"/>
-                                            </StackPanel>
-                                        </Border>
 
                                     </StackPanel>
                                 </Grid>
@@ -2906,6 +2894,217 @@
                         </ScrollViewer>
                     </Grid>
                 </Grid>
+            </Grid>
+
+            <Grid x:Name="LicenseMiiPickerOverlay"
+                  Grid.RowSpan="2"
+                  Background="#B0070A13"
+                  Visibility="Collapsed"
+                  Opacity="0">
+                <Border x:Name="LicenseMiiPickerCard"
+                        Width="760"
+                        MaxHeight="650"
+                        HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Padding="24"
+                        CornerRadius="16"
+                        Background="#F012192A"
+                        BorderBrush="{StaticResource RainbowGradient}"
+                        BorderThickness="1.6"
+                        Effect="{StaticResource NeonGlow}"
+                        RenderTransformOrigin="0.5,0.5">
+                    <Border.RenderTransform>
+                        <ScaleTransform ScaleX="0.96" ScaleY="0.96"/>
+                    </Border.RenderTransform>
+                    <Grid>
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="*"/>
+                            <RowDefinition Height="Auto"/>
+                        </Grid.RowDefinitions>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Switch License Mii" FontSize="24" FontWeight="Black"/>
+                                <TextBlock x:Name="LicenseMiiPickerSummaryTextBlock"
+                                           Text="Choose a Mii to assign to the selected license."
+                                           Foreground="{StaticResource TextSecondary}"
+                                           TextWrapping="Wrap"
+                                           Margin="0,6,0,0"/>
+                            </StackPanel>
+                            <Button Grid.Column="1"
+                                    Content="&#xE8BB;"
+                                    FontFamily="Segoe MDL2 Assets"
+                                    Style="{StaticResource CompactButton}"
+                                    Width="38"
+                                    Height="38"
+                                    Padding="0"
+                                    Click="CancelLicenseMiiPickerButton_OnClick"
+                                    ToolTip="Close"/>
+                        </Grid>
+
+                        <Border Grid.Row="1"
+                                Margin="0,18,0,14"
+                                Padding="14"
+                                CornerRadius="12"
+                                Background="#AA0B1020"
+                                BorderBrush="#2A3857"
+                                BorderThickness="1">
+                            <TextBlock Text="A safety backup of the selected save is created first. The chosen Mii is also synced into Dolphin's Mii database, so the license can display it without opening the game."
+                                       Foreground="{StaticResource TextSecondary}"
+                                       TextWrapping="Wrap"
+                                       FontSize="13"/>
+                        </Border>
+
+                        <ListBox x:Name="LicenseMiiPickerListBox"
+                                 Grid.Row="2"
+                                 MinHeight="170"
+                                 MaxHeight="320"
+                                 Background="Transparent"
+                                 BorderThickness="0"
+                                 Padding="4"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled"
+                                 ScrollViewer.VerticalScrollBarVisibility="Auto">
+                            <ListBox.ItemsPanel>
+                                <ItemsPanelTemplate>
+                                    <WrapPanel/>
+                                </ItemsPanelTemplate>
+                            </ListBox.ItemsPanel>
+                            <ListBox.ItemContainerStyle>
+                                <Style TargetType="ListBoxItem">
+                                    <Setter Property="Padding" Value="0"/>
+                                    <Setter Property="Margin" Value="7"/>
+                                    <Setter Property="Background" Value="Transparent"/>
+                                    <Setter Property="BorderThickness" Value="0"/>
+                                    <Setter Property="Template">
+                                        <Setter.Value>
+                                            <ControlTemplate TargetType="ListBoxItem">
+                                                <Border x:Name="Root" Background="Transparent" CornerRadius="12">
+                                                    <ContentPresenter/>
+                                                </Border>
+                                            </ControlTemplate>
+                                        </Setter.Value>
+                                    </Setter>
+                                </Style>
+                            </ListBox.ItemContainerStyle>
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid>
+                                        <Border x:Name="PickerGlow" CornerRadius="15" Background="{Binding FavoriteColor}" Opacity="0" Margin="-3">
+                                            <Border.Effect>
+                                                <BlurEffect Radius="12"/>
+                                            </Border.Effect>
+                                        </Border>
+                                        <Border x:Name="PickerCard"
+                                                Width="156"
+                                                Height="188"
+                                                Padding="14"
+                                                CornerRadius="12"
+                                                Background="#131C30"
+                                                BorderBrush="{Binding FavoriteColor}"
+                                                BorderThickness="1.4"
+                                                RenderTransformOrigin="0.5,0.5"
+                                                Cursor="Hand">
+                                            <Border.RenderTransform>
+                                                <ScaleTransform x:Name="PickerCardScale" ScaleX="1" ScaleY="1"/>
+                                            </Border.RenderTransform>
+                                            <StackPanel>
+                                                <Border Width="78" Height="78" CornerRadius="16" Background="#0C1222" BorderBrush="#2F426F" BorderThickness="1.5" HorizontalAlignment="Center" ClipToBounds="True" Margin="0,0,0,12">
+                                                    <Grid>
+                                                        <Image Source="{Binding AvatarImagePath}" Stretch="UniformToFill">
+                                                            <Image.Style>
+                                                                <Style TargetType="Image">
+                                                                    <Setter Property="Visibility" Value="Collapsed"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Visible"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </Image.Style>
+                                                        </Image>
+                                                        <TextBlock Text="{Binding AvatarInitial}" FontSize="30" FontWeight="Black" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" VerticalAlignment="Center">
+                                                            <TextBlock.Style>
+                                                                <Style TargetType="TextBlock">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                    <Style.Triggers>
+                                                                        <DataTrigger Binding="{Binding HasAvatarImage}" Value="True">
+                                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                                        </DataTrigger>
+                                                                    </Style.Triggers>
+                                                                </Style>
+                                                            </TextBlock.Style>
+                                                        </TextBlock>
+                                                    </Grid>
+                                                </Border>
+                                                <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Black" TextAlignment="Center" TextWrapping="Wrap" MaxHeight="38" TextTrimming="CharacterEllipsis"/>
+                                                <TextBlock Text="{Binding CreatorName}" FontSize="11" Foreground="{StaticResource TextSecondary}" TextAlignment="Center" Margin="0,4,0,0"/>
+                                                <TextBlock Text="{Binding TechnicalLabel}" FontSize="10" Foreground="{StaticResource TextFaint}" TextAlignment="Center" Margin="0,7,0,0"/>
+                                            </StackPanel>
+                                        </Border>
+                                    </Grid>
+                                    <DataTemplate.Triggers>
+                                        <DataTrigger Binding="{Binding IsMouseOver, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleX" To="1.05" Duration="0:0:0.16"/>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleY" To="1.05" Duration="0:0:0.16"/>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerGlow" Storyboard.TargetProperty="Opacity" To="0.45" Duration="0:0:0.16"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                            <DataTrigger.ExitActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleX" To="1" Duration="0:0:0.16"/>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleY" To="1" Duration="0:0:0.16"/>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerGlow" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.ExitActions>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsSelected, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <Setter TargetName="PickerCard" Property="Background" Value="#25355C"/>
+                                            <Setter TargetName="PickerCard" Property="BorderThickness" Value="2.4"/>
+                                            <Setter TargetName="PickerGlow" Property="Opacity" Value="0.85"/>
+                                        </DataTrigger>
+                                        <DataTrigger Binding="{Binding IsMouseCaptured, RelativeSource={RelativeSource AncestorType=ListBoxItem}}" Value="True">
+                                            <DataTrigger.EnterActions>
+                                                <BeginStoryboard>
+                                                    <Storyboard>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleX" To="0.96" Duration="0:0:0.07"/>
+                                                        <DoubleAnimation Storyboard.TargetName="PickerCardScale" Storyboard.TargetProperty="ScaleY" To="0.96" Duration="0:0:0.07"/>
+                                                    </Storyboard>
+                                                </BeginStoryboard>
+                                            </DataTrigger.EnterActions>
+                                        </DataTrigger>
+                                    </DataTemplate.Triggers>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+
+                        <Grid Grid.Row="3" Margin="0,20,0,0">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="10"/>
+                                <ColumnDefinition Width="Auto"/>
+                            </Grid.ColumnDefinitions>
+                            <TextBlock x:Name="LicenseMiiPickerStatusTextBlock"
+                                       Text="Select a Mii to continue."
+                                       Foreground="{StaticResource TextSecondary}"
+                                       VerticalAlignment="Center"/>
+                            <Button Grid.Column="1" Content="Cancel" Style="{StaticResource CompactButton}" Width="112" Click="CancelLicenseMiiPickerButton_OnClick"/>
+                            <Button x:Name="ApplyLicenseMiiButton" Grid.Column="3" Content="Apply Mii" Style="{StaticResource CompactPrimaryButton}" Width="126" Click="ApplyLicenseMiiButton_OnClick"/>
+                        </Grid>
+                    </Grid>
+                </Border>
             </Grid>
 
             <Border x:Name="ToastBorder"

@@ -45,13 +45,15 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<SaveProfileInfo> _licenseCards = new();
     private readonly List<SaveProfileInfo> _allLicenseCards = new();
     private readonly ObservableCollection<LauncherMiiProfile> _miiProfiles = new();
-    private readonly ObservableCollection<SaveBackupInfo> _backupRestoreItems = new();
+    private readonly ObservableCollection<LauncherMiiProfile> _licenseMiiPickerItems = new();
     private readonly Stopwatch _downloadStopwatch = new();
     private readonly ModUpdateSafetyService _modUpdateSafetyService = new();
     private bool _isRefreshingMiis;
     private bool _isRenderingLicenseAvatars;
     private bool _isRenderingLauncherMiiAvatars;
     private bool _isInstallingMiiRuntime;
+    private bool _isApplyingLicenseMii;
+    private SaveProfileInfo? _pendingLicenseMiiTarget;
     private FileSystemWatcher? _dolphinFileWatcher;
     private FileSystemWatcher? _profileFileWatcher;
     private CancellationTokenSource? _filesystemRefreshCts;
@@ -109,8 +111,7 @@ public partial class MainWindow : Window
         NewsItemsControl.ItemsSource = _visibleNews;
         LicenseCardsItemsControl.ItemsSource = _licenseCards;
         MiiCardsListBox.ItemsSource = _miiProfiles;
-        BackupRestoreComboBox.ItemsSource = _backupRestoreItems;
-        BackupRestoreComboBox.DisplayMemberPath = nameof(SaveBackupInfo.DisplayName);
+        LicenseMiiPickerListBox.ItemsSource = _licenseMiiPickerItems;
         _navigationService.Navigated += tab => NavigateTo(tab);
 
         LoadSettingsIntoUi();
@@ -579,19 +580,15 @@ public partial class MainWindow : Window
         var profiles = _saveManagerService.GetSaveProfiles(settings);
         var activeMii = _saveManagerService.LoadMiiProfile();
         var miiDb = _saveManagerService.GetMiiDatabasePath(settings);
-        var backupCount = _saveManagerService.GetBackupCount();
 
         RefreshMiiRuntimeStatus();
         RefreshMiiProfiles(activeMii.Id);
-        RefreshBackupRestoreItems();
 
         _allLicenseCards.Clear();
         _allLicenseCards.AddRange(profiles);
         ApplyLicenseFilters();
 
         LicensesCountTextBlock.Text = _allLicenseCards.Count.ToString(CultureInfo.InvariantCulture);
-        BackupCountTextBlock.Text = backupCount.ToString(CultureInfo.InvariantCulture);
-        LatestBackupTextBlock.Text = _saveManagerService.GetLatestBackupLabel();
         MiiStateTextBlock.Text = File.Exists(miiDb)
             ? "Dolphin"
             : "Not found";
@@ -778,6 +775,138 @@ public partial class MainWindow : Window
         _navigationService.Navigate("Friends");
     }
 
+    private void SwitchLicenseMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var target = _friendsViewModel?.ActiveLicense
+                     ?? _allLicenseCards.FirstOrDefault(card => card.IsActive && !card.IsEmpty)
+                     ?? _allLicenseCards.FirstOrDefault(card => !card.IsEmpty);
+
+        if (target == null || target.IsEmpty || string.IsNullOrWhiteSpace(target.FilePath))
+        {
+            ShowCustomDialog("Select a license", "Select a real license card before switching its Mii.", MessageBoxButton.OK);
+            return;
+        }
+
+        _licenseMiiPickerItems.Clear();
+        foreach (var profile in _saveManagerService.LoadMiiProfiles(BuildSettingsFromUi()).Where(profile => profile.IsRealMii))
+        {
+            _licenseMiiPickerItems.Add(profile);
+        }
+
+        if (_licenseMiiPickerItems.Count == 0)
+        {
+            ShowCustomDialog("No Mii available", "Create or import a real Wii Mii first, then you can assign it to this license.", MessageBoxButton.OK);
+            return;
+        }
+
+        _pendingLicenseMiiTarget = target;
+        LicenseMiiPickerSummaryTextBlock.Text = $"Assign a saved Mii to {target.DisplayName} ({target.Subtitle}). Current Mii: {target.MiiName}.";
+        LicenseMiiPickerStatusTextBlock.Text = "Select a Mii to continue.";
+        ApplyLicenseMiiButton.Content = "Apply Mii";
+        ApplyLicenseMiiButton.IsEnabled = true;
+        LicenseMiiPickerListBox.SelectedItem = _licenseMiiPickerItems.FirstOrDefault(profile => profile.MiiId == target.MiiId)
+                                               ?? _licenseMiiPickerItems.FirstOrDefault();
+
+        ShowLicenseMiiPicker();
+    }
+
+    private async void ApplyLicenseMiiButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isApplyingLicenseMii)
+        {
+            return;
+        }
+
+        if (_pendingLicenseMiiTarget == null)
+        {
+            ShowCustomDialog("Select a license", "No target license is selected.", MessageBoxButton.OK);
+            return;
+        }
+
+        if (LicenseMiiPickerListBox.SelectedItem is not LauncherMiiProfile selectedMii)
+        {
+            LicenseMiiPickerStatusTextBlock.Text = "Choose a Mii before applying.";
+            return;
+        }
+
+        _isApplyingLicenseMii = true;
+        ApplyLicenseMiiButton.IsEnabled = false;
+        ApplyLicenseMiiButton.Content = "Applying...";
+        LicenseMiiPickerStatusTextBlock.Text = "Creating backup, syncing Mii, and updating the selected license...";
+
+        try
+        {
+            var backupPath = await _saveManagerService.ApplyMiiToLicenseAsync(BuildSettingsFromUi(), _pendingLicenseMiiTarget, selectedMii);
+            HideLicenseMiiPicker();
+            ShowToast("License Mii updated", $"{selectedMii.Name} assigned. Backup: {Path.GetFileName(backupPath)}");
+            RefreshLicenseView();
+        }
+        catch (Exception ex)
+        {
+            LicenseMiiPickerStatusTextBlock.Text = ex.Message;
+            ShowCustomDialog("Switch Mii error", ex.Message, MessageBoxButton.OK);
+        }
+        finally
+        {
+            _isApplyingLicenseMii = false;
+            ApplyLicenseMiiButton.IsEnabled = true;
+            ApplyLicenseMiiButton.Content = "Apply Mii";
+        }
+    }
+
+    private void CancelLicenseMiiPickerButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isApplyingLicenseMii)
+        {
+            return;
+        }
+
+        HideLicenseMiiPicker();
+    }
+
+    private void ShowLicenseMiiPicker()
+    {
+        LicenseMiiPickerOverlay.Visibility = Visibility.Visible;
+        LicenseMiiPickerOverlay.Opacity = 0;
+
+        if (LicenseMiiPickerCard.RenderTransform is not ScaleTransform scale)
+        {
+            scale = new ScaleTransform(0.96, 0.96);
+            LicenseMiiPickerCard.RenderTransform = scale;
+        }
+
+        scale.ScaleX = 0.96;
+        scale.ScaleY = 0.96;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        LicenseMiiPickerOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(180)) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(220)) { EasingFunction = ease });
+    }
+
+    private void HideLicenseMiiPicker()
+    {
+        if (LicenseMiiPickerOverlay.Visibility != Visibility.Visible)
+        {
+            return;
+        }
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseIn };
+        var fade = new DoubleAnimation(0, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease };
+        fade.Completed += (_, _) =>
+        {
+            LicenseMiiPickerOverlay.Visibility = Visibility.Collapsed;
+            _pendingLicenseMiiTarget = null;
+        };
+
+        LicenseMiiPickerOverlay.BeginAnimation(OpacityProperty, fade);
+        if (LicenseMiiPickerCard.RenderTransform is ScaleTransform scale)
+        {
+            scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.97, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease });
+            scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.97, TimeSpan.FromMilliseconds(140)) { EasingFunction = ease });
+        }
+    }
+
     private async void QueueLicenseAvatarRender(LauncherSettings settings)
     {
         if (_isRenderingLicenseAvatars || string.IsNullOrWhiteSpace(settings.UserFolderPath))
@@ -842,19 +971,6 @@ public partial class MainWindow : Window
             : "This downloads and verifies the render resource automatically.";
         MiiRuntimeProgressBar.Value = status.IsInstalled ? 100 : 0;
         InstallMiiRuntimeButton.IsEnabled = !_isInstallingMiiRuntime && !status.IsInstalled;
-    }
-
-    private void RefreshBackupRestoreItems()
-    {
-        var selectedPath = (BackupRestoreComboBox.SelectedItem as SaveBackupInfo)?.FilePath;
-        _backupRestoreItems.Clear();
-        foreach (var backup in _saveManagerService.GetBackups())
-        {
-            _backupRestoreItems.Add(backup);
-        }
-
-        BackupRestoreComboBox.SelectedItem = _backupRestoreItems.FirstOrDefault(item => item.FilePath == selectedPath)
-                                             ?? _backupRestoreItems.FirstOrDefault();
     }
 
     private void RefreshMiiProfiles(string? activeMiiId = null)
@@ -1845,31 +1961,6 @@ del ""%~f0""";
         }
     }
 
-    private async void RestoreBackupButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        if (BackupRestoreComboBox.SelectedItem is not SaveBackupInfo backup)
-        {
-            ShowCustomDialog("No backup selected", "Create or select a backup before restoring.", MessageBoxButton.OK);
-            return;
-        }
-
-        if (ShowCustomDialog("Restore backup", $"Restore {backup.DisplayName}? A safety backup will be created first.", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
-        {
-            return;
-        }
-
-        try
-        {
-            await _saveManagerService.RestoreBackupAsync(BuildSettingsFromUi(), backup.FilePath);
-            ShowToast("Backup restored", backup.DisplayName);
-            RefreshLicenseView();
-        }
-        catch (Exception ex)
-        {
-            ShowCustomDialog("Restore error", ex.Message, MessageBoxButton.OK);
-        }
-    }
-
     private async void ImportSaveButton_OnClick(object sender, RoutedEventArgs e)
     {
         var dialog = new WpfOpenFileDialog { Filter = "Mario Kart Wii save (rksys.dat)|rksys.dat|All files (*.*)|*.*" };
@@ -1935,16 +2026,6 @@ del ""%~f0""";
         {
             ShowCustomDialog("Mii creation error", ex.Message, MessageBoxButton.OK);
         }
-    }
-
-    private void CreateLicenseButton_OnClick(object sender, RoutedEventArgs e)
-    {
-        var settings = BuildSettingsFromUi();
-        var hasRealSave = _saveManagerService.GetSaveProfiles(settings).Count > 0;
-        var message = hasRealSave
-            ? "Real save-backed license editing is enabled through detected rksys.dat cards. Full from-scratch rksys generation is intentionally disabled until a verified save template is provided, so the launcher will not create a fake license."
-            : "No real Mario Kart Wii save was found. Launch Mario Kart Wii once in Dolphin to create rksys.dat, then the launcher can manage real licenses without fake data.";
-        ShowCustomDialog("Real license required", message, MessageBoxButton.OK);
     }
 
     private async void ImportMiiButton_OnClick(object sender, RoutedEventArgs e)
@@ -2155,15 +2236,22 @@ del ""%~f0""";
     private void OpenSavesFolderButton_OnClick(object sender, RoutedEventArgs e)
     {
         var settings = BuildSettingsFromUi();
-        var wiiFolder = _saveManagerService.GetWiiRoot(settings);
-        var folder = Directory.Exists(wiiFolder) ? wiiFolder : settings.UserFolderPath;
-        if (Directory.Exists(folder))
+        var activeLicensePath = _friendsViewModel?.ActiveLicense?.FilePath;
+        var profile = !string.IsNullOrWhiteSpace(activeLicensePath)
+            ? _saveManagerService.GetSaveProfiles(settings).FirstOrDefault(item => string.Equals(item.FilePath, activeLicensePath, StringComparison.OrdinalIgnoreCase))
+            : _saveManagerService.GetSaveProfiles(settings).FirstOrDefault(item => !item.IsEmpty);
+
+        var folder = !string.IsNullOrWhiteSpace(profile?.FilePath)
+            ? Path.GetDirectoryName(profile.FilePath)
+            : string.Empty;
+
+        if (!string.IsNullOrWhiteSpace(folder) && Directory.Exists(folder))
         {
             OpenFolder(folder);
         }
         else
         {
-            ShowCustomDialog("Folder not found", "The Dolphin Wii save folder was not found.", MessageBoxButton.OK);
+            ShowCustomDialog("Folder not found", "No detected license save folder is available yet. Import or create a Mario Kart Wii save first.", MessageBoxButton.OK);
         }
     }
 
