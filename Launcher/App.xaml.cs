@@ -1,4 +1,5 @@
 using System.Windows;
+using VanzaKartLauncher.Services;
 
 namespace VanzaKartLauncher;
 
@@ -8,6 +9,7 @@ public partial class App : System.Windows.Application
     {
         try
         {
+            WindowsInstallRegistryService.SynchronizeRegistration(LauncherConfig.CurrentLauncherVersion);
             base.OnStartup(e);
         }
         catch (Exception ex)

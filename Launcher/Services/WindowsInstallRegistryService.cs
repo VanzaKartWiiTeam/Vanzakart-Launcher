@@ -28,8 +28,7 @@ public static class WindowsInstallRegistryService
             var uninstallerPath = Path.Combine(installDirectory, UninstallerFileName);
 
             if (string.IsNullOrWhiteSpace(launcherPath) ||
-                !File.Exists(launcherPath) ||
-                !File.Exists(uninstallerPath))
+                !File.Exists(launcherPath))
             {
                 return;
             }

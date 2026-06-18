@@ -43,27 +43,69 @@ public sealed class AddonInfo : INotifyPropertyChanged
 public sealed class GameBananaMod
 {
     public int Id { get; set; }
-    public int FileId { get; set; }
     public string Name { get; set; } = string.Empty;
     public string Author { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string ProfileUrl { get; set; } = string.Empty;
     public string PreviewUrl { get; set; } = string.Empty;
-    public string DownloadUrl { get; set; } = string.Empty;
-    public string FileName { get; set; } = string.Empty;
-    public long FileSize { get; set; }
+    public List<GameBananaFile> Files { get; set; } = new();
     public int Views { get; set; }
     public int Likes { get; set; }
     public int Downloads { get; set; }
 
     public string StatsText => $"{Views:N0} views  •  {Downloads:N0} downloads  •  {Likes:N0} likes";
-    public string FileText => FileSize > 0 ? FormatBytes(FileSize) : "Download";
+    public string FileText => Files.Count == 1 ? Files[0].SizeText : $"{Files.Count} files available";
     public string InstallText => "Install";
+
+    public GameBananaFile? DefaultFile => Files.FirstOrDefault();
 
     private static string FormatBytes(long bytes)
     {
         string[] units = { "B", "KB", "MB", "GB" };
         var value = (double)bytes;
+        var unit = 0;
+        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        return $"{value:0.#} {units[unit]}";
+    }
+}
+
+public sealed class GameBananaFile
+{
+    public int FileId { get; set; }
+    public string FileName { get; set; } = string.Empty;
+    public string Description { get; set; } = string.Empty;
+    public string DownloadUrl { get; set; } = string.Empty;
+    public long FileSize { get; set; }
+    public int DownloadCount { get; set; }
+    public DateTime DateAddedUtc { get; set; }
+
+    public string SizeText => FormatBytes(FileSize);
+    public string VariantDescription => string.IsNullOrWhiteSpace(Description)
+        ? "Standard package provided by the creator."
+        : Description;
+    public string MetadataText
+    {
+        get
+        {
+            var date = DateAddedUtc.Year > 1970
+                ? $"  •  {DateAddedUtc.ToString("MMM d, yyyy", System.Globalization.CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $"{SizeText}  •  {DownloadCount:N0} downloads{date}";
+        }
+    }
+    public string DisplayText
+    {
+        get
+        {
+            var detail = string.IsNullOrWhiteSpace(Description) ? "GameBanana download" : Description;
+            return $"{FileName}\n{detail}  •  {SizeText}  •  {DownloadCount:N0} downloads";
+        }
+    }
+
+    private static string FormatBytes(long bytes)
+    {
+        string[] units = { "B", "KB", "MB", "GB" };
+        var value = (double)Math.Max(0, bytes);
         var unit = 0;
         while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
         return $"{value:0.#} {units[unit]}";

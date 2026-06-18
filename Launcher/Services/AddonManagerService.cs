@@ -47,21 +47,22 @@ public sealed class AddonManagerService
     public async Task<AddonInfo> InstallGameBananaAsync(
         LauncherSettings settings,
         GameBananaMod mod,
+        GameBananaFile file,
         NetworkService network,
         IProgress<(long current, long total)>? progress = null,
         IProgress<string>? stageProgress = null,
         CancellationToken cancellationToken = default)
     {
-        var extension = Path.GetExtension(mod.FileName);
+        var extension = Path.GetExtension(file.FileName);
 
         var tempRoot = Path.Combine(Path.GetTempPath(), "VanzaKart", Guid.NewGuid().ToString("N"));
-        var archivePath = Path.Combine(tempRoot, mod.FileName);
+        var archivePath = Path.Combine(tempRoot, file.FileName);
         var extracted = Path.Combine(tempRoot, "extracted");
         Directory.CreateDirectory(tempRoot);
         try
         {
             stageProgress?.Report("Downloading addon...");
-            await network.DownloadFileWithResumeAsync(mod.DownloadUrl, archivePath, progress, cancellationToken);
+            await network.DownloadFileWithResumeAsync(file.DownloadUrl, archivePath, progress, cancellationToken);
             stageProgress?.Report("Extracting archive...");
             if (IsArchiveExtension(extension))
             {
@@ -70,12 +71,12 @@ public sealed class AddonManagerService
             else
             {
                 Directory.CreateDirectory(extracted);
-                await CopyFileAsync(archivePath, Path.Combine(extracted, mod.FileName), cancellationToken);
+                await CopyFileAsync(archivePath, Path.Combine(extracted, file.FileName), cancellationToken);
             }
             var payloadRoot = FindPayloadRoot(extracted);
             var addon = new AddonInfo
             {
-                Id = $"gamebanana-{mod.Id}-{mod.FileId}",
+                Id = $"gamebanana-{mod.Id}-{file.FileId}",
                 Name = mod.Name,
                 Author = mod.Author,
                 Source = "GameBanana",

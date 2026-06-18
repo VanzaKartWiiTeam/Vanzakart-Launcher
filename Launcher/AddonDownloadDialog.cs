@@ -4,6 +4,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
 
 namespace VanzaKartLauncher;
@@ -35,20 +36,18 @@ public sealed class AddonDownloadDialog : Window
         Background = Brushes.Transparent;
         ShowInTaskbar = false;
 
-        var accent = new LinearGradientBrush(
-            Color.FromRgb(0xFF, 0x3B, 0x7A),
-            Color.FromRgb(0x39, 0xE7, 0xFF),
-            0);
+        var accent = CreateRainbowBrush(animate: false);
         var card = new Border
         {
             Margin = new Thickness(20),
             Padding = new Thickness(28),
             CornerRadius = new CornerRadius(18),
             Background = new SolidColorBrush(Color.FromRgb(0x11, 0x18, 0x27)),
-            BorderBrush = new SolidColorBrush(Color.FromRgb(0x35, 0x48, 0x6C)),
-            BorderThickness = new Thickness(1),
-            Effect = new DropShadowEffect { BlurRadius = 34, ShadowDepth = 0, Opacity = 0.65, Color = Colors.Black }
+            BorderBrush = CreateRainbowBrush(animate: true),
+            BorderThickness = new Thickness(1.8),
+            Effect = new DropShadowEffect { BlurRadius = 36, ShadowDepth = 0, Opacity = 0.72, Color = Color.FromRgb(0x00, 0xF2, 0xFF) }
         };
+        card.MouseLeftButtonDown += DragWindow;
 
         var layout = new Grid();
         layout.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
@@ -119,9 +118,10 @@ public sealed class AddonDownloadDialog : Window
             Maximum = 100,
             Value = 0,
             Foreground = accent,
-            Background = new SolidColorBrush(Color.FromRgb(0x21, 0x2B, 0x43)),
+            Background = Brushes.White,
             BorderThickness = new Thickness(0),
-            Margin = new Thickness(0, 9, 0, 9)
+            Margin = new Thickness(0, 9, 0, 9),
+            Template = CreateProgressBarTemplate()
         };
         progressStack.Children.Add(_progressBar);
         _detailText = new TextBlock
@@ -147,7 +147,8 @@ public sealed class AddonDownloadDialog : Window
             BorderBrush = new SolidColorBrush(Color.FromRgb(0x43, 0x51, 0x70)),
             BorderThickness = new Thickness(1),
             FontWeight = FontWeights.Bold,
-            Cursor = Cursors.Hand
+            Cursor = Cursors.Hand,
+            Template = CreateButtonTemplate()
         };
         _actionButton.Click += (_, _) =>
         {
@@ -164,6 +165,27 @@ public sealed class AddonDownloadDialog : Window
 
         card.Child = layout;
         Content = card;
+    }
+
+    private void DragWindow(object sender, MouseButtonEventArgs e)
+    {
+        if (e.LeftButton != MouseButtonState.Pressed || FindAncestor<Button>(e.OriginalSource as DependencyObject) != null)
+        {
+            return;
+        }
+
+        try { DragMove(); }
+        catch (InvalidOperationException) { }
+    }
+
+    private static T? FindAncestor<T>(DependencyObject? element) where T : DependencyObject
+    {
+        while (element != null)
+        {
+            if (element is T match) return match;
+            element = VisualTreeHelper.GetParent(element);
+        }
+        return null;
     }
 
     public void UpdateDownload(long current, long total)
@@ -261,5 +283,82 @@ public sealed class AddonDownloadDialog : Window
         if (value.TotalSeconds < 60) return $"{Math.Max(1, value.TotalSeconds):0}s";
         if (value.TotalMinutes < 60) return $"{value.TotalMinutes:0}m";
         return $"{value.TotalHours:0.#}h";
+    }
+
+    private static LinearGradientBrush CreateRainbowBrush(bool animate)
+    {
+        var rotate = new RotateTransform(0, 0.5, 0.5);
+        var brush = new LinearGradientBrush
+        {
+            StartPoint = new Point(0, 0),
+            EndPoint = new Point(1, 0),
+            RelativeTransform = rotate,
+            GradientStops =
+            {
+                new GradientStop(Color.FromRgb(0xFF, 0x00, 0x66), 0.00),
+                new GradientStop(Color.FromRgb(0xFF, 0x88, 0x00), 0.18),
+                new GradientStop(Color.FromRgb(0xFF, 0xEA, 0x00), 0.34),
+                new GradientStop(Color.FromRgb(0x00, 0xFF, 0x66), 0.50),
+                new GradientStop(Color.FromRgb(0x00, 0xF2, 0xFF), 0.67),
+                new GradientStop(Color.FromRgb(0x33, 0x00, 0xFF), 0.84),
+                new GradientStop(Color.FromRgb(0xB0, 0x00, 0xFF), 1.00)
+            }
+        };
+        if (animate)
+            rotate.BeginAnimation(RotateTransform.AngleProperty, new DoubleAnimation(0, 360, TimeSpan.FromSeconds(6)) { RepeatBehavior = RepeatBehavior.Forever });
+        return brush;
+    }
+
+    private static ControlTemplate CreateProgressBarTemplate()
+    {
+        var template = new ControlTemplate(typeof(ProgressBar));
+        var track = new FrameworkElementFactory(typeof(Border), "PART_Track");
+        track.SetValue(Border.BackgroundProperty, Brushes.White);
+        track.SetValue(Border.CornerRadiusProperty, new CornerRadius(4.5));
+        track.SetValue(Border.ClipToBoundsProperty, true);
+
+        var indicator = new FrameworkElementFactory(typeof(Border), "PART_Indicator");
+        indicator.SetValue(Border.BackgroundProperty, CreateRainbowBrush(animate: true));
+        indicator.SetValue(Border.CornerRadiusProperty, new CornerRadius(4.5));
+        indicator.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Left);
+        track.AppendChild(indicator);
+        template.VisualTree = track;
+        return template;
+    }
+
+    private static ControlTemplate CreateButtonTemplate()
+    {
+        var template = new ControlTemplate(typeof(Button));
+        var border = new FrameworkElementFactory(typeof(Border), "ButtonBorder");
+        border.SetBinding(Border.BackgroundProperty, new System.Windows.Data.Binding(nameof(Button.Background))
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent)
+        });
+        border.SetBinding(Border.BorderBrushProperty, new System.Windows.Data.Binding(nameof(Button.BorderBrush))
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent)
+        });
+        border.SetBinding(Border.BorderThicknessProperty, new System.Windows.Data.Binding(nameof(Button.BorderThickness))
+        {
+            RelativeSource = new System.Windows.Data.RelativeSource(System.Windows.Data.RelativeSourceMode.TemplatedParent)
+        });
+        border.SetValue(Border.CornerRadiusProperty, new CornerRadius(9));
+        border.SetValue(Border.RenderTransformOriginProperty, new Point(0.5, 0.5));
+        border.SetValue(Border.RenderTransformProperty, new ScaleTransform(1, 1));
+
+        var presenter = new FrameworkElementFactory(typeof(ContentPresenter));
+        presenter.SetValue(FrameworkElement.HorizontalAlignmentProperty, HorizontalAlignment.Center);
+        presenter.SetValue(FrameworkElement.VerticalAlignmentProperty, VerticalAlignment.Center);
+        border.AppendChild(presenter);
+        template.VisualTree = border;
+
+        var hover = new Trigger { Property = UIElement.IsMouseOverProperty, Value = true };
+        hover.Setters.Add(new Setter(Border.BorderBrushProperty, new SolidColorBrush(Color.FromRgb(0x66, 0xA6, 0xFF)), "ButtonBorder"));
+        template.Triggers.Add(hover);
+        var pressed = new Trigger { Property = Button.IsPressedProperty, Value = true };
+        pressed.Setters.Add(new Setter(UIElement.OpacityProperty, 0.72, "ButtonBorder"));
+        pressed.Setters.Add(new Setter(UIElement.RenderTransformProperty, new ScaleTransform(0.97, 0.97), "ButtonBorder"));
+        template.Triggers.Add(pressed);
+        return template;
     }
 }

@@ -95,7 +95,6 @@ public partial class MainWindow : Window
     {
         _userPreferences = _preferencesService.Load();
         _gameBananaService = new GameBananaService(_networkService);
-        WindowsInstallRegistryService.SynchronizeRegistration(LauncherConfig.CurrentLauncherVersion);
 
         _roomsViewModel = new RoomsViewModel(_networkService);
         _leaderboardViewModel = new LeaderboardViewModel(_networkService);
@@ -1656,7 +1655,7 @@ public partial class MainWindow : Window
                 var answer = ShowCustomDialog("Launcher update", $"New launcher v{info.LauncherVersion} is available. Update now?", MessageBoxButton.YesNo);
                 if (answer == MessageBoxResult.Yes)
                 {
-                    await PerformLauncherUpdateAsync();
+                    await PerformLauncherUpdateAsync(info.LauncherVersion);
                     return;
                 }
             }
@@ -1702,7 +1701,7 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task PerformLauncherUpdateAsync()
+    private async Task PerformLauncherUpdateAsync(string targetVersion)
     {
         SetBusy(true);
         ResetDownloadMetrics();
@@ -1713,25 +1712,26 @@ public partial class MainWindow : Window
         SetUpdateState("Launcher update", "Downloading new launcher package...", 0);
 
         var tempZip = Path.Combine(AppContext.BaseDirectory, "Launcher_Update.zip");
-        var batchPath = Path.Combine(AppContext.BaseDirectory, "update.bat");
-
         try
         {
             var progress = new Progress<(long current, long total)>(p => UpdateDownloadProgress(p.current, p.total));
             await _networkService.DownloadFileWithResumeAsync(BuildLauncherMirrorList(), tempZip, progress);
             await _archiveService.ValidateZipAsync(tempZip);
 
-            var exeName = Path.GetFileName(Environment.ProcessPath) ?? "VanzaKart Launcher.exe";
-            var script = $@"@echo off
-cd /d ""{AppContext.BaseDirectory}""
-timeout /t 2 /nobreak >nul
-powershell -NoProfile -ExecutionPolicy Bypass -Command ""Expand-Archive -Path '{tempZip}' -DestinationPath '{AppContext.BaseDirectory}' -Force""
-del ""{tempZip}""
-start """" ""{Path.Combine(AppContext.BaseDirectory, exeName)}""
-del ""%~f0""";
-            File.WriteAllText(batchPath, script);
+            var launcherPath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "VanzaKart Launcher.exe");
+            var safeTargetVersion = new string(targetVersion
+                .Where(character => char.IsLetterOrDigit(character) || character is '.' or '-' or '_' or '+')
+                .ToArray());
+            if (string.IsNullOrWhiteSpace(safeTargetVersion))
+            {
+                throw new InvalidDataException("The launcher update contains an invalid version number.");
+            }
 
-            Process.Start(new ProcessStartInfo { FileName = batchPath, UseShellExecute = true, WindowStyle = ProcessWindowStyle.Hidden });
+            LauncherUpdateHostService.Start(
+                tempZip,
+                AppContext.BaseDirectory,
+                launcherPath,
+                safeTargetVersion);
             System.Windows.Application.Current.Shutdown();
         }
         catch (Exception ex)
@@ -2455,7 +2455,9 @@ del ""%~f0""";
             _gameBananaHasMore = result.HasMore;
             GameBananaStatusTextBlock.Text = _gameBananaMods.Count == 0
                 ? "No compatible Mario Kart Wii addons found. Try another search."
-                : $"Showing {_gameBananaMods.Count:N0} addons • {result.TotalAvailable:N0} addons available on GameBanana.";
+                : string.IsNullOrWhiteSpace(GameBananaSearchTextBox.Text)
+                    ? $"Showing {_gameBananaMods.Count:N0} addons • {result.TotalAvailable:N0} addons available on GameBanana."
+                    : $"Showing {_gameBananaMods.Count:N0} matching Mario Kart Wii addons.";
         }
         catch (OperationCanceledException) { }
         catch (Exception ex)
@@ -2490,11 +2492,24 @@ del ""%~f0""";
             return;
         }
 
+        var selectedFile = mod.DefaultFile;
+        if (mod.Files.Count > 1)
+        {
+            var picker = new GameBananaFilePickerDialog(mod) { Owner = this };
+            if (picker.ShowDialog() != true || picker.SelectedFile == null) return;
+            selectedFile = picker.SelectedFile;
+        }
+        if (selectedFile == null)
+        {
+            ShowCustomDialog("No download available", "GameBanana did not provide an installable file for this addon.", MessageBoxButton.OK);
+            return;
+        }
+
         SetBusy(true);
         installButton.IsEnabled = false;
         GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}...";
         using var cancellation = new CancellationTokenSource();
-        var dialog = new AddonDownloadDialog(mod.Name, mod.FileName) { Owner = this };
+        var dialog = new AddonDownloadDialog(mod.Name, selectedFile.FileName) { Owner = this };
         dialog.CancelRequested += cancellation.Cancel;
         dialog.Show();
         try
@@ -2506,7 +2521,7 @@ del ""%~f0""";
                 GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}: {percent}%";
             });
             var stages = new Progress<string>(dialog.SetStage);
-            await _addonManagerService.InstallGameBananaAsync(settings, mod, _networkService, progress, stages, cancellation.Token);
+            await _addonManagerService.InstallGameBananaAsync(settings, mod, selectedFile, _networkService, progress, stages, cancellation.Token);
             dialog.MarkCompleted();
             GameBananaStatusTextBlock.Text = $"{mod.Name} installed and enabled.";
             ShowToast("Addon installed", mod.Name);
