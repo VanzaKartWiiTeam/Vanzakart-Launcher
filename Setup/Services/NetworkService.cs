@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Net;
 using System.Net.Http;
@@ -76,8 +77,14 @@ public sealed class NetworkService
             81920,
             true);
 
-        var buffer = new byte[81920];
+        var buffer = new byte[128 * 1024];
         long current = 0;
+        long lastReportedBytes = -1;
+        var progressTimer = Stopwatch.StartNew();
+        var lastProgressReport = TimeSpan.Zero;
+
+        progress?.Report((0, total));
+        lastReportedBytes = 0;
 
         while (true)
         {
@@ -89,6 +96,18 @@ public sealed class NetworkService
 
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             current += read;
+
+            var now = progressTimer.Elapsed;
+            if (now - lastProgressReport >= TimeSpan.FromMilliseconds(200))
+            {
+                progress?.Report((current, total));
+                lastReportedBytes = current;
+                lastProgressReport = now;
+            }
+        }
+
+        if (current != lastReportedBytes)
+        {
             progress?.Report((current, total));
         }
     }

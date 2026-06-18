@@ -318,8 +318,8 @@ public partial class MainWindow : Window
 
         DownloadProgressBar.Value = 0;
         _downloadStopwatch.Restart();
-        long lastBytes = 0;
-        var lastUpdate = DateTime.UtcNow;
+        var speedSamples = new Queue<(double seconds, long bytes)>();
+        double displayedSpeed = 0;
 
         var progress = new Progress<(long current, long total)>(p =>
         {
@@ -327,20 +327,50 @@ public partial class MainWindow : Window
             var percent = total > 0 ? (double)p.current / total * 100.0 : 0.0;
             DownloadProgressBar.Value = Math.Min(100, percent);
 
-            var now = DateTime.UtcNow;
-            var elapsed = Math.Max(0.1, (now - lastUpdate).TotalSeconds);
-            var speed = (p.current - lastBytes) / elapsed;
-            lastBytes = p.current;
-            lastUpdate = now;
+            var elapsedSeconds = _downloadStopwatch.Elapsed.TotalSeconds;
+            if (speedSamples.Count == 0 || p.current > speedSamples.Last().bytes)
+            {
+                speedSamples.Enqueue((elapsedSeconds, p.current));
+            }
 
-            var remaining = speed > 0 && total > p.current
-                ? TimeSpan.FromSeconds((total - p.current) / speed)
+            while (speedSamples.Count > 2 && elapsedSeconds - speedSamples.Peek().seconds > 3)
+            {
+                speedSamples.Dequeue();
+            }
+
+            double measuredSpeed = 0;
+            if (speedSamples.Count >= 2)
+            {
+                var oldest = speedSamples.Peek();
+                var newest = speedSamples.Last();
+                var sampleDuration = newest.seconds - oldest.seconds;
+                if (sampleDuration > 0)
+                {
+                    measuredSpeed = (newest.bytes - oldest.bytes) / sampleDuration;
+                }
+            }
+            else if (elapsedSeconds > 0.1)
+            {
+                measuredSpeed = p.current / elapsedSeconds;
+            }
+
+            if (measuredSpeed > 0)
+            {
+                displayedSpeed = displayedSpeed <= 0
+                    ? measuredSpeed
+                    : (displayedSpeed * 0.65) + (measuredSpeed * 0.35);
+            }
+
+            var remaining = displayedSpeed > 0 && total > p.current
+                ? TimeSpan.FromSeconds((total - p.current) / displayedSpeed)
                 : TimeSpan.Zero;
 
             DownloadStatusTextBlock.Text = total > 0
                 ? $"Downloading launcher package... {percent:0}%"
                 : "Downloading launcher package...";
-            DownloadSpeedTextBlock.Text = $"{FormatBytes((long)speed)}/s";
+            DownloadSpeedTextBlock.Text = displayedSpeed > 0
+                ? $"{FormatBytes((long)displayedSpeed)}/s"
+                : "Measuring...";
             DownloadedTextBlock.Text = total > 0
                 ? $"{FormatBytes(p.current)} / {FormatBytes(total)}"
                 : FormatBytes(p.current);
