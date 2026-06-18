@@ -95,6 +95,7 @@ public partial class MainWindow : Window
     {
         _userPreferences = _preferencesService.Load();
         _gameBananaService = new GameBananaService(_networkService);
+        WindowsInstallRegistryService.SynchronizeRegistration(LauncherConfig.CurrentLauncherVersion);
 
         _roomsViewModel = new RoomsViewModel(_networkService);
         _leaderboardViewModel = new LeaderboardViewModel(_networkService);

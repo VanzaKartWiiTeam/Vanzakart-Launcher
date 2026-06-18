@@ -8,7 +8,7 @@ public sealed class WindowsInstallRegistryService
 {
     public const string ProductName = "VanzaKart Launcher";
     public const string Publisher = "VanzaKart";
-    public const string ProductVersion = "1.2.4";
+    public const string ProductVersion = "1.2.5";
     public const string UninstallKeyName = "VanzaKartLauncher";
 
     private const string UninstallRoot = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
