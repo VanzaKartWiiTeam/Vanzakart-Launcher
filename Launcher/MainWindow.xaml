@@ -988,7 +988,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.2.2" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.2.4" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1076,7 +1076,7 @@
                     </Grid>
 
                     <Grid Grid.Row="1">
-                        <ScrollViewer>
+                        <ScrollViewer x:Name="MainContentScrollViewer" ScrollChanged="MainContentScrollViewer_OnScrollChanged">
                             <Grid>
                                 <Grid x:Name="PlayView" Visibility="Visible" MinHeight="520">
                                     <StackPanel>
@@ -1970,7 +1970,7 @@
                                 </Grid>
 
                                 <Grid x:Name="ModsView" Visibility="Collapsed" AllowDrop="True" DragOver="ModsDropZone_DragOver" Drop="ModsDropZone_Drop">
-                                    <StackPanel MaxWidth="920" HorizontalAlignment="Center">
+                                    <StackPanel Width="920" HorizontalAlignment="Center">
                                         <Border Style="{StaticResource GlassCard}" Padding="28" Margin="0,0,0,18">
                                             <Grid>
                                                 <Grid.ColumnDefinitions>
@@ -1990,7 +1990,7 @@
                                                 </StackPanel>
 
                                                 <WrapPanel Grid.Column="1" VerticalAlignment="Center" HorizontalAlignment="Right">
-                                                    <Button x:Name="InstallButton" Content="Install" ToolTip="Install or update the mod" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="InstallButton_OnClick" FontWeight="Bold" FontSize="14"/>
+                                                    <Button x:Name="InstallButton" Content="Install" ToolTip="Install or update the mod" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="InstallButton_OnClick" FontWeight="Bold" FontSize="14" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                                     <Button x:Name="RepairModButton" Content="Repair" ToolTip="Re-download and repair files" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="RepairModButton_OnClick" FontWeight="Bold" FontSize="14"/>
                                                     <Button x:Name="CheckUpdatesButton" Content="Check" ToolTip="Check for updates" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CheckUpdatesButton_OnClick" FontSize="14" FontWeight="Bold"/>
                                                     <Button x:Name="OpenModFolderButton" Content="Folder" ToolTip="Open mod folder" Style="{StaticResource CompactButton}" Click="OpenModFolderButton_OnClick" FontSize="14" FontWeight="Bold"/>
@@ -1998,18 +1998,135 @@
                                             </Grid>
                                         </Border>
 
-                                        <Border x:Name="ModsDropZone" Style="{StaticResource GlassCard}" MinHeight="170" BorderBrush="#445D8C">
-                                            <Grid>
-                                                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                                    <TextBlock Text="Drop addons here" HorizontalAlignment="Center" FontSize="22" FontWeight="Black"/>
-                                                    <TextBlock x:Name="AddonFolderTextBlock" Text="Files go into the local My Stuff folder." HorizontalAlignment="Center" TextAlignment="Center" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" Margin="0,8,0,16"/>
-                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center">
-                                                        <Button Content="Addons" ToolTip="Open addon folder" Style="{StaticResource CompactButton}" Margin="0,0,10,0" Click="OpenAddonsFolderButton_OnClick"/>
-                                                        <Button Content="Root" ToolTip="Open mod root" Style="{StaticResource CompactButton}" Click="OpenModFolderButton_OnClick"/>
+                                        <Grid Margin="0,0,0,14">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*"/>
+                                                <ColumnDefinition Width="*"/>
+                                            </Grid.ColumnDefinitions>
+                                            <Button x:Name="InstalledAddonsTabButton" Content="INSTALLED ADDONS" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,7,0" Height="46" Click="InstalledAddonsTabButton_OnClick"/>
+                                            <Button x:Name="GameBananaTabButton" Grid.Column="1" Content="GAMEBANANA BROWSER" Style="{StaticResource CompactButton}" Margin="7,0,0,0" Height="46" Click="GameBananaTabButton_OnClick"/>
+                                        </Grid>
+
+                                        <StackPanel x:Name="InstalledAddonsPanel">
+                                            <Border x:Name="ModsDropZone" Style="{StaticResource GlassCard}" MinHeight="124" BorderBrush="#445D8C" Margin="0,0,0,14">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="Drop addons here" FontSize="21" FontWeight="Black"/>
+                                                        <TextBlock x:Name="AddonFolderTextBlock" Text="ZIP files, folders and individual files are supported." Foreground="{StaticResource TextSecondary}" TextTrimming="CharacterEllipsis" Margin="0,7,20,0"/>
                                                     </StackPanel>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Button Content="Addons folder" ToolTip="Open addon folder" Style="{StaticResource CompactButton}" Margin="0,0,10,0" Click="OpenAddonsFolderButton_OnClick"/>
+                                                        <Button Content="Mod root" ToolTip="Open mod root" Style="{StaticResource CompactButton}" Click="OpenModFolderButton_OnClick"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Border>
+
+                                            <TextBlock x:Name="InstalledAddonsEmptyTextBlock" Text="No addons installed yet. Drop one above or browse GameBanana." Foreground="{StaticResource TextSecondary}" FontSize="14" TextAlignment="Center" Margin="0,24"/>
+                                            <ItemsControl x:Name="InstalledAddonsItemsControl">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource GlassCard}" Padding="18" Margin="0,0,0,10">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="72"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <Border Width="58" Height="58" CornerRadius="12" Background="#17213A" ClipToBounds="True">
+                                                                    <Grid>
+                                                                        <TextBlock Text="&#xE7B8;" FontFamily="Segoe MDL2 Assets" FontSize="25" Foreground="{StaticResource AccentBrush}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        <Image Source="{Binding PreviewUrl}" Stretch="UniformToFill"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                                    <TextBlock Text="{Binding Name}" FontWeight="Bold" FontSize="16" TextTrimming="CharacterEllipsis"/>
+                                                                    <TextBlock Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,4,0,0">
+                                                                        <Run Text="{Binding Source, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding Author, Mode=OneWay}"/><Run Text="  •  "/><Run Text="{Binding FileCountText, Mode=OneWay}"/>
+                                                                    </TextBlock>
+                                                                </StackPanel>
+                                                                <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                    <CheckBox IsChecked="{Binding IsEnabled, Mode=OneWay}" Content="{Binding StatusText, Mode=OneWay}" Tag="{Binding}" VerticalAlignment="Center" Margin="12,0,14,0" Click="AddonEnabledCheckBox_OnClick"/>
+                                                                    <Button Content="Mod page" ToolTip="Open source page or My Stuff folder" Tag="{Binding}" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="OpenAddonPageButton_OnClick"/>
+                                                                    <Button Content="Remove" Tag="{Binding}" Style="{StaticResource CompactButton}" Click="RemoveAddonButton_OnClick"/>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
+
+                                        <StackPanel x:Name="GameBananaPanel" Visibility="Collapsed">
+                                            <Border Style="{StaticResource GlassCard}" Padding="20" Margin="0,0,0,14">
+                                                <Grid>
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <Grid.RowDefinitions>
+                                                        <RowDefinition Height="Auto"/>
+                                                        <RowDefinition Height="Auto"/>
+                                                    </Grid.RowDefinitions>
+                                                    <StackPanel Grid.ColumnSpan="2">
+                                                        <TextBlock Text="GameBanana for Mario Kart Wii" FontSize="22" FontWeight="Black"/>
+                                                        <TextBlock Text="Search and install graphic mods and texture packs directly into VanzaKart." Foreground="{StaticResource TextSecondary}" Margin="0,5,0,0"/>
+                                                    </StackPanel>
+                                                    <Grid Grid.Row="1" Margin="0,14,0,0">
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="190"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBox x:Name="GameBananaSearchTextBox" Style="{StaticResource ModernTextBox}" Height="42" ToolTip="Search textures, characters, karts..." KeyDown="GameBananaSearchTextBox_OnKeyDown"/>
+                                                        <ComboBox x:Name="GameBananaSortComboBox" Grid.Column="1" Style="{StaticResource CustomComboBox}" Height="42" Margin="10,0,0,0" SelectionChanged="GameBananaSortComboBox_OnSelectionChanged" SelectedIndex="0">
+                                                            <ComboBoxItem Content="Newest" Tag="Generic_Newest"/>
+                                                            <ComboBoxItem Content="Most liked" Tag="Generic_MostLiked"/>
+                                                            <ComboBoxItem Content="Most viewed" Tag="Generic_MostViewed"/>
+                                                            <ComboBoxItem Content="Most downloaded" Tag="Generic_MostDownloaded"/>
+                                                            <ComboBoxItem Content="A – Z" Tag="Generic_Alphabetically"/>
+                                                        </ComboBox>
+                                                    </Grid>
+                                                    <Button x:Name="GameBananaSearchButton" Grid.Row="1" Grid.Column="1" Content="Search" Style="{StaticResource CompactPrimaryButton}" Margin="14,14,0,0" MinWidth="110" Height="42" VerticalAlignment="Center" Click="GameBananaSearchButton_OnClick"/>
+                                                </Grid>
+                                            </Border>
+
+                                            <TextBlock x:Name="GameBananaStatusTextBlock" Text="Open the browser to load Mario Kart Wii mods." Foreground="{StaticResource TextSecondary}" TextAlignment="Center" Margin="0,16"/>
+                                            <ItemsControl x:Name="GameBananaModsItemsControl">
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Style="{StaticResource GlassCard}" Padding="16" Margin="0,0,0,10">
+                                                            <Grid>
+                                                                <Grid.ColumnDefinitions>
+                                                                    <ColumnDefinition Width="150"/>
+                                                                    <ColumnDefinition Width="*"/>
+                                                                    <ColumnDefinition Width="Auto"/>
+                                                                </Grid.ColumnDefinitions>
+                                                                <Border Width="136" Height="92" CornerRadius="10" Background="#111A2E" ClipToBounds="True">
+                                                                    <Grid>
+                                                                        <TextBlock Text="GAMEBANANA" FontWeight="Black" FontSize="10" Foreground="#F4C430" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                        <Image Source="{Binding PreviewUrl}" Stretch="UniformToFill"/>
+                                                                    </Grid>
+                                                                </Border>
+                                                                <StackPanel Grid.Column="1" Margin="0,1,20,0">
+                                                                    <TextBlock Text="{Binding Name}" FontWeight="Black" FontSize="17" TextTrimming="CharacterEllipsis"/>
+                                                                    <TextBlock Text="{Binding Author, StringFormat=by {0}}" Foreground="{StaticResource AccentBrush}" FontSize="12" Margin="0,3,0,0"/>
+                                                                    <TextBlock Text="{Binding Description}" Foreground="{StaticResource TextSecondary}" FontSize="12" TextWrapping="Wrap" TextTrimming="CharacterEllipsis" MaxHeight="36" Margin="0,7,0,0"/>
+                                                                    <TextBlock Text="{Binding StatsText, Mode=OneWay}" Foreground="{StaticResource TextFaint}" FontSize="11" Margin="0,6,0,0"/>
+                                                                </StackPanel>
+                                                                <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                                    <Button Content="{Binding InstallText, Mode=OneWay}" Tag="{Binding}" Style="{StaticResource CompactPrimaryButton}" MinWidth="100" Click="InstallGameBananaModButton_OnClick"/>
+                                                                    <Button Content="View page" Tag="{Binding}" Style="{StaticResource CompactButton}" MinWidth="100" Margin="0,8,0,0" Click="OpenGameBananaPageButton_OnClick"/>
+                                                                    <TextBlock Text="{Binding FileText, Mode=OneWay}" Foreground="{StaticResource TextFaint}" FontSize="10" TextAlignment="Center" Margin="0,6,0,0"/>
+                                                                </StackPanel>
+                                                            </Grid>
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+                                        </StackPanel>
 
                                         <StackPanel Margin="0,18,0,0">
                                             <TextBlock x:Name="CompatibilityTextBlock" Text="Install the core mod before importing addons." FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" HorizontalAlignment="Center"/>

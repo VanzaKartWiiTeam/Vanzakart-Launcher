@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>1.2.2</Version>
+    <Version>1.2.4</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
@@ -35,5 +35,8 @@
     <Resource Include="Assets\discord.png" />
     <Resource Include="Assets\website.png" />
     <Resource Include="logo.png" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpCompress" Version="1.0.0" />
   </ItemGroup>
 </Project>

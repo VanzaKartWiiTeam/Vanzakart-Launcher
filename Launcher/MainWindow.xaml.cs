@@ -34,6 +34,8 @@ public partial class MainWindow : Window
     private readonly ArchiveService _archiveService = new();
     private readonly SaveManagerService _saveManagerService = new();
     private readonly ModConflictService _modConflictService = new();
+    private readonly AddonManagerService _addonManagerService = new();
+    private readonly GameBananaService _gameBananaService;
     private readonly LauncherNavigationService _navigationService = new();
     private readonly MiiRuntimeSetupService _miiRuntimeSetupService = new();
     private readonly ShellViewModel _shellViewModel = new();
@@ -46,6 +48,8 @@ public partial class MainWindow : Window
     private readonly List<SaveProfileInfo> _allLicenseCards = new();
     private readonly ObservableCollection<LauncherMiiProfile> _miiProfiles = new();
     private readonly ObservableCollection<LauncherMiiProfile> _licenseMiiPickerItems = new();
+    private readonly ObservableCollection<AddonInfo> _installedAddons = new();
+    private readonly ObservableCollection<GameBananaMod> _gameBananaMods = new();
     private readonly Stopwatch _downloadStopwatch = new();
     private readonly ModUpdateSafetyService _modUpdateSafetyService = new();
     private bool _isRefreshingMiis;
@@ -80,11 +84,17 @@ public partial class MainWindow : Window
     private bool _isBusy;
     private bool _isModUpdateRequired;
     private bool _isGameRunning;
+    private bool _gameBananaLoaded;
+    private int _gameBananaPage;
+    private bool _gameBananaHasMore;
+    private bool _isLoadingGameBanana;
+    private CancellationTokenSource? _gameBananaSearchCts;
     private long _downloadBaselineBytes = -1;
 
     public MainWindow()
     {
         _userPreferences = _preferencesService.Load();
+        _gameBananaService = new GameBananaService(_networkService);
 
         _roomsViewModel = new RoomsViewModel(_networkService);
         _leaderboardViewModel = new LeaderboardViewModel(_networkService);
@@ -112,6 +122,8 @@ public partial class MainWindow : Window
         LicenseCardsItemsControl.ItemsSource = _licenseCards;
         MiiCardsListBox.ItemsSource = _miiProfiles;
         LicenseMiiPickerListBox.ItemsSource = _licenseMiiPickerItems;
+        InstalledAddonsItemsControl.ItemsSource = _installedAddons;
+        GameBananaModsItemsControl.ItemsSource = _gameBananaMods;
         _navigationService.Navigated += tab => NavigateTo(tab);
 
         LoadSettingsIntoUi();
@@ -179,6 +191,7 @@ public partial class MainWindow : Window
     protected override void OnClosed(EventArgs e)
     {
         _filesystemRefreshCts?.Cancel();
+        _gameBananaSearchCts?.Cancel();
         _dolphinFileWatcher?.Dispose();
         _profileFileWatcher?.Dispose();
         base.OnClosed(e);
@@ -517,7 +530,18 @@ public partial class MainWindow : Window
         ModConflictTextBlock.Foreground = conflicts.Count == 0
             ? (WpfBrush)FindResource("TextFaint")
             : (WpfBrush)FindResource("WarningBrush");
+        RefreshInstalledAddons();
         RefreshHomeUpdateCard();
+    }
+
+    private void RefreshInstalledAddons()
+    {
+        _installedAddons.Clear();
+        foreach (var addon in _addonManagerService.Load(BuildSettingsFromUi()))
+        {
+            _installedAddons.Add(addon);
+        }
+        InstalledAddonsEmptyTextBlock.Visibility = _installedAddons.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void RefreshHomeUpdateCard()
@@ -1045,6 +1069,7 @@ public partial class MainWindow : Window
         CheckUpdatesButton.IsEnabled = !value;
         RepairModButton.IsEnabled = !value;
         OpenModFolderButton.IsEnabled = !value;
+        GameBananaSearchButton.IsEnabled = !value;
     }
 
     private void SetStatus(string text, WpfBrush brush)
@@ -2347,35 +2372,216 @@ del ""%~f0""";
         }
 
         var files = (string[])e.Data.GetData(System.Windows.DataFormats.FileDrop);
-        var targetFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
-        Directory.CreateDirectory(targetFolder);
 
         try
         {
             foreach (var path in files)
             {
-                if (Directory.Exists(path))
-                {
-                    CopyDirectory(path, Path.Combine(targetFolder, Path.GetFileName(path)), overwrite: true);
-                }
-                else if (File.Exists(path) && string.Equals(Path.GetExtension(path), ".zip", StringComparison.OrdinalIgnoreCase))
-                {
-                    await _archiveService.ValidateZipAsync(path);
-                    await _archiveService.ExtractZipAsync(path, targetFolder);
-                }
-                else if (File.Exists(path))
-                {
-                    File.Copy(path, Path.Combine(targetFolder, Path.GetFileName(path)), overwrite: true);
-                }
+                if (Directory.Exists(path) || File.Exists(path))
+                    await _addonManagerService.ImportAsync(settings, path);
             }
 
-            ShowToast("Addons imported", "Files were copied into the local My Stuff folder.");
+            ShowToast("Addons imported", "The addons are installed and enabled. You can now toggle each one separately.");
             RefreshModsView();
         }
         catch (Exception ex)
         {
             ShowCustomDialog("Import error", ex.Message, MessageBoxButton.OK);
         }
+    }
+
+    private void InstalledAddonsTabButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        InstalledAddonsPanel.Visibility = Visibility.Visible;
+        GameBananaPanel.Visibility = Visibility.Collapsed;
+        InstalledAddonsTabButton.Style = (Style)FindResource("CompactPrimaryButton");
+        GameBananaTabButton.Style = (Style)FindResource("CompactButton");
+        RefreshInstalledAddons();
+    }
+
+    private async void GameBananaTabButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        InstalledAddonsPanel.Visibility = Visibility.Collapsed;
+        GameBananaPanel.Visibility = Visibility.Visible;
+        InstalledAddonsTabButton.Style = (Style)FindResource("CompactButton");
+        GameBananaTabButton.Style = (Style)FindResource("CompactPrimaryButton");
+        if (!_gameBananaLoaded) await SearchGameBananaAsync();
+    }
+
+    private async void GameBananaSearchButton_OnClick(object sender, RoutedEventArgs e) => await SearchGameBananaAsync();
+
+    private async void GameBananaSearchTextBox_OnKeyDown(object sender, WpfKeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            e.Handled = true;
+            await SearchGameBananaAsync();
+        }
+    }
+
+    private async void GameBananaSortComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (!IsLoaded || !_gameBananaLoaded) return;
+        await SearchGameBananaAsync();
+    }
+
+    private string GetGameBananaSort()
+    {
+        return (GameBananaSortComboBox.SelectedItem as ComboBoxItem)?.Tag as string ?? "Generic_Newest";
+    }
+
+    private async Task SearchGameBananaAsync(bool append = false)
+    {
+        if (append && (_isLoadingGameBanana || !_gameBananaHasMore)) return;
+        _gameBananaSearchCts?.Cancel();
+        _gameBananaSearchCts = new CancellationTokenSource();
+        var token = _gameBananaSearchCts.Token;
+        _isLoadingGameBanana = true;
+        var requestedPage = append ? _gameBananaPage + 1 : 1;
+        GameBananaStatusTextBlock.Visibility = Visibility.Visible;
+        GameBananaStatusTextBlock.Text = append ? "Loading more Mario Kart Wii addons..." : "Loading Mario Kart Wii addons...";
+        GameBananaSearchButton.IsEnabled = false;
+        try
+        {
+            var result = await _gameBananaService.SearchAsync(GameBananaSearchTextBox.Text, GetGameBananaSort(), requestedPage, token);
+            if (!append) _gameBananaMods.Clear();
+            foreach (var mod in result.Mods)
+            {
+                if (_gameBananaMods.All(existing => existing.Id != mod.Id)) _gameBananaMods.Add(mod);
+            }
+            _gameBananaPage = requestedPage;
+            _gameBananaLoaded = true;
+            _gameBananaHasMore = result.HasMore;
+            GameBananaStatusTextBlock.Text = _gameBananaMods.Count == 0
+                ? "No compatible Mario Kart Wii addons found. Try another search."
+                : $"Showing {_gameBananaMods.Count:N0} addons • {result.TotalAvailable:N0} addons available on GameBanana.";
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            GameBananaStatusTextBlock.Text = $"GameBanana is unavailable: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingGameBanana = false;
+            GameBananaSearchButton.IsEnabled = !_isBusy;
+        }
+    }
+
+    private async void MainContentScrollViewer_OnScrollChanged(object sender, ScrollChangedEventArgs e)
+    {
+        if (_currentTab != "Mods" || GameBananaPanel.Visibility != Visibility.Visible ||
+            !_gameBananaLoaded || !_gameBananaHasMore || _isLoadingGameBanana)
+            return;
+
+        const double preloadDistance = 220;
+        if (e.VerticalOffset + e.ViewportHeight >= e.ExtentHeight - preloadDistance)
+            await SearchGameBananaAsync(append: true);
+    }
+
+    private async void InstallGameBananaModButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not FrameworkElement installButton || installButton.Tag is not GameBananaMod mod) return;
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings))
+        {
+            ShowCustomDialog("Mod not installed", "Install VanzaKart before installing addons.", MessageBoxButton.OK);
+            return;
+        }
+
+        SetBusy(true);
+        installButton.IsEnabled = false;
+        GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}...";
+        using var cancellation = new CancellationTokenSource();
+        var dialog = new AddonDownloadDialog(mod.Name, mod.FileName) { Owner = this };
+        dialog.CancelRequested += cancellation.Cancel;
+        dialog.Show();
+        try
+        {
+            var progress = new Progress<(long current, long total)>(value =>
+            {
+                dialog.UpdateDownload(value.current, value.total);
+                var percent = value.total > 0 ? value.current * 100 / value.total : 0;
+                GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}: {percent}%";
+            });
+            var stages = new Progress<string>(dialog.SetStage);
+            await _addonManagerService.InstallGameBananaAsync(settings, mod, _networkService, progress, stages, cancellation.Token);
+            dialog.MarkCompleted();
+            GameBananaStatusTextBlock.Text = $"{mod.Name} installed and enabled.";
+            ShowToast("Addon installed", mod.Name);
+            RefreshModsView();
+        }
+        catch (OperationCanceledException)
+        {
+            dialog.MarkCancelled();
+            GameBananaStatusTextBlock.Text = $"Installation of {mod.Name} cancelled.";
+        }
+        catch (Exception ex)
+        {
+            dialog.MarkFailed(ex.Message);
+            GameBananaStatusTextBlock.Text = "Installation failed.";
+        }
+        finally
+        {
+            installButton.IsEnabled = true;
+            SetBusy(false);
+        }
+    }
+
+    private async void AddonEnabledCheckBox_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not CheckBox checkBox || checkBox.Tag is not AddonInfo addon) return;
+        var enabled = checkBox.IsChecked == true;
+        checkBox.IsEnabled = false;
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            await Task.Run(() => _addonManagerService.SetEnabledAsync(settings, addon, enabled));
+            ShowToast(enabled ? "Addon enabled" : "Addon disabled", addon.Name);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Addon error", ex.Message, MessageBoxButton.OK);
+        }
+        finally { RefreshModsView(); }
+    }
+
+    private async void RemoveAddonButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement button || button.Tag is not AddonInfo addon) return;
+        if (ShowCustomDialog("Remove addon", $"Remove '{addon.Name}' from the addon library?", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        button.IsEnabled = false;
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            await Task.Run(() => _addonManagerService.DeleteAsync(settings, addon));
+            ShowToast("Addon removed", addon.Name);
+            RefreshModsView();
+        }
+        catch (Exception ex)
+        {
+            button.IsEnabled = true;
+            ShowCustomDialog("Remove addon error", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private void OpenAddonPageButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is not AddonInfo addon) return;
+        if (!string.IsNullOrWhiteSpace(addon.SourceUrl))
+        {
+            OpenUrl(addon.SourceUrl);
+            return;
+        }
+
+        var folder = _addonManagerService.GetMyStuffFolder(BuildSettingsFromUi());
+        Directory.CreateDirectory(folder);
+        OpenFolder(folder);
+    }
+
+    private void OpenGameBananaPageButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if ((sender as FrameworkElement)?.Tag is GameBananaMod mod) OpenUrl(mod.ProfileUrl);
     }
 
     private void OpenWebsiteButton_OnClick(object sender, RoutedEventArgs e)
