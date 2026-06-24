@@ -176,8 +176,17 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
     private void ApplyFiltersAndSorting()
     {
-        // 1. Applica Filtro Ricerca e Rango
-        var filtered = _allPlayersRaw.AsEnumerable();
+        // 1. Ordina la classifica globale e assegna il rank visualizzato in base
+        // al criterio attivo (VR, Wins o Win Rate). La Position dell'API resta
+        // disponibile, ma la UI usa DisplayPosition.
+        var globalSorted = SortPlayers(_allPlayersRaw).ToList();
+        for (var i = 0; i < globalSorted.Count; i++)
+        {
+            globalSorted[i].DisplayPosition = i + 1;
+        }
+
+        // 2. Applica Filtro Ricerca sulla classifica già ordinata
+        var filtered = globalSorted.AsEnumerable();
 
         if (!string.IsNullOrWhiteSpace(SearchText))
         {
@@ -188,27 +197,13 @@ public sealed class LeaderboardViewModel : BaseViewModel
             );
         }
 
-
-
-        // 2. Applica Ordinamento
-        switch (SelectedSort)
-        {
-            case "Wins":
-                filtered = filtered.OrderByDescending(p => p.Wins);
-                break;
-            case "Win Rate":
-                filtered = filtered.OrderByDescending(p => p.WinRate);
-                break;
-            case "Points":
-            default:
-                filtered = filtered.OrderByDescending(p => p.Points);
-                break;
-        }
-
         var list = filtered.ToList();
 
-        // 3. Estrai i primi 3 assoluti della lista totale (non filtrata per ricerca) per il podio
-        var podiumList = _allPlayersRaw.Take(3).ToList();
+        // 3. Estrai il podio usando lo stesso ordinamento selezionato.
+        // La ricerca filtra solo la tabella sotto: il podio resta la top 3 globale
+        // del criterio attivo (VR, Wins o Win Rate).
+        var podiumList = globalSorted.Take(3).ToList();
+        var podiumPlayers = podiumList.ToHashSet();
         
         Top1 = podiumList.Count > 0 ? podiumList[0] : null;
         Top2 = podiumList.Count > 1 ? podiumList[1] : null;
@@ -223,11 +218,30 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
         foreach (var player in list)
         {
-            if (hasActiveFilters || player.Position > 3)
+            if (hasActiveFilters || !podiumPlayers.Contains(player))
             {
                 Players.Add(player);
             }
         }
+    }
+
+    private IEnumerable<LeaderboardPlayerInfo> SortPlayers(IEnumerable<LeaderboardPlayerInfo> players)
+    {
+        return SelectedSort switch
+        {
+            "Wins" => players
+                .OrderByDescending(p => p.Wins)
+                .ThenByDescending(p => p.WinRate)
+                .ThenByDescending(p => p.Points),
+            "Win Rate" => players
+                .OrderByDescending(p => p.WinRate)
+                .ThenByDescending(p => p.Wins)
+                .ThenByDescending(p => p.Points),
+            _ => players
+                .OrderByDescending(p => p.Points)
+                .ThenByDescending(p => p.Wins)
+                .ThenByDescending(p => p.WinRate)
+        };
     }
 
     private void StartAvatarRenderingBackground()
@@ -318,4 +332,5 @@ public sealed class LeaderboardViewModel : BaseViewModel
         public bool Success { get; set; }
         public List<LeaderboardPlayerInfo>? Players { get; set; }
     }
+
 }

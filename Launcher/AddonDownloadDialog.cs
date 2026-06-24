@@ -24,7 +24,11 @@ public sealed class AddonDownloadDialog : Window
 
     public event Action? CancelRequested;
 
-    public AddonDownloadDialog(string addonName, string fileName)
+    public AddonDownloadDialog(
+        string addonName,
+        string fileName,
+        string headingText = "Installing addon",
+        string waitingText = "Waiting for GameBanana...")
     {
         Title = $"Installing {addonName}";
         Width = 590;
@@ -58,7 +62,7 @@ public sealed class AddonDownloadDialog : Window
 
         var heading = new TextBlock
         {
-            Text = "Installing addon",
+            Text = headingText,
             FontSize = 12,
             FontWeight = FontWeights.Bold,
             Foreground = new SolidColorBrush(Color.FromRgb(0x66, 0xA6, 0xFF))
@@ -126,7 +130,7 @@ public sealed class AddonDownloadDialog : Window
         progressStack.Children.Add(_progressBar);
         _detailText = new TextBlock
         {
-            Text = "Waiting for GameBanana...",
+            Text = waitingText,
             FontSize = 12,
             Foreground = new SolidColorBrush(Color.FromRgb(0x93, 0xA1, 0xBF))
         };
@@ -225,11 +229,11 @@ public sealed class AddonDownloadDialog : Window
         _percentText.Text = "";
     }
 
-    public void MarkCompleted()
+    public void MarkCompleted(string title = "Addon installed", string detail = "The addon is enabled and ready to use.")
     {
         _canClose = true;
-        _stageText.Text = "Addon installed";
-        _detailText.Text = "The addon is enabled and ready to use.";
+        _stageText.Text = title;
+        _detailText.Text = detail;
         _progressBar.IsIndeterminate = false;
         _progressBar.Value = 100;
         _percentText.Text = "100%";

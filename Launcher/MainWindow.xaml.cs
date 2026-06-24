@@ -35,6 +35,7 @@ public partial class MainWindow : Window
     private readonly SaveManagerService _saveManagerService = new();
     private readonly ModConflictService _modConflictService = new();
     private readonly AddonManagerService _addonManagerService = new();
+    private readonly MusicPackService _musicPackService;
     private readonly GameBananaService _gameBananaService;
     private readonly LauncherNavigationService _navigationService = new();
     private readonly MiiRuntimeSetupService _miiRuntimeSetupService = new();
@@ -66,6 +67,7 @@ public partial class MainWindow : Window
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
     private readonly string _localModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_version.txt");
+    private readonly string _localMusicPackVersionFile = Path.Combine(AppContext.BaseDirectory, "musicpack_version.txt");
 
     private string _latestModVersion = string.Empty;
     private string _latestModUrl = LauncherConfig.ModUrl;
@@ -74,6 +76,14 @@ public partial class MainWindow : Window
     private string _latestModManifestUrl = LauncherConfig.ModManifestUrl;
     private string _latestModFilesUrl = LauncherConfig.ModFilesUrl;
     private string[] _latestModFilesMirrors = Array.Empty<string>();
+    private string _latestMusicPackVersion = string.Empty;
+    private string _latestMusicPackUrl = LauncherConfig.MusicPackUrl;
+    private string[] _latestMusicPackMirrors = Array.Empty<string>();
+    private string _latestMusicPackSha256 = string.Empty;
+    private string[] _latestMusicPackChangelog = Array.Empty<string>();
+    private string _latestMusicPackManifestUrl = LauncherConfig.MusicPackManifestUrl;
+    private string _latestMusicPackFilesUrl = LauncherConfig.MusicPackFilesUrl;
+    private string[] _latestMusicPackFilesMirrors = Array.Empty<string>();
     private string _latestLauncherUrl = LauncherConfig.LauncherZipUrl;
     private string[] _latestLauncherMirrors = Array.Empty<string>();
     private string[] _latestChangelog = Array.Empty<string>();
@@ -95,6 +105,7 @@ public partial class MainWindow : Window
     {
         _userPreferences = _preferencesService.Load();
         _gameBananaService = new GameBananaService(_networkService);
+        _musicPackService = new MusicPackService(_networkService, _archiveService, _addonManagerService);
 
         _roomsViewModel = new RoomsViewModel(_networkService);
         _leaderboardViewModel = new LeaderboardViewModel(_networkService);
@@ -530,14 +541,49 @@ public partial class MainWindow : Window
         ModConflictTextBlock.Foreground = conflicts.Count == 0
             ? (WpfBrush)FindResource("TextFaint")
             : (WpfBrush)FindResource("WarningBrush");
+        RefreshMusicPackCard(settings, installed);
         RefreshInstalledAddons();
         RefreshHomeUpdateCard();
+    }
+
+    private void RefreshMusicPackCard(LauncherSettings settings, bool coreInstalled)
+    {
+        var installedPack = _musicPackService.GetInstalled(settings);
+        var packInstalled = installedPack != null;
+        var localVersion = packInstalled && File.Exists(_localMusicPackVersionFile)
+            ? File.ReadAllText(_localMusicPackVersionFile).Trim()
+            : packInstalled ? "Unknown" : "Not installed";
+        var latestVersion = string.IsNullOrWhiteSpace(_latestMusicPackVersion) ? "Unknown" : _latestMusicPackVersion;
+        var updateAvailable = packInstalled && !string.IsNullOrWhiteSpace(_latestMusicPackVersion) &&
+                              !string.Equals(localVersion, _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
+
+        InstalledMusicPackVersionText.Text = localVersion;
+        LatestMusicPackVersionText.Text = latestVersion;
+        MusicPackInstallButton.Content = updateAvailable ? "Update" : packInstalled ? "Reinstall" : "Install";
+        MusicPackInstallButton.IsEnabled = !_isBusy && coreInstalled && !string.IsNullOrWhiteSpace(_latestMusicPackUrl);
+        MusicPackRemoveButton.IsEnabled = !_isBusy && packInstalled;
+        MusicPackEnabledCheckBox.IsChecked = installedPack?.IsEnabled == true;
+        MusicPackEnabledCheckBox.IsEnabled = !_isBusy && packInstalled;
+        MusicPackEnabledCheckBox.Content = installedPack?.IsEnabled == true ? "Enabled" : "Disabled";
+        MusicPackStatusTextBlock.Text = !coreInstalled
+            ? "Install the VanzaKart Modpack before adding the Music Pack."
+            : updateAvailable
+                ? $"Update available: {localVersion} → {_latestMusicPackVersion}."
+                : packInstalled
+                    ? installedPack?.IsEnabled == true
+                        ? $"Official Music Pack {localVersion} is installed, enabled and ready."
+                        : $"Official Music Pack {localVersion} is installed but disabled."
+                    : "Optional official package. It is installed directly in My Stuff.";
+        MusicPackStatusTextBlock.Foreground = updateAvailable
+            ? (WpfBrush)FindResource("WarningBrush")
+            : packInstalled ? (WpfBrush)FindResource("SuccessBrush") : (WpfBrush)FindResource("TextSecondary");
     }
 
     private void RefreshInstalledAddons()
     {
         _installedAddons.Clear();
-        foreach (var addon in _addonManagerService.Load(BuildSettingsFromUi()))
+        foreach (var addon in _addonManagerService.Load(BuildSettingsFromUi())
+                     .Where(addon => !addon.Id.Equals(AddonManagerService.OfficialMusicPackId, StringComparison.OrdinalIgnoreCase)))
         {
             _installedAddons.Add(addon);
         }
@@ -1070,6 +1116,9 @@ public partial class MainWindow : Window
         RepairModButton.IsEnabled = !value;
         OpenModFolderButton.IsEnabled = !value;
         GameBananaSearchButton.IsEnabled = !value;
+        MusicPackInstallButton.IsEnabled = !value && IsModInstalled(BuildSettingsFromUi()) && !string.IsNullOrWhiteSpace(_latestMusicPackUrl);
+        MusicPackRemoveButton.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
+        MusicPackEnabledCheckBox.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
     }
 
     private void SetStatus(string text, WpfBrush brush)
@@ -1170,6 +1219,60 @@ public partial class MainWindow : Window
 
         ModUpdateBackup? backup = null;
 
+        async Task<ModUpdateResult> ApplyFullZipUpdateAsync(string fallbackReason)
+        {
+            if (!string.IsNullOrWhiteSpace(fallbackReason))
+            {
+                await WriteUpdateLogAsync($"Differential update failed, falling back to full ZIP: {fallbackReason}");
+                SetUpdateState("Recovery", "Differential update failed. Downloading full modpack...", 5);
+                SetStatus("Repairing installation with full package", (WpfBrush)FindResource("WarningBrush"));
+            }
+            else
+            {
+                SetUpdateState("Download", "Downloading modpack...", 5);
+            }
+
+            var downloadProgress = new Progress<(long current, long total)>(
+                p => UpdateDownloadProgress(p.current, p.total));
+
+            await _networkService.DownloadFileWithResumeAsync(
+                BuildModMirrorList(), _tempZipPath, downloadProgress);
+
+            SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
+            SetUpdateState("Verifying", "Checking archive integrity...", 96);
+            await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
+
+            DownloadProgressBar.IsIndeterminate = false;
+            DownloadProgressBar.Value = 0;
+            SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
+            SetUpdateState(
+                isUpdate ? "Updating" : "Installing",
+                isUpdate
+                    ? "Replacing modpack files (user data is not affected)..."
+                    : "Writing modpack files to Riivolution folder...",
+                0);
+
+            var extractProgress = new Progress<int>(p =>
+                SetUpdateState(
+                    isUpdate ? "Updating" : "Installing",
+                    isUpdate
+                        ? $"Updating modpack files... {p}%"
+                        : $"Writing files... {p}%",
+                    p));
+
+            var fullResult = await _modUpdateSafetyService.ApplyZipUpdateAsync(
+                _tempZipPath,
+                modFolder,
+                modSubFolder,
+                settings,
+                extractProgress);
+
+            if (File.Exists(_tempZipPath))
+                File.Delete(_tempZipPath);
+
+            return fullResult;
+        }
+
         try
         {
             // ── STEP 1: backup user data (only if the mod is already installed) ──
@@ -1202,7 +1305,7 @@ public partial class MainWindow : Window
                     SetStatus("Fetching update manifest", (WpfBrush)FindResource("TextSecondary"));
 
                     var manifestJson = await _networkService.DownloadStringAsync(_latestModManifestUrl);
-                    manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson);
+                    manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'));
                 }
                 catch (Exception ex)
                 {
@@ -1212,161 +1315,163 @@ public partial class MainWindow : Window
 
             if (isUpdate && manifest != null)
             {
-                // ── STEP 2: differential update ──
-                SetUpdateState("Verifying", "Scanning local files...", 8);
-                SetStatus("Verifying local installation", (WpfBrush)FindResource("TextSecondary"));
-
-                var localFiles = await _modUpdateSafetyService.ScanLocalFilesAsync(modSubFolder);
-
-                // Diff files
-                var filesToDownload = new List<ModManifestFile>();
-                var filesToDelete = new List<string>();
-
-                foreach (var serverFile in manifest.Files)
+                try
                 {
-                    var local = localFiles.FirstOrDefault(f => f.Path.Equals(serverFile.Path, StringComparison.OrdinalIgnoreCase));
-                    if (local == null || local.Sha256 != serverFile.Sha256)
+                    // ── STEP 2: differential update ──
+                    SetUpdateState("Verifying", "Scanning local files...", 8);
+                    SetStatus("Verifying local installation", (WpfBrush)FindResource("TextSecondary"));
+
+                    var localFiles = await _modUpdateSafetyService.ScanLocalFilesAsync(modSubFolder);
+
+                    // Diff files
+                    var filesToDownload = new List<ModManifestFile>();
+                    var filesToDelete = new List<string>();
+
+                    foreach (var serverFile in manifest.Files)
                     {
-                        filesToDownload.Add(serverFile);
+                        var local = localFiles.FirstOrDefault(f => f.Path.Equals(serverFile.Path, StringComparison.OrdinalIgnoreCase));
+                        if (local == null || local.Sha256 != serverFile.Sha256)
+                        {
+                            filesToDownload.Add(serverFile);
+                        }
                     }
-                }
 
-                foreach (var localFile in localFiles)
-                {
-                    var serverHasIt = manifest.Files.Any(f => f.Path.Equals(localFile.Path, StringComparison.OrdinalIgnoreCase));
-                    if (!serverHasIt)
+                    foreach (var localFile in localFiles)
                     {
-                        filesToDelete.Add(localFile.Path);
+                        var serverHasIt = manifest.Files.Any(f => f.Path.Equals(localFile.Path, StringComparison.OrdinalIgnoreCase));
+                        if (!serverHasIt)
+                        {
+                            filesToDelete.Add(localFile.Path);
+                        }
                     }
-                }
 
-                long totalBytesToDownload = Math.Max(1, filesToDownload.Sum(f => f.Size));
-                long downloadedBytes = 0;
+                    long totalBytesToDownload = Math.Max(1, filesToDownload.Sum(f => f.Size));
+                    long downloadedBytes = 0;
 
-                await WriteUpdateLogAsync($"Incremental update started: {filesToDownload.Count} files to download ({FormatBytes(totalBytesToDownload)}), {filesToDelete.Count} files to delete.");
+                    await WriteUpdateLogAsync($"Incremental update started: {filesToDownload.Count} files to download ({FormatBytes(totalBytesToDownload)}), {filesToDelete.Count} files to delete.");
 
-                int fileIndex = 0;
-                foreach (var file in filesToDownload)
-                {
-                    fileIndex++;
-
-                    var localPath = Path.Combine(modSubFolder, file.Path.Replace('/', Path.DirectorySeparatorChar));
-
-                    SetStatus($"Downloading {fileIndex}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}", (WpfBrush)FindResource("TextSecondary"));
-                    
-                    var fileProgress = new Progress<(long current, long total)>(p =>
-                    {
-                        long currentTotalDownloaded = downloadedBytes + p.current;
-                        UpdateDownloadProgress(currentTotalDownloaded, totalBytesToDownload);
-                    });
-
-                    var tempFile = localPath + ".tmp";
-                    Directory.CreateDirectory(Path.GetDirectoryName(localPath)!);
-                    
-                    if (File.Exists(tempFile))
-                        File.Delete(tempFile);
+                    var stagingRoot = Path.Combine(Path.GetTempPath(), $"vanzakart_mod_update_{Guid.NewGuid():N}");
+                    Directory.CreateDirectory(stagingRoot);
 
                     try
                     {
-                        var mirrors = BuildModFileMirrorList(file.Path);
-                        await _networkService.DownloadFileWithResumeAsync(mirrors, tempFile, fileProgress);
-                        
-                        var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(tempFile, default);
-                        if (downloadedHash != file.Sha256)
+                        int fileIndex = 0;
+                        var fullModSubFolder = Path.GetFullPath(modSubFolder)
+                            .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+
+                        foreach (var file in filesToDownload)
                         {
-                            throw new InvalidDataException($"Hash mismatch for downloaded file: {file.Path}. Expected {file.Sha256}, got {downloadedHash}");
+                            fileIndex++;
+
+                            var relativePath = file.Path.Replace('/', Path.DirectorySeparatorChar);
+                            var localPath = Path.GetFullPath(Path.Combine(modSubFolder, relativePath));
+                            if (!localPath.StartsWith(fullModSubFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                                !localPath.Equals(fullModSubFolder, StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new InvalidDataException($"Invalid update manifest path: {file.Path}");
+                            }
+
+                            SetStatus($"Downloading {fileIndex}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}", (WpfBrush)FindResource("TextSecondary"));
+
+                            var fileProgress = new Progress<(long current, long total)>(p =>
+                            {
+                                long currentTotalDownloaded = downloadedBytes + p.current;
+                                UpdateDownloadProgress(currentTotalDownloaded, totalBytesToDownload);
+                            });
+
+                            var tempFile = Path.Combine(stagingRoot, relativePath);
+                            Directory.CreateDirectory(Path.GetDirectoryName(tempFile)!);
+
+                            if (File.Exists(tempFile))
+                                File.Delete(tempFile);
+
+                            try
+                            {
+                                var mirrors = BuildModFileMirrorList(file.Path);
+                                await _networkService.DownloadFileWithResumeAsync(mirrors, tempFile, fileProgress);
+
+                                var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(tempFile, default);
+                                if (downloadedHash != file.Sha256)
+                                {
+                                    throw new InvalidDataException($"Hash mismatch for downloaded file: {file.Path}. Expected {file.Sha256}, got {downloadedHash}");
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                var primaryUrl = $"{_latestModFilesUrl.TrimEnd('/')}/{file.Path.Replace('\\', '/')}";
+                                await WriteUpdateLogAsync($"Failed to download file '{file.Path}' from URL '{primaryUrl}'. Error: {ex.Message}");
+                                if (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase) ||
+                                    ex.Message.Contains("Not Found", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    throw new FileNotFoundException(
+                                        $"The update manifest references '{file.Path}', but that file could not be downloaded from the differential release files.",
+                                        ex);
+                                }
+
+                                throw;
+                            }
+
+                            downloadedBytes += file.Size;
                         }
 
-                        if (File.Exists(localPath))
-                            File.Delete(localPath);
+                        // Apply downloaded files only after every required file was downloaded
+                        // and verified. This prevents half-updated installs when the server
+                        // manifest references a file that has not been uploaded yet.
+                        foreach (var file in filesToDownload)
+                        {
+                            var relativePath = file.Path.Replace('/', Path.DirectorySeparatorChar);
+                            var sourcePath = Path.Combine(stagingRoot, relativePath);
+                            var destinationPath = Path.GetFullPath(Path.Combine(modSubFolder, relativePath));
+                            Directory.CreateDirectory(Path.GetDirectoryName(destinationPath)!);
+                            File.Move(sourcePath, destinationPath, overwrite: true);
+                        }
 
-                        File.Move(tempFile, localPath);
-                    }
-                    catch (Exception ex)
-                    {
-                        var primaryUrl = $"{_latestModFilesUrl.TrimEnd('/')}/{file.Path.Replace('\\', '/')}";
-                        await WriteUpdateLogAsync($"Failed to download file '{file.Path}' from URL '{primaryUrl}'. Error: {ex.Message}");
-                        throw;
+                        // Delete obsolete files after new files are safely staged and applied.
+                        int deletedCount = 0;
+                        foreach (var fileToDelete in filesToDelete)
+                        {
+                            var localPath = Path.Combine(modSubFolder, fileToDelete.Replace('/', Path.DirectorySeparatorChar));
+                            if (File.Exists(localPath))
+                            {
+                                File.Delete(localPath);
+                                deletedCount++;
+                                await WriteUpdateLogAsync($"pruned (obsolete): {fileToDelete}");
+                            }
+                        }
+
+                        // Clean up empty directories
+                        _modUpdateSafetyService.RemoveEmptyDirectories(
+                            modSubFolder,
+                            modSubFolder,
+                            _modUpdateSafetyService.BuildProtectedAbsolutePaths(settings, modSubFolder));
+
+                        result = new ModUpdateResult
+                        {
+                            FilesWritten = filesToDownload.Count,
+                            FilesSkipped = 0,
+                            FilesPruned = deletedCount
+                        };
                     }
                     finally
                     {
-                        if (File.Exists(tempFile))
-                            File.Delete(tempFile);
-                    }
-
-                    downloadedBytes += file.Size;
-                }
-
-                // Delete obsolete files
-                int deletedCount = 0;
-                foreach (var fileToDelete in filesToDelete)
-                {
-                    var localPath = Path.Combine(modSubFolder, fileToDelete.Replace('/', Path.DirectorySeparatorChar));
-                    if (File.Exists(localPath))
-                    {
-                        File.Delete(localPath);
-                        deletedCount++;
-                        await WriteUpdateLogAsync($"pruned (obsolete): {fileToDelete}");
+                        try
+                        {
+                            if (Directory.Exists(stagingRoot))
+                                Directory.Delete(stagingRoot, recursive: true);
+                        }
+                        catch
+                        {
+                        }
                     }
                 }
-
-                // Clean up empty directories
-                _modUpdateSafetyService.RemoveEmptyDirectories(
-                    modSubFolder,
-                    modSubFolder,
-                    _modUpdateSafetyService.BuildProtectedAbsolutePaths(settings, modSubFolder));
-
-                result = new ModUpdateResult
+                catch (Exception diffEx)
                 {
-                    FilesWritten = filesToDownload.Count,
-                    FilesSkipped = 0,
-                    FilesPruned = deletedCount
-                };
+                    result = await ApplyFullZipUpdateAsync(diffEx.Message);
+                }
             }
             else
             {
-                // ── STEP 2: download ──
-                SetUpdateState("Download", "Downloading modpack...", 5);
-                var downloadProgress = new Progress<(long current, long total)>(
-                    p => UpdateDownloadProgress(p.current, p.total));
-
-                await _networkService.DownloadFileWithResumeAsync(
-                    BuildModMirrorList(), _tempZipPath, downloadProgress);
-
-                // ── STEP 3: integrity check ──
-                SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
-                SetUpdateState("Verifying", "Checking archive integrity...", 96);
-                await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
-
-                // ── STEP 4: selective extraction ──
-                DownloadProgressBar.IsIndeterminate = false;
-                DownloadProgressBar.Value = 0;
-                SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
-                SetUpdateState(
-                    isUpdate ? "Updating" : "Installing",
-                    isUpdate
-                        ? "Replacing modpack files (user data is not affected)..."
-                        : "Writing modpack files to Riivolution folder...",
-                    0);
-
-                var extractProgress = new Progress<int>(p =>
-                    SetUpdateState(
-                        isUpdate ? "Updating" : "Installing",
-                        isUpdate
-                            ? $"Updating modpack files... {p}%"
-                            : $"Writing files... {p}%",
-                        p));
-
-                result = await _modUpdateSafetyService.ApplyZipUpdateAsync(
-                    _tempZipPath,
-                    modFolder,
-                    modSubFolder,
-                    settings,
-                    extractProgress);
-
-                // ── STEP 5: clean up temp ZIP ──
-                if (File.Exists(_tempZipPath))
-                    File.Delete(_tempZipPath);
+                result = await ApplyFullZipUpdateAsync(string.Empty);
             }
 
             // ── STEP 6: write version ────────────────────────────────────────────────────
@@ -1632,7 +1737,7 @@ public partial class MainWindow : Window
 
             var noCacheUrl = $"{LauncherConfig.VersionJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             var json = await _networkService.DownloadStringAsync(noCacheUrl);
-            var info = JsonSerializer.Deserialize<VersionInfo>(json) ?? new VersionInfo();
+            var info = JsonSerializer.Deserialize<VersionInfo>(json.TrimStart('\uFEFF', '\u200B')) ?? new VersionInfo();
             _lastUpdateCheckUtc = DateTime.UtcNow;
             _lastUpdateError = string.Empty;
 
@@ -1645,6 +1750,14 @@ public partial class MainWindow : Window
             _latestModManifestUrl = string.IsNullOrWhiteSpace(info.ModManifestUrl) ? LauncherConfig.ModManifestUrl : info.ModManifestUrl;
             _latestModFilesUrl = string.IsNullOrWhiteSpace(info.ModFilesUrl) ? LauncherConfig.ModFilesUrl : info.ModFilesUrl;
             _latestModFilesMirrors = info.ModFilesMirrors ?? Array.Empty<string>();
+            _latestMusicPackVersion = info.MusicPackVersion;
+            _latestMusicPackUrl = string.IsNullOrWhiteSpace(info.MusicPackUrl) ? LauncherConfig.MusicPackUrl : info.MusicPackUrl;
+            _latestMusicPackMirrors = info.MusicPackMirrors ?? Array.Empty<string>();
+            _latestMusicPackSha256 = info.MusicPackSha256;
+            _latestMusicPackChangelog = info.MusicPackChangelog ?? Array.Empty<string>();
+            _latestMusicPackManifestUrl = string.IsNullOrWhiteSpace(info.MusicPackManifestUrl) ? LauncherConfig.MusicPackManifestUrl : info.MusicPackManifestUrl;
+            _latestMusicPackFilesUrl = string.IsNullOrWhiteSpace(info.MusicPackFilesUrl) ? LauncherConfig.MusicPackFilesUrl : info.MusicPackFilesUrl;
+            _latestMusicPackFilesMirrors = info.MusicPackFilesMirrors ?? Array.Empty<string>();
             _latestLauncherUrl = string.IsNullOrWhiteSpace(info.LauncherUrl) ? LauncherConfig.LauncherZipUrl : info.LauncherUrl;
             _latestLauncherMirrors = info.LauncherMirrors ?? Array.Empty<string>();
             _latestChangelog = info.Changelog ?? Array.Empty<string>();
@@ -1660,7 +1773,15 @@ public partial class MainWindow : Window
                 }
             }
 
-            if (IsModInstalled(BuildSettingsFromUi()))
+            var currentSettings = BuildSettingsFromUi();
+            var musicPackInstalled = _musicPackService.IsInstalled(currentSettings);
+            var localMusicPackVersion = musicPackInstalled && File.Exists(_localMusicPackVersionFile)
+                ? File.ReadAllText(_localMusicPackVersionFile).Trim()
+                : string.Empty;
+            var musicPackUpdateAvailable = musicPackInstalled && !string.IsNullOrWhiteSpace(info.MusicPackVersion) &&
+                                           !string.Equals(localMusicPackVersion, info.MusicPackVersion, StringComparison.OrdinalIgnoreCase);
+
+            if (IsModInstalled(currentSettings))
             {
                 var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
                 if (!string.IsNullOrWhiteSpace(info.ModVersion) && info.ModVersion != localVersion)
@@ -1680,7 +1801,11 @@ public partial class MainWindow : Window
                     SetUpdateState("Up to date", "No mod update is required.", 100);
                     if (showMessages)
                     {
-                        ShowToast("No updates", "VanzaKart is already up to date.");
+                        ShowToast(
+                            musicPackUpdateAvailable ? "Music Pack update available" : "No updates",
+                            musicPackUpdateAvailable
+                                ? $"VanzaKart Music Pack v{info.MusicPackVersion} is ready to install from Mods."
+                                : "VanzaKart and its official packages are already up to date.");
                     }
                 }
             }
@@ -1811,6 +1936,28 @@ public partial class MainWindow : Window
             yield return mirror;
         }
         yield return LauncherConfig.LauncherZipUrl;
+    }
+
+    private IEnumerable<string> BuildMusicPackMirrorList()
+    {
+        if (!string.IsNullOrWhiteSpace(_latestMusicPackUrl)) yield return _latestMusicPackUrl;
+        foreach (var mirror in _latestMusicPackMirrors)
+        {
+            if (!string.IsNullOrWhiteSpace(mirror)) yield return mirror;
+        }
+        if (!string.Equals(_latestMusicPackUrl, LauncherConfig.MusicPackUrl, StringComparison.OrdinalIgnoreCase))
+            yield return LauncherConfig.MusicPackUrl;
+    }
+
+    private IEnumerable<string> BuildMusicPackFilesBaseUrls()
+    {
+        if (!string.IsNullOrWhiteSpace(_latestMusicPackFilesUrl)) yield return _latestMusicPackFilesUrl;
+        foreach (var mirror in _latestMusicPackFilesMirrors)
+        {
+            if (!string.IsNullOrWhiteSpace(mirror)) yield return mirror;
+        }
+        if (!string.Equals(_latestMusicPackFilesUrl, LauncherConfig.MusicPackFilesUrl, StringComparison.OrdinalIgnoreCase))
+            yield return LauncherConfig.MusicPackFilesUrl;
     }
 
     private void ResetDownloadMetrics()
@@ -2400,6 +2547,106 @@ public partial class MainWindow : Window
         RefreshInstalledAddons();
     }
 
+    private async void MusicPackInstallButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy) return;
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings))
+        {
+            ShowCustomDialog("Modpack required", "Install the VanzaKart Modpack before installing the Music Pack.", MessageBoxButton.OK);
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_latestMusicPackVersion))
+        {
+            await CheckForUpdatesAsync(showMessages: false);
+            if (string.IsNullOrWhiteSpace(_latestMusicPackVersion))
+            {
+                ShowCustomDialog("Music Pack metadata unavailable", "The official manifest does not contain Music Pack release information yet. See the release instructions before publishing it.", MessageBoxButton.OK);
+                return;
+            }
+        }
+
+        var alreadyCurrent = _musicPackService.IsInstalled(settings) && File.Exists(_localMusicPackVersionFile) &&
+                             string.Equals(File.ReadAllText(_localMusicPackVersionFile).Trim(), _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
+        if (alreadyCurrent && ShowCustomDialog("Music Pack up to date", "The latest Music Pack is already installed. Reinstall it anyway?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            return;
+
+        SetBusy(true);
+        MusicPackInstallButton.IsEnabled = false;
+        using var cancellation = new CancellationTokenSource();
+        var dialog = new AddonDownloadDialog(
+            "VanzaKart Music Pack",
+            MusicPackService.FileName,
+            "OFFICIAL VANZAKART PACKAGE",
+            "Connecting to the VanzaKart download server...") { Owner = this };
+        dialog.CancelRequested += cancellation.Cancel;
+        dialog.Show();
+
+        try
+        {
+            var progress = new Progress<(long current, long total)>(value => dialog.UpdateDownload(value.current, value.total));
+            var stages = new Progress<string>(dialog.SetStage);
+            await _musicPackService.InstallAsync(settings, BuildMusicPackMirrorList().Distinct(StringComparer.OrdinalIgnoreCase),
+                _latestMusicPackSha256, _latestMusicPackManifestUrl,
+                BuildMusicPackFilesBaseUrls().Distinct(StringComparer.OrdinalIgnoreCase), progress, stages, cancellation.Token);
+            File.WriteAllText(_localMusicPackVersionFile, _latestMusicPackVersion);
+            dialog.MarkCompleted("Music Pack installed", "The official package was extracted into My Stuff and is enabled.");
+            ShowToast("Music Pack ready", $"Version {_latestMusicPackVersion} installed.");
+        }
+        catch (OperationCanceledException)
+        {
+            dialog.MarkCancelled();
+        }
+        catch (Exception ex)
+        {
+            dialog.MarkFailed(ex.Message);
+        }
+        finally
+        {
+            SetBusy(false);
+            RefreshModsView();
+        }
+    }
+
+    private async void MusicPackEnabledCheckBox_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || sender is not CheckBox checkBox) return;
+        var enabled = checkBox.IsChecked == true;
+        checkBox.IsEnabled = false;
+        try
+        {
+            await _musicPackService.SetEnabledAsync(BuildSettingsFromUi(), enabled);
+            ShowToast(enabled ? "Music Pack enabled" : "Music Pack disabled",
+                enabled ? "Its files are active in My Stuff." : "Its files were removed from My Stuff but remain installed.");
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Music Pack error", ex.Message, MessageBoxButton.OK);
+        }
+        finally
+        {
+            RefreshModsView();
+        }
+    }
+
+    private async void MusicPackRemoveButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy || ShowCustomDialog("Remove Music Pack", "Remove the official Music Pack from My Stuff?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+            return;
+        try
+        {
+            await _musicPackService.UninstallAsync(BuildSettingsFromUi());
+            if (File.Exists(_localMusicPackVersionFile)) File.Delete(_localMusicPackVersionFile);
+            ShowToast("Music Pack removed", "The core Modpack was not changed.");
+            RefreshModsView();
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog("Music Pack removal failed", ex.Message, MessageBoxButton.OK);
+        }
+    }
+
     private async void GameBananaTabButton_OnClick(object sender, RoutedEventArgs e)
     {
         InstalledAddonsPanel.Visibility = Visibility.Collapsed;
@@ -2751,20 +2998,63 @@ public partial class MainWindow : Window
         }
     }
 
-    private void SettingsSearchTextBox_TextChanged(object sender, TextChangedEventArgs e)
+    private void DeleteGameSettingsFileButton_OnClick(object sender, RoutedEventArgs e)
     {
-        var query = SettingsSearchTextBox.Text.Trim();
-        SetCardVisibility(GamePathsSettingsCard, query, "paths dolphin rom user folder game");
-        SetCardVisibility(LauncherSettingsCard, query, "launcher startup updates preferences");
-        SetCardVisibility(GameSettingsCard, query, "game mod texture graphics grafiche save separate");
-    }
+        var settings = BuildSettingsFromUi();
+        if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        {
+            ShowCustomDialog(
+                "Dolphin User Folder required",
+                "Select the Dolphin User Folder in Game Paths before using this developer tool.",
+                MessageBoxButton.OK);
+            return;
+        }
 
-    private static void SetCardVisibility(FrameworkElement card, string query, string keywords)
-    {
-        card.Visibility = string.IsNullOrWhiteSpace(query) ||
-                          keywords.Contains(query, StringComparison.OrdinalIgnoreCase)
-            ? Visibility.Visible
-            : Visibility.Collapsed;
+        var settingsFilePath = Path.Combine(
+            settings.UserFolderPath,
+            "Wii",
+            "shared2",
+            "Pulsar",
+            "VanzaKart",
+            "Settings.pul");
+
+        var result = ShowCustomDialog(
+            "Delete in-game settings?",
+            "Go back now if you are not sure what this does.\n\n" +
+            "Deleting Settings.pul is an advanced troubleshooting step to try only if the game crashes during startup. " +
+            "It will permanently remove all in-game settings you have saved.\n\n" +
+            "Do you want to delete Settings.pul?",
+            MessageBoxButton.YesNo);
+
+        if (result != MessageBoxResult.Yes)
+        {
+            return;
+        }
+
+        try
+        {
+            if (!File.Exists(settingsFilePath))
+            {
+                ShowCustomDialog(
+                    "Settings file not found",
+                    $"Settings.pul does not exist at:\n{settingsFilePath}",
+                    MessageBoxButton.OK);
+                return;
+            }
+
+            File.Delete(settingsFilePath);
+            ShowCustomDialog(
+                "In-game settings deleted",
+                "Settings.pul was deleted successfully. VanzaKart will create a new settings file the next time it starts.",
+                MessageBoxButton.OK);
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog(
+                "Could not delete Settings.pul",
+                $"The settings file could not be deleted.\n\n{ex.Message}",
+                MessageBoxButton.OK);
+        }
     }
 
     private void SeedNews()
@@ -3241,9 +3531,10 @@ public sealed class CustomDialog : Window
     public CustomDialog(string title, string message, MessageBoxButton buttons)
     {
         _buttons = buttons;
+        var usesExpandedLayout = message.Length > 190 || message.Count(ch => ch == '\n') >= 4;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         Width = 560;
-        Height = 330;
+        Height = usesExpandedLayout ? 420 : 330;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -3280,7 +3571,7 @@ public sealed class CustomDialog : Window
         root = new Border
         {
             Width = 460,
-            Height = 230,
+            Height = usesExpandedLayout ? 320 : 230,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
             Opacity = 0,

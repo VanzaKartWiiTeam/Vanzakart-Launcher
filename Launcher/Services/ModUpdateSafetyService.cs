@@ -32,6 +32,13 @@ public sealed class ModUpdateSafetyService
         "mii_profile.json"
     ];
 
+    private static readonly string[] IgnoredSystemFileNames =
+    [
+        "desktop.ini",
+        "Thumbs.db",
+        ".DS_Store"
+    ];
+
     private static readonly string[] ProtectedExtensions =
     [
         ".mii",
@@ -63,6 +70,9 @@ public sealed class ModUpdateSafetyService
         {
             cancellationToken.ThrowIfCancellationRequested();
             var relative = Path.GetRelativePath(modSubFolder, file);
+
+            if (IsIgnoredSystemFile(relative))
+                continue;
 
             if (IsProtectedRelativePath(relative))
                 continue;
@@ -312,6 +322,12 @@ public sealed class ModUpdateSafetyService
         foreach (var file in backup.Files)
         {
             cancellationToken.ThrowIfCancellationRequested();
+            if (IsIgnoredSystemFile(file.RelativePath))
+            {
+                await WriteLogAsync($"restore {backup.BackupId}: skipped system file {file.RelativePath}", cancellationToken);
+                continue;
+            }
+
             progress?.Report($"Restoring {file.RelativePath}");
             var destination = Path.Combine(backup.ModRoot, file.RelativePath);
             await CopyFileAsync(file.BackupPath, destination, cancellationToken);
@@ -414,6 +430,9 @@ public sealed class ModUpdateSafetyService
         foreach (var file in files)
         {
             var relative = Path.GetRelativePath(modRoot, file);
+            if (IsIgnoredSystemFile(relative))
+                continue;
+
             if (IsProtectedRelativePath(relative))
                 yield return file;
         }
@@ -444,6 +463,12 @@ public sealed class ModUpdateSafetyService
             || relative.Contains("profile", StringComparison.OrdinalIgnoreCase);
     }
 
+    private static bool IsIgnoredSystemFile(string relative)
+    {
+        var fileName = Path.GetFileName(relative);
+        return IgnoredSystemFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase);
+    }
+
     internal void RemoveEmptyDirectories(
         string root,
         string modRoot,
@@ -453,6 +478,11 @@ public sealed class ModUpdateSafetyService
         foreach (var dir in Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
                                      .OrderByDescending(d => d.Length))
         {
+            // CTBRSTM is a required Modpack directory and may legitimately be empty.
+            // Its contents are not protected and continue to update normally.
+            if (Path.GetFileName(dir).Equals("CTBRSTM", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             if (IsAbsolutePathProtected(dir, protectedAbsolutePaths))
                 continue;
 
@@ -475,6 +505,9 @@ public sealed class ModUpdateSafetyService
     {
         foreach (var file in backup.Files)
         {
+            if (IsIgnoredSystemFile(file.RelativePath))
+                continue;
+
             var destination = Path.Combine(backup.ModRoot, file.RelativePath);
             if (!File.Exists(destination))
                 throw new IOException($"Restore failed: {file.RelativePath} is missing.");
@@ -488,9 +521,29 @@ public sealed class ModUpdateSafetyService
     private static async Task CopyFileAsync(string source, string destination, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+        ClearBlockingAttributes(destination);
         await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920, true);
         await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
         await input.CopyToAsync(output, cancellationToken);
+    }
+
+    private static void ClearBlockingAttributes(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var attributes = File.GetAttributes(path);
+            var blockingAttributes = FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System;
+            if ((attributes & blockingAttributes) != 0)
+            {
+                File.SetAttributes(path, attributes & ~blockingAttributes);
+            }
+        }
+        catch
+        {
+        }
     }
 
     internal static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)

@@ -1,0 +1,25 @@
+{
+  "mod_version": "1.0.0",
+  "mod_url": "https://sitodaking.it/Modpack/VanzaKart.zip",
+  "mod_mirrors": [],
+  "mod_sha256": "SHA256_DEL_FILE_VANZAKART_ZIP",
+  "mod_manifest_url": "https://sitodaking.it/Modpack/manifest_files.json",
+  "mod_files_url": "https://sitodaking.it/Modpack/files/",
+  "mod_files_mirrors": [],
+  "music_pack_version": "1.0.0",
+  "music_pack_url": "https://sitodaking.it/MusicPack/vanzakart_musicpack.zip",
+  "music_pack_mirrors": [],
+  "music_pack_sha256": "SHA256_DEL_FILE_VANZAKART_MUSICPACK_ZIP",
+  "music_pack_manifest_url": "https://sitodaking.it/MusicPack/manifest_files.json",
+  "music_pack_files_url": "https://sitodaking.it/MusicPack/files/",
+  "music_pack_files_mirrors": [],
+  "music_pack_changelog": [
+    "Prima release ufficiale del Music Pack"
+  ],
+  "launcher_version": "1.2.8",
+  "launcher_url": "https://sitodaking.it/Launcher/vanzakart_launcher.zip",
+  "launcher_mirrors": [],
+  "changelog": [
+    "Note della release Modpack o Launcher più recente"
+  ]
+}

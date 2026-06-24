@@ -10,6 +10,7 @@ namespace VanzaKartLauncher.Services;
 public sealed class AddonManagerService
 {
     private const string ManifestName = "addon.json";
+    public const string OfficialMusicPackId = "official-vanzakart-music-pack";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
     public string GetMyStuffFolder(LauncherSettings settings) =>
@@ -17,6 +18,9 @@ public sealed class AddonManagerService
 
     private string GetLibraryFolder(LauncherSettings settings) =>
         Path.Combine(settings.GetModFolder(), "VanzaKart_UserData", "Addons");
+
+    public string GetManagedPayloadFolder(LauncherSettings settings, string addonId) =>
+        Path.Combine(GetLibraryFolder(settings), addonId, "payload");
 
     public IReadOnlyList<AddonInfo> Load(LauncherSettings settings)
     {
@@ -138,6 +142,104 @@ public sealed class AddonManagerService
         }
     }
 
+    public async Task<AddonInfo> InstallOfficialMusicPackAsync(
+        LauncherSettings settings,
+        string archivePath,
+        CancellationToken cancellationToken = default)
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), "VanzaKart", Guid.NewGuid().ToString("N"));
+        var extracted = Path.Combine(tempRoot, "extracted");
+        Directory.CreateDirectory(tempRoot);
+        try
+        {
+            await ExtractArchiveSafeAsync(archivePath, extracted, cancellationToken);
+            var addon = new AddonInfo
+            {
+                Id = OfficialMusicPackId,
+                Name = "VanzaKart Music Pack",
+                Author = "VanzaKart Team",
+                Source = "Official VanzaKart package",
+                IsEnabled = false,
+                InstalledUtc = DateTime.UtcNow
+            };
+            await SavePayloadAsync(settings, addon, FindPayloadRoot(extracted), cancellationToken);
+            await SetEnabledAsync(settings, addon, true, cancellationToken);
+            return addon;
+        }
+        finally
+        {
+            try { if (Directory.Exists(tempRoot)) Directory.Delete(tempRoot, true); } catch { }
+        }
+    }
+
+    public async Task ApplyOfficialMusicPackUpdateAsync(
+        LauncherSettings settings,
+        IReadOnlyList<ModManifestFile> serverFiles,
+        string downloadedFilesRoot,
+        CancellationToken cancellationToken = default)
+    {
+        var current = Load(settings).FirstOrDefault(addon => addon.IsManaged &&
+            addon.Id.Equals(OfficialMusicPackId, StringComparison.OrdinalIgnoreCase))
+            ?? throw new InvalidOperationException("The Music Pack is not installed.");
+        var addonFolder = Path.Combine(GetLibraryFolder(settings), OfficialMusicPackId);
+        var oldPayload = Path.Combine(addonFolder, "payload");
+        var updateFolder = addonFolder + $".update-{Guid.NewGuid():N}";
+        var updatePayload = Path.Combine(updateFolder, "payload");
+        var backupFolder = addonFolder + $".backup-{Guid.NewGuid():N}";
+        var wasEnabled = current.IsEnabled;
+        AddonInfo? updated = null;
+        var swapped = false;
+
+        try
+        {
+            Directory.CreateDirectory(updatePayload);
+            foreach (var file in serverFiles)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var downloaded = SafeCombine(downloadedFilesRoot, file.Path);
+                var existing = SafeCombine(oldPayload, file.Path);
+                var source = File.Exists(downloaded) ? downloaded : existing;
+                if (!File.Exists(source)) throw new FileNotFoundException($"Missing Music Pack update file: {file.Path}");
+                var destination = SafeCombine(updatePayload, file.Path);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                await CopyFileAsync(source, destination, cancellationToken);
+            }
+
+            updated = new AddonInfo
+            {
+                Id = OfficialMusicPackId,
+                Name = "VanzaKart Music Pack",
+                Author = "VanzaKart Team",
+                Source = "Official VanzaKart package",
+                IsEnabled = false,
+                InstalledUtc = DateTime.UtcNow,
+                Files = serverFiles.Select(file => file.Path.Replace('\\', '/')).ToList()
+            };
+
+            if (wasEnabled) await SetEnabledAsync(settings, current, false, cancellationToken);
+            await WriteManifestAsync(updateFolder, updated, cancellationToken);
+            Directory.Move(addonFolder, backupFolder);
+            Directory.Move(updateFolder, addonFolder);
+            swapped = true;
+            if (wasEnabled) await SetEnabledAsync(settings, updated, true, cancellationToken);
+            if (Directory.Exists(backupFolder)) Directory.Delete(backupFolder, true);
+        }
+        catch
+        {
+            try
+            {
+                if (swapped && updated?.IsEnabled == true)
+                    await SetEnabledAsync(settings, updated, false, CancellationToken.None);
+            }
+            catch { }
+            try { if (Directory.Exists(addonFolder) && Directory.Exists(backupFolder)) Directory.Delete(addonFolder, true); } catch { }
+            try { if (Directory.Exists(backupFolder) && !Directory.Exists(addonFolder)) Directory.Move(backupFolder, addonFolder); } catch { }
+            try { if (wasEnabled && Directory.Exists(addonFolder)) await SetEnabledAsync(settings, current, true, CancellationToken.None); } catch { }
+            try { if (Directory.Exists(updateFolder)) Directory.Delete(updateFolder, true); } catch { }
+            throw;
+        }
+    }
+
     public async Task SetEnabledAsync(LauncherSettings settings, AddonInfo addon, bool enabled, CancellationToken cancellationToken = default)
     {
         if (!addon.IsManaged)
@@ -150,24 +252,29 @@ public sealed class AddonManagerService
         var myStuff = GetMyStuffFolder(settings);
         var addonFolder = Path.Combine(GetLibraryFolder(settings), addon.Id);
         var payload = Path.Combine(addonFolder, "payload");
+        var isOfficialMusicPack = addon.Id.Equals(OfficialMusicPackId, StringComparison.OrdinalIgnoreCase);
+        var displaced = Path.Combine(addonFolder, "displaced");
         if (enabled)
         {
-            var conflicts = Load(settings)
-                .Where(other => other.IsManaged && other.IsEnabled && !string.Equals(other.Id, addon.Id, StringComparison.OrdinalIgnoreCase))
-                .SelectMany(other => other.Files)
-                .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            var collision = addon.Files.FirstOrDefault(conflicts.Contains);
-            if (collision != null)
-                throw new IOException($"Cannot enable '{addon.Name}': '{collision}' is already supplied by another enabled addon.");
-
-            collision = addon.Files.FirstOrDefault(relative =>
+            if (!isOfficialMusicPack)
             {
-                var target = SafeCombine(myStuff, relative);
-                var source = SafeCombine(payload, relative);
-                return File.Exists(target) && (!File.Exists(source) || !FilesMatch(target, source));
-            });
-            if (collision != null)
-                throw new IOException($"Cannot enable '{addon.Name}': the existing local file '{collision}' would be overwritten. Disable the addon that owns it first.");
+                var conflicts = Load(settings)
+                    .Where(other => other.IsManaged && other.IsEnabled && !string.Equals(other.Id, addon.Id, StringComparison.OrdinalIgnoreCase))
+                    .SelectMany(other => other.Files)
+                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
+                var collision = addon.Files.FirstOrDefault(conflicts.Contains);
+                if (collision != null)
+                    throw new IOException($"Cannot enable '{addon.Name}': '{collision}' is already supplied by another enabled addon.");
+
+                collision = addon.Files.FirstOrDefault(relative =>
+                {
+                    var target = SafeCombine(myStuff, relative);
+                    var source = SafeCombine(payload, relative);
+                    return File.Exists(target) && (!File.Exists(source) || !FilesMatch(target, source));
+                });
+                if (collision != null)
+                    throw new IOException($"Cannot enable '{addon.Name}': the existing local file '{collision}' would be overwritten. Disable the addon that owns it first.");
+            }
 
             foreach (var relative in addon.Files)
             {
@@ -175,6 +282,22 @@ public sealed class AddonManagerService
                 var source = SafeCombine(payload, relative);
                 var destination = SafeCombine(myStuff, relative);
                 Directory.CreateDirectory(Path.GetDirectoryName(destination)!);
+                ClearBlockingAttributes(destination);
+
+                if (isOfficialMusicPack &&
+                    File.Exists(destination) &&
+                    File.Exists(source) &&
+                    !FilesMatch(destination, source))
+                {
+                    var displacedPath = SafeCombine(displaced, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(displacedPath)!);
+                    File.Copy(destination, displacedPath, overwrite: true);
+                    if (!addon.DisplacedFiles.Contains(relative, StringComparer.OrdinalIgnoreCase))
+                    {
+                        addon.DisplacedFiles.Add(relative.Replace('\\', '/'));
+                    }
+                }
+
                 File.Copy(source, destination, true);
             }
         }
@@ -185,8 +308,49 @@ public sealed class AddonManagerService
                 cancellationToken.ThrowIfCancellationRequested();
                 var target = SafeCombine(myStuff, relative);
                 var source = SafeCombine(payload, relative);
-                if (File.Exists(target) && File.Exists(source) && FilesMatch(target, source)) File.Delete(target);
+                if (File.Exists(target) && File.Exists(source) && FilesMatch(target, source))
+                {
+                    ClearBlockingAttributes(target);
+                    File.Delete(target);
+                }
             }
+
+            if (isOfficialMusicPack && addon.DisplacedFiles.Count > 0)
+            {
+                var restored = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var relative in addon.DisplacedFiles.ToArray())
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    var displacedPath = SafeCombine(displaced, relative);
+                    if (!File.Exists(displacedPath))
+                    {
+                        restored.Add(relative);
+                        continue;
+                    }
+
+                    var target = SafeCombine(myStuff, relative);
+                    Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                    if (!File.Exists(target))
+                    {
+                        ClearBlockingAttributes(target);
+                        File.Move(displacedPath, target, overwrite: true);
+                        restored.Add(relative);
+                    }
+                    else
+                    {
+                        var safeBackup = BuildNonConflictingBackupPath(target);
+                        File.Move(displacedPath, safeBackup);
+                        restored.Add(relative);
+                    }
+                }
+
+                addon.DisplacedFiles = addon.DisplacedFiles
+                    .Where(relative => !restored.Contains(relative))
+                    .ToList();
+
+                RemoveEmptyDirectories(displaced);
+            }
+
             RemoveEmptyDirectories(myStuff);
         }
 
@@ -325,9 +489,45 @@ public sealed class AddonManagerService
 
     private static async Task CopyFileAsync(string source, string destination, CancellationToken cancellationToken)
     {
+        ClearBlockingAttributes(destination);
         await using var input = new FileStream(source, FileMode.Open, FileAccess.Read, FileShare.Read, 81920, true);
         await using var output = new FileStream(destination, FileMode.Create, FileAccess.Write, FileShare.None, 81920, true);
         await input.CopyToAsync(output, cancellationToken);
+    }
+
+    private static void ClearBlockingAttributes(string path)
+    {
+        try
+        {
+            if (!File.Exists(path))
+                return;
+
+            var attributes = File.GetAttributes(path);
+            var blockingAttributes = FileAttributes.ReadOnly | FileAttributes.Hidden | FileAttributes.System;
+            if ((attributes & blockingAttributes) != 0)
+            {
+                File.SetAttributes(path, attributes & ~blockingAttributes);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static string BuildNonConflictingBackupPath(string target)
+    {
+        var directory = Path.GetDirectoryName(target) ?? string.Empty;
+        var name = Path.GetFileNameWithoutExtension(target);
+        var extension = Path.GetExtension(target);
+        var candidate = Path.Combine(directory, $"{name}.before_musicpack{extension}");
+        var index = 2;
+        while (File.Exists(candidate))
+        {
+            candidate = Path.Combine(directory, $"{name}.before_musicpack_{index}{extension}");
+            index++;
+        }
+
+        return candidate;
     }
 
     private static bool FilesMatch(string first, string second)

@@ -6,6 +6,8 @@ namespace VanzaKartLauncher.Models;
 
 public sealed class LeaderboardPlayerInfo : BaseViewModel
 {
+    private int? _displayPosition;
+
     public int Position { get; init; }
     public string Name { get; init; } = string.Empty;
     public int Points { get; init; }
@@ -38,8 +40,20 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
 
     public bool HasAvatarImage => !string.IsNullOrWhiteSpace(AvatarImagePath);
 
+    public int DisplayPosition
+    {
+        get => _displayPosition ?? Position;
+        set
+        {
+            if (_displayPosition == value) return;
+            _displayPosition = value;
+            OnPropertyChanged();
+        }
+    }
+
     public string WinRatePercent => $"{WinRate:F1}%";
-    public string DisplayPoints => $"{Points:N0} EV";
+    public string DisplayPoints => $"{Points:N0} VR";
+    public string PodiumStatsLine => $"{Wins:N0} wins  •  {WinRate:F1}% win  •  {Races:N0} races";
 
     public string Rank
     {

@@ -199,17 +199,20 @@
 
         <Style x:Key="Podium1CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
             <Setter Property="BorderBrush" Value="#FFD166"/>
-            <Setter Property="BorderThickness" Value="0,0,0,5"/>
+            <Setter Property="BorderThickness" Value="1.8"/>
+            <Setter Property="CornerRadius" Value="24"/>
         </Style>
 
         <Style x:Key="Podium2CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
             <Setter Property="BorderBrush" Value="#C0C0C0"/>
-            <Setter Property="BorderThickness" Value="0,0,0,4"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="CornerRadius" Value="22"/>
         </Style>
 
         <Style x:Key="Podium3CardStyle" TargetType="Border" BasedOn="{StaticResource GlassCard}">
             <Setter Property="BorderBrush" Value="#CD7F32"/>
-            <Setter Property="BorderThickness" Value="0,0,0,4"/>
+            <Setter Property="BorderThickness" Value="1.5"/>
+            <Setter Property="CornerRadius" Value="22"/>
         </Style>
 
         <Style x:Key="NavButton" TargetType="Button">
@@ -817,54 +820,164 @@
         <Style TargetType="CheckBox">
             <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
             <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="CheckBox">
-                        <Grid>
+                        <Grid x:Name="CheckBoxRoot" Background="Transparent">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="42"/>
+                                <ColumnDefinition Width="58"/>
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
-                            <Border x:Name="Track" Width="36" Height="20" CornerRadius="10" Background="#253049" BorderBrush="#3A4865" BorderThickness="1">
-                                <Ellipse x:Name="Thumb" Width="14" Height="14" Margin="3" HorizontalAlignment="Left" Fill="{StaticResource TextSecondary}">
+
+                            <!-- Extra host space keeps the glow and lower edge away from clipping boundaries. -->
+                            <Grid x:Name="SwitchHost" Width="58" Height="38">
+                                <Border x:Name="ActiveGlow" Width="50" Height="28" CornerRadius="14"
+                                        Opacity="0">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#FFFF2D8D"/>
+                                            <GradientStop Offset="0.34" Color="#FFFFD23F"/>
+                                            <GradientStop Offset="0.67" Color="#FF22D3EE"/>
+                                            <GradientStop Offset="1" Color="#FFC026FF"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.Effect><BlurEffect Radius="9"/></Border.Effect>
+                                </Border>
+                                <Border x:Name="Track" Width="50" Height="28" CornerRadius="14"
+                                        Background="#202A40" BorderBrush="#465572" BorderThickness="1.25">
+                                    <Grid ClipToBounds="True">
+                                        <Grid.Clip>
+                                            <RectangleGeometry Rect="0,0,47.5,25.5" RadiusX="12.75" RadiusY="12.75"/>
+                                        </Grid.Clip>
+                                        <Border x:Name="RainbowFill" CornerRadius="13" Opacity="0">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                    <GradientStop Offset="0.00" Color="#FFFF2D8D"/>
+                                                    <GradientStop Offset="0.17" Color="#FFFF6B24"/>
+                                                    <GradientStop Offset="0.33" Color="#FFFFDF3E"/>
+                                                    <GradientStop Offset="0.50" Color="#FF34E67A"/>
+                                                    <GradientStop Offset="0.67" Color="#FF20D7ED"/>
+                                                    <GradientStop Offset="0.83" Color="#FF4568FF"/>
+                                                    <GradientStop Offset="1.00" Color="#FFC13BFF"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Grid>
+                                                <Border Width="90" HorizontalAlignment="Left" Opacity="0.58">
+                                                    <Border.RenderTransform><TranslateTransform X="-38"/></Border.RenderTransform>
+                                                    <Border.Triggers>
+                                                        <EventTrigger RoutedEvent="Loaded">
+                                                            <BeginStoryboard>
+                                                                <Storyboard>
+                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                                                     From="-38" To="-4" Duration="0:0:3.6"
+                                                                                     AutoReverse="True" RepeatBehavior="Forever">
+                                                                        <DoubleAnimation.EasingFunction>
+                                                                            <SineEase EasingMode="EaseInOut"/>
+                                                                        </DoubleAnimation.EasingFunction>
+                                                                    </DoubleAnimation>
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </EventTrigger>
+                                                    </Border.Triggers>
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                                            <GradientStop Offset="0.00" Color="#00FFFFFF"/>
+                                                            <GradientStop Offset="0.18" Color="#C0FF35A8"/>
+                                                            <GradientStop Offset="0.38" Color="#B0FFD84A"/>
+                                                            <GradientStop Offset="0.58" Color="#B03CF0C5"/>
+                                                            <GradientStop Offset="0.78" Color="#B0527BFF"/>
+                                                            <GradientStop Offset="1.00" Color="#00D53CFF"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                        <Border x:Name="RainbowSheen" CornerRadius="13" Opacity="0">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                    <GradientStop Offset="0" Color="#70FFFFFF"/>
+                                                    <GradientStop Offset="0.48" Color="#12FFFFFF"/>
+                                                    <GradientStop Offset="1" Color="#28000000"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Ellipse x:Name="ThumbShadow" Width="18" Height="18" Margin="9,0,0,0"
+                                         HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#99000000" Opacity="0.5">
+                                    <Ellipse.RenderTransform><TranslateTransform x:Name="ThumbShadowTranslate"/></Ellipse.RenderTransform>
+                                    <Ellipse.Effect><BlurEffect Radius="3"/></Ellipse.Effect>
+                                </Ellipse>
+                                <Ellipse x:Name="Thumb" Width="18" Height="18" Margin="9,0,0,0"
+                                         HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#CFD8E8" Stroke="#80FFFFFF" StrokeThickness="1"
+                                         RenderTransformOrigin="0.5,0.5">
                                     <Ellipse.RenderTransform>
-                                        <TranslateTransform x:Name="ThumbTranslate" X="0"/>
+                                        <TransformGroup>
+                                            <ScaleTransform x:Name="ThumbScale"/>
+                                            <TranslateTransform x:Name="ThumbTranslate"/>
+                                        </TransformGroup>
                                     </Ellipse.RenderTransform>
                                 </Ellipse>
-                            </Border>
-                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0" VerticalAlignment="Center"/>
+                            </Grid>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
                         </Grid>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsChecked" Value="True">
                                 <Trigger.EnterActions>
-                                    <BeginStoryboard>
+                                    <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="16" Duration="0:0:0.15">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseInOut"/>
-                                                </DoubleAnimation.EasingFunction>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="22" Duration="0:0:0.28">
+                                                <DoubleAnimation.EasingFunction><BackEase Amplitude="0.3" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                             </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbShadowTranslate" Storyboard.TargetProperty="X" To="22" Duration="0:0:0.28">
+                                                <DoubleAnimation.EasingFunction><BackEase Amplitude="0.3" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowFill" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowSheen" Storyboard.TargetProperty="Opacity" To="0.72" Duration="0:0:0.22"/>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveGlow" Storyboard.TargetProperty="Opacity" To="0.72" Duration="0:0:0.28"/>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScale" Storyboard.TargetProperty="ScaleX" To="1.06" Duration="0:0:0.12" AutoReverse="True"/>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbScale" Storyboard.TargetProperty="ScaleY" To="1.06" Duration="0:0:0.12" AutoReverse="True"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.EnterActions>
                                 <Trigger.ExitActions>
-                                    <BeginStoryboard>
+                                    <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
                                         <Storyboard>
-                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.15">
-                                                <DoubleAnimation.EasingFunction>
-                                                    <QuadraticEase EasingMode="EaseInOut"/>
-                                                </DoubleAnimation.EasingFunction>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.20">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
                                             </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbShadowTranslate" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.20">
+                                                <DoubleAnimation.EasingFunction><CubicEase EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowFill" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowSheen" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveGlow" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/>
                                         </Storyboard>
                                     </BeginStoryboard>
                                 </Trigger.ExitActions>
-                                <Setter TargetName="Track" Property="Background" Value="{StaticResource RainbowGradient}"/>
-                                <Setter TargetName="Track" Property="BorderBrush" Value="#A8FFFFFF"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#CCFFFFFF"/>
                                 <Setter TargetName="Thumb" Property="Fill" Value="#FFFFFF"/>
+                                <Setter TargetName="Thumb" Property="Stroke" Value="#E6FFFFFF"/>
                             </Trigger>
                             <Trigger Property="IsMouseOver" Value="True">
-                                <Setter TargetName="Track" Property="BorderBrush" Value="#39E7FF"/>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#7EEBFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Thumb" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#FFFFFF"/>
+                                <Setter TargetName="Track" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CheckBoxRoot" Property="Opacity" Value="0.42"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
                             </Trigger>
                         </ControlTemplate.Triggers>
                     </ControlTemplate>
@@ -988,7 +1101,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.2.7" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.0-rc" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1446,7 +1559,7 @@
                                  <!-- ==================================================
                                       LEADERBOARD VIEW
                                       ================================================== -->
-                                 <Grid x:Name="LeaderboardView" Visibility="Collapsed" Margin="0,0,0,10">
+                                 <Grid x:Name="LeaderboardView" Visibility="Collapsed" Margin="0,0,0,10" ClipToBounds="False">
                                      <Grid.RowDefinitions>
                                          <RowDefinition Height="Auto"/> <!-- Podium -->
                                          <RowDefinition Height="Auto"/> <!-- Filter toolbar -->
@@ -1454,17 +1567,47 @@
                                      </Grid.RowDefinitions>
 
                                      <!-- TOP 3 PODIUM -->
-                                     <Grid Grid.Row="0" Margin="0,0,0,24">
+                                     <Grid Grid.Row="0" Margin="0,18,0,30" MinHeight="348" ClipToBounds="False">
                                          <Grid.ColumnDefinitions>
                                              <ColumnDefinition Width="*"/>   <!-- 2nd Place -->
                                              <ColumnDefinition Width="1.1*"/> <!-- 1st Place -->
                                              <ColumnDefinition Width="*"/>   <!-- 3rd Place -->
                                          </Grid.ColumnDefinitions>
 
-                                         <!-- 2° POSTO (SINISTRA) -->
-                                         <Border Grid.Column="0" Style="{StaticResource Podium2CardStyle}" Padding="16" Height="230" Margin="0,15,10,0" VerticalAlignment="Bottom">
+                                         <!-- Premium ambient glow behind the podium -->
+                                         <Border Grid.ColumnSpan="3" CornerRadius="34" Margin="16,42,16,6" Opacity="0.28" IsHitTestVisible="False">
+                                             <Border.Background>
+                                                 <RadialGradientBrush Center="0.5,0.35" GradientOrigin="0.5,0.25" RadiusX="0.75" RadiusY="0.85">
+                                                     <GradientStop Color="#AAFFD166" Offset="0"/>
+                                                     <GradientStop Color="#5539E7FF" Offset="0.42"/>
+                                                     <GradientStop Color="#2210182E" Offset="1"/>
+                                                 </RadialGradientBrush>
+                                             </Border.Background>
                                              <Border.Effect>
-                                                 <DropShadowEffect BlurRadius="22" ShadowDepth="0" Color="#C0C0C0" Opacity="0.18"/>
+                                                 <BlurEffect Radius="24"/>
+                                             </Border.Effect>
+                                         </Border>
+
+                                         <Border Grid.ColumnSpan="3" Height="1" VerticalAlignment="Bottom" Margin="42,0,42,0" Opacity="0.55" IsHitTestVisible="False">
+                                             <Border.Background>
+                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                     <GradientStop Color="#00FFFFFF" Offset="0"/>
+                                                     <GradientStop Color="#66FFD166" Offset="0.5"/>
+                                                     <GradientStop Color="#00FFFFFF" Offset="1"/>
+                                                 </LinearGradientBrush>
+                                             </Border.Background>
+                                         </Border>
+
+                                         <!-- 2° POSTO (SINISTRA) -->
+                                         <Border Grid.Column="0" Style="{StaticResource Podium2CardStyle}" Padding="18" Height="282" Margin="0,44,12,0" VerticalAlignment="Bottom">
+                                             <Border.Background>
+                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                     <GradientStop Color="#EE19243B" Offset="0"/>
+                                                     <GradientStop Color="#DD101827" Offset="1"/>
+                                                 </LinearGradientBrush>
+                                             </Border.Background>
+                                             <Border.Effect>
+                                                 <DropShadowEffect BlurRadius="28" ShadowDepth="0" Color="#C0C0C0" Opacity="0.26"/>
                                              </Border.Effect>
                                              <Grid DataContext="{Binding Top2}">
                                                  <Grid.Style>
@@ -1479,7 +1622,7 @@
                                                  </Grid.Style>
                                                  <StackPanel VerticalAlignment="Center">
                                                      <!-- Circle badge for position -->
-                                                     <Border Width="30" Height="30" CornerRadius="15" Background="#88C0C0C0" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                     <Border Width="34" Height="34" CornerRadius="17" Background="#AAC0C0C0" BorderBrush="#EEFFFFFF" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,9">
                                                          <TextBlock Text="2" FontSize="15" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                      </Border>
                                                      <!-- Mii Avatar / Initials Avatar -->
@@ -1520,17 +1663,27 @@
                                                              </Image>
                                                          </Grid>
                                                      </Border>
-                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="150"/>
-                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <Border Background="#AA1B263D" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="9,5" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                         <TextBlock Text="{Binding PodiumStatsLine}" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" TextAlignment="Center"/>
+                                                     </Border>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
 
                                          <!-- 1° POSTO (CENTRO) -->
-                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="18" Height="260" Margin="10,0,10,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="20" Height="326" Margin="12,0,12,0" VerticalAlignment="Bottom">
+                                             <Border.Background>
+                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                     <GradientStop Color="#F02A2032" Offset="0"/>
+                                                     <GradientStop Color="#E8121828" Offset="0.62"/>
+                                                     <GradientStop Color="#D90C111E" Offset="1"/>
+                                                 </LinearGradientBrush>
+                                             </Border.Background>
                                              <Border.Effect>
-                                                 <DropShadowEffect BlurRadius="30" ShadowDepth="0" Color="#FFD166" Opacity="0.3"/>
+                                                 <DropShadowEffect BlurRadius="42" ShadowDepth="0" Color="#FFD166" Opacity="0.45"/>
                                              </Border.Effect>
                                              <Grid DataContext="{Binding Top1}">
                                                  <Grid.Style>
@@ -1545,14 +1698,14 @@
                                                  </Grid.Style>
                                                  <StackPanel VerticalAlignment="Center">
                                                      <!-- Trophy/Position Badge (coppa) -->
-                                                     <Border Width="36" Height="36" CornerRadius="18" Background="#FFD166" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                     <Border Width="42" Height="42" CornerRadius="21" Background="#FFD166" BorderBrush="#FFFFF2B8" BorderThickness="1.4" HorizontalAlignment="Center" Margin="0,0,0,9">
                                                          <Border.Effect>
-                                                             <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#FFD166" Opacity="0.75"/>
+                                                             <DropShadowEffect BlurRadius="16" ShadowDepth="0" Color="#FFD166" Opacity="0.85"/>
                                                          </Border.Effect>
-                                                         <TextBlock Text="1" FontSize="18" FontWeight="Black" Foreground="Black" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                         <TextBlock Text="1" FontSize="20" FontWeight="Black" Foreground="#171008" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                      </Border>
                                                      <!-- Mii Avatar / Initials Avatar -->
-                                                     <Border Width="96" Height="96" CornerRadius="48" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True">
+                                                     <Border Width="102" Height="102" CornerRadius="51" HorizontalAlignment="Center" Margin="0,0,0,8" ClipToBounds="True" BorderBrush="#88FFD166" BorderThickness="2">
                                                          <Border.Background>
                                                              <LinearGradientBrush StartPoint="0,0" EndPoint="1,1">
                                                                  <GradientStop Color="{Binding AvatarGradientStart, FallbackValue=#FF0066}" Offset="0"/>
@@ -1589,21 +1742,47 @@
                                                              </Image>
                                                          </Grid>
                                                      </Border>
-                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="17" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
-                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="13.5" FontWeight="Bold" Foreground="#FFD166" HorizontalAlignment="Center" Margin="0,3,0,0">
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="18" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="210"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="13.5" FontWeight="Bold" Foreground="#FFD166" HorizontalAlignment="Center" Margin="0,3,0,0">
                                                          <TextBlock.Effect>
                                                              <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
                                                          </TextBlock.Effect>
                                                      </TextBlock>
-                                                     <TextBlock Text="{Binding FriendCode}" FontSize="12" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <UniformGrid Columns="3" HorizontalAlignment="Center" Margin="0,10,0,0" Width="264">
+                                                         <Border Background="#332514" BorderBrush="#AAFFD166" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="0,0,5,0">
+                                                             <StackPanel HorizontalAlignment="Center">
+                                                                 <TextBlock Text="{Binding Wins}" FontSize="13" FontWeight="Black" Foreground="#FFD166" HorizontalAlignment="Center"/>
+                                                                 <TextBlock Text="WINS" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
+                                                             </StackPanel>
+                                                         </Border>
+                                                         <Border Background="#15283A" BorderBrush="#6639E7FF" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="3,0">
+                                                             <StackPanel HorizontalAlignment="Center">
+                                                                 <TextBlock Text="{Binding WinRatePercent}" FontSize="13" FontWeight="Black" Foreground="#39E7FF" HorizontalAlignment="Center"/>
+                                                                 <TextBlock Text="WIN RATE" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
+                                                             </StackPanel>
+                                                         </Border>
+                                                         <Border Background="#202B44" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="5,0,0,0">
+                                                             <StackPanel HorizontalAlignment="Center">
+                                                                 <TextBlock Text="{Binding Races}" FontSize="13" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
+                                                                 <TextBlock Text="RACES" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
+                                                             </StackPanel>
+                                                         </Border>
+                                                     </UniformGrid>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,7,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
 
                                          <!-- 3° POSTO (DESTRA) -->
-                                         <Border Grid.Column="2" Style="{StaticResource Podium3CardStyle}" Padding="16" Height="215" Margin="10,15,0,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="2" Style="{StaticResource Podium3CardStyle}" Padding="18" Height="282" Margin="12,44,0,0" VerticalAlignment="Bottom">
+                                             <Border.Background>
+                                                 <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                     <GradientStop Color="#EE211D32" Offset="0"/>
+                                                     <GradientStop Color="#DD101827" Offset="1"/>
+                                                 </LinearGradientBrush>
+                                             </Border.Background>
                                              <Border.Effect>
-                                                 <DropShadowEffect BlurRadius="18" ShadowDepth="0" Color="#CD7F32" Opacity="0.15"/>
+                                                 <DropShadowEffect BlurRadius="28" ShadowDepth="0" Color="#CD7F32" Opacity="0.26"/>
                                              </Border.Effect>
                                              <Grid DataContext="{Binding Top3}">
                                                  <Grid.Style>
@@ -1618,7 +1797,7 @@
                                                  </Grid.Style>
                                                  <StackPanel VerticalAlignment="Center">
                                                      <!-- Circle badge for position -->
-                                                     <Border Width="28" Height="28" CornerRadius="14" Background="#88CD7F32" HorizontalAlignment="Center" Margin="0,0,0,8">
+                                                     <Border Width="34" Height="34" CornerRadius="17" Background="#AACD7F32" BorderBrush="#EED9A066" BorderThickness="1" HorizontalAlignment="Center" Margin="0,0,0,9">
                                                          <TextBlock Text="3" FontSize="14" FontWeight="Black" Foreground="White" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                                                      </Border>
                                                      <!-- Mii Avatar / Initials Avatar -->
@@ -1659,9 +1838,12 @@
                                                              </Image>
                                                          </Grid>
                                                      </Border>
-                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="140"/>
-                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 EV'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
+                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <Border Background="#AA1B263D" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="9,5" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                         <TextBlock Text="{Binding PodiumStatsLine}" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" TextAlignment="Center"/>
+                                                     </Border>
+                                                     <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
@@ -1689,7 +1871,15 @@
                                              </Border>
 
                                              <!-- Sort combo -->
-                                             <ComboBox ItemsSource="{Binding Sorts}" SelectedItem="{Binding SelectedSort}" Style="{StaticResource CustomComboBox}" Width="150" Height="36" Margin="0,0,10,0" Grid.Column="1" VerticalContentAlignment="Center"/>
+                                             <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" Margin="0,0,10,0">
+                                                 <Border Background="#18243A" BorderBrush="#2F4266" BorderThickness="1" CornerRadius="8" Padding="9,0" Height="36" Margin="0,0,8,0">
+                                                     <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                         <TextBlock Text="RANK BY" FontSize="10" FontWeight="Black" Foreground="{StaticResource TextFaint}" VerticalAlignment="Center" Margin="0,0,6,0"/>
+                                                         <TextBlock Text="{Binding SelectedSort}" FontSize="12" FontWeight="Bold" Foreground="#39E7FF" VerticalAlignment="Center"/>
+                                                     </StackPanel>
+                                                 </Border>
+                                                 <ComboBox ItemsSource="{Binding Sorts}" SelectedItem="{Binding SelectedSort}" Style="{StaticResource CustomComboBox}" Width="150" Height="36" VerticalContentAlignment="Center"/>
+                                             </StackPanel>
 
                                              <!-- Manual Reload Button -->
                                              <Button Content="&#xE149;" FontFamily="Segoe MDL2 Assets" Style="{StaticResource ActionButton}" Padding="0" Width="36" Height="36" FontSize="14" Grid.Column="2" Click="LeaderboardRefresh_Click" ToolTip="Reload Rankings"/>
@@ -1743,16 +1933,16 @@
                                                          <ColumnDefinition Width="45"/>  <!-- POS -->
                                                          <ColumnDefinition Width="72"/>  <!-- Avatar -->
                                                          <ColumnDefinition Width="*"/>   <!-- Player Name -->
-                                                         <ColumnDefinition Width="110"/> <!-- POINTS -->
+                                                         <ColumnDefinition Width="110"/> <!-- VR -->
                                                          <ColumnDefinition Width="90"/>  <!-- WINS -->
                                                          <ColumnDefinition Width="90"/>  <!-- RACES -->
                                                          <ColumnDefinition Width="90"/>  <!-- WINRATE -->
  
                                                      </Grid.ColumnDefinitions>
                                                      
-                                                     <TextBlock Text="POS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
+                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
                                                      <TextBlock Text="PLAYER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left"/>
-                                                     <TextBlock Text="POINTS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="3"/>
+                                                     <TextBlock Text="VR" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="3"/>
                                                      <TextBlock Text="WINS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
                                                      <TextBlock Text="RACES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
                                                      <TextBlock Text="WINRATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
@@ -1782,7 +1972,7 @@
                                                                  </Grid.ColumnDefinitions>
 
                                                                  <!-- Position -->
-                                                                 <TextBlock Text="{Binding Position}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Grid.Column="0">
+                                                                 <TextBlock Text="{Binding DisplayPosition}" FontSize="15" FontWeight="Bold" VerticalAlignment="Center" HorizontalAlignment="Left" Grid.Column="0">
                                                                      <TextBlock.Style>
                                                                          <Style TargetType="TextBlock">
                                                                              <Setter Property="Foreground" Value="{StaticResource TextPrimary}"/>
@@ -1995,6 +2185,35 @@
                                                     <Button x:Name="CheckUpdatesButton" Content="Check" ToolTip="Check for updates" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CheckUpdatesButton_OnClick" FontSize="14" FontWeight="Bold"/>
                                                     <Button x:Name="OpenModFolderButton" Content="Folder" ToolTip="Open mod folder" Style="{StaticResource CompactButton}" Click="OpenModFolderButton_OnClick" FontSize="14" FontWeight="Bold"/>
                                                 </WrapPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <Border Style="{StaticResource GlassCard}" Padding="24" Margin="0,0,0,18" BorderBrush="#397FB9">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="350"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel>
+                                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <TextBlock Text="VanzaKart Music Pack" FontSize="24" FontWeight="Black" VerticalAlignment="Center"/>
+                                                        <Border Background="#163754" BorderBrush="#397FB9" BorderThickness="1" CornerRadius="8" Height="30" MinWidth="62" Padding="8,0" Margin="12,0,0,0" VerticalAlignment="Center">
+                                                            <TextBlock Text="OFFICIAL" FontSize="10" FontWeight="Black" Foreground="#66D4FF" TextAlignment="Center" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                        </Border>
+                                                    </StackPanel>
+                                                    <TextBlock x:Name="MusicPackStatusTextBlock" Text="Checking package status..." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap" FontSize="14" Margin="0,8,0,14"/>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="Installed: " Foreground="{StaticResource TextSecondary}" FontSize="13"/>
+                                                        <TextBlock x:Name="InstalledMusicPackVersionText" Text="Not installed" FontSize="13" FontWeight="Bold"/>
+                                                        <TextBlock Text="   Latest: " Foreground="{StaticResource TextSecondary}" FontSize="13"/>
+                                                        <TextBlock x:Name="LatestMusicPackVersionText" Text="Unknown" FontSize="13" FontWeight="Bold"/>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                                <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" HorizontalAlignment="Right">
+                                                    <CheckBox x:Name="MusicPackEnabledCheckBox" Content="Enabled" Height="40" Margin="0,0,14,0" VerticalAlignment="Center" Click="MusicPackEnabledCheckBox_OnClick"/>
+                                                    <Button x:Name="MusicPackInstallButton" Content="Install" ToolTip="Install or update the official Music Pack" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" Click="MusicPackInstallButton_OnClick" FontWeight="Bold" FontSize="14" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                                    <Button x:Name="MusicPackRemoveButton" Content="Remove" ToolTip="Remove the Music Pack from My Stuff" Style="{StaticResource CompactButton}" Click="MusicPackRemoveButton_OnClick" FontWeight="Bold" FontSize="14" HorizontalContentAlignment="Center" VerticalContentAlignment="Center"/>
+                                                </StackPanel>
                                             </Grid>
                                         </Border>
 
@@ -2908,17 +3127,6 @@
 
                                 <Grid x:Name="SettingsView" Visibility="Collapsed">
                                     <StackPanel>
-                                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,18">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="280"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBox x:Name="SettingsSearchTextBox" Style="{StaticResource PathTextBox}" TextChanged="SettingsSearchTextBox_TextChanged"/>
-                                                <TextBlock x:Name="SettingsSearchHintTextBlock" Grid.Column="1" Text="Launcher, game, graphics, audio, downloads, controller, network, accessibility" VerticalAlignment="Center" Foreground="{StaticResource TextSecondary}" Margin="18,0,0,0"/>
-                                            </Grid>
-                                        </Border>
-
                                         <Border x:Name="GamePathsSettingsCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18">
                                             <StackPanel>
                                                 <TextBlock Text="GAME PATHS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
@@ -2989,6 +3197,43 @@
                                                 </Border>
                                             </StackPanel>
                                         </Grid>
+
+                                        <Border x:Name="AdvancedDeveloperSettingsCard"
+                                                Style="{StaticResource GlassCard}"
+                                                BorderBrush="#6EFF6B82"
+                                                Margin="0,0,0,18">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="*"/>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                </Grid.ColumnDefinitions>
+                                                <StackPanel Margin="0,0,28,0">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="15"
+                                                                   Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" Margin="0,0,9,0"/>
+                                                        <TextBlock Text="ADVANCED / DEVELOPER"
+                                                                   FontSize="12" FontWeight="Bold"
+                                                                   Foreground="{StaticResource DangerBrush}"/>
+                                                    </StackPanel>
+                                                    <TextBlock Text="Reset the VanzaKart in-game configuration"
+                                                               FontSize="15" FontWeight="Bold" Margin="0,13,0,5"/>
+                                                    <TextBlock Text="Advanced troubleshooting only. This can help when the game crashes during startup, but it permanently removes all saved in-game settings."
+                                                               Foreground="{StaticResource TextSecondary}" FontSize="12.5"
+                                                               TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left"/>
+                                                    <TextBlock Text="Wii\shared2\Pulsar\VanzaKart\Settings.pul"
+                                                               Foreground="{StaticResource TextFaint}" FontFamily="Consolas"
+                                                               FontSize="11.5" Margin="0,9,0,0"/>
+                                                </StackPanel>
+                                                <Button Grid.Column="1"
+                                                        Content="Delete Settings.pul"
+                                                        Style="{StaticResource ActionButton}"
+                                                        Foreground="{StaticResource DangerBrush}"
+                                                        BorderBrush="#88FF6B82"
+                                                        VerticalAlignment="Center"
+                                                        Click="DeleteGameSettingsFileButton_OnClick"
+                                                        ToolTip="Permanently delete the VanzaKart in-game settings file"/>
+                                            </Grid>
+                                        </Border>
                                     </StackPanel>
                                 </Grid>
 

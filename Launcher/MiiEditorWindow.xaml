@@ -365,6 +365,144 @@
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Margin" Value="0,4,18,4"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="CheckBox">
+                        <Grid x:Name="CheckBoxRoot" Background="Transparent">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="58"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid Width="58" Height="38">
+                                <Border x:Name="ActiveGlow" Width="50" Height="28" CornerRadius="14" Opacity="0">
+                                    <Border.Background>
+                                        <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                            <GradientStop Offset="0" Color="#FFFF2D8D"/>
+                                            <GradientStop Offset="0.34" Color="#FFFFD23F"/>
+                                            <GradientStop Offset="0.67" Color="#FF22D3EE"/>
+                                            <GradientStop Offset="1" Color="#FFC026FF"/>
+                                        </LinearGradientBrush>
+                                    </Border.Background>
+                                    <Border.Effect><BlurEffect Radius="9"/></Border.Effect>
+                                </Border>
+                                <Border x:Name="Track" Width="50" Height="28" CornerRadius="14"
+                                        Background="#202A40" BorderBrush="#465572" BorderThickness="1.25">
+                                    <Grid ClipToBounds="True">
+                                        <Grid.Clip>
+                                            <RectangleGeometry Rect="0,0,47.5,25.5" RadiusX="12.75" RadiusY="12.75"/>
+                                        </Grid.Clip>
+                                        <Border x:Name="RainbowFill" CornerRadius="13" Opacity="0">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="1,0">
+                                                    <GradientStop Offset="0.00" Color="#FFFF2D8D"/><GradientStop Offset="0.17" Color="#FFFF6B24"/>
+                                                    <GradientStop Offset="0.33" Color="#FFFFDF3E"/><GradientStop Offset="0.50" Color="#FF34E67A"/>
+                                                    <GradientStop Offset="0.67" Color="#FF20D7ED"/><GradientStop Offset="0.83" Color="#FF4568FF"/>
+                                                    <GradientStop Offset="1.00" Color="#FFC13BFF"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                            <Grid>
+                                                <Border Width="90" HorizontalAlignment="Left" Opacity="0.58">
+                                                    <Border.RenderTransform><TranslateTransform X="-38"/></Border.RenderTransform>
+                                                    <Border.Triggers>
+                                                        <EventTrigger RoutedEvent="Loaded">
+                                                            <BeginStoryboard>
+                                                                <Storyboard>
+                                                                    <DoubleAnimation Storyboard.TargetProperty="(UIElement.RenderTransform).(TranslateTransform.X)"
+                                                                                     From="-38" To="-4" Duration="0:0:3.6"
+                                                                                     AutoReverse="True" RepeatBehavior="Forever">
+                                                                        <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut"/></DoubleAnimation.EasingFunction>
+                                                                    </DoubleAnimation>
+                                                                </Storyboard>
+                                                            </BeginStoryboard>
+                                                        </EventTrigger>
+                                                    </Border.Triggers>
+                                                    <Border.Background>
+                                                        <LinearGradientBrush StartPoint="0,1" EndPoint="1,0">
+                                                            <GradientStop Offset="0.00" Color="#00FFFFFF"/><GradientStop Offset="0.18" Color="#C0FF35A8"/>
+                                                            <GradientStop Offset="0.38" Color="#B0FFD84A"/><GradientStop Offset="0.58" Color="#B03CF0C5"/>
+                                                            <GradientStop Offset="0.78" Color="#B0527BFF"/><GradientStop Offset="1.00" Color="#00D53CFF"/>
+                                                        </LinearGradientBrush>
+                                                    </Border.Background>
+                                                </Border>
+                                            </Grid>
+                                        </Border>
+                                        <Border x:Name="RainbowSheen" CornerRadius="13" Opacity="0">
+                                            <Border.Background>
+                                                <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                    <GradientStop Offset="0" Color="#70FFFFFF"/>
+                                                    <GradientStop Offset="0.48" Color="#12FFFFFF"/>
+                                                    <GradientStop Offset="1" Color="#28000000"/>
+                                                </LinearGradientBrush>
+                                            </Border.Background>
+                                        </Border>
+                                    </Grid>
+                                </Border>
+                                <Ellipse x:Name="ThumbShadow" Width="18" Height="18" Margin="9,0,0,0"
+                                         HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#99000000" Opacity="0.5">
+                                    <Ellipse.RenderTransform><TranslateTransform x:Name="ThumbShadowTranslate"/></Ellipse.RenderTransform>
+                                    <Ellipse.Effect><BlurEffect Radius="3"/></Ellipse.Effect>
+                                </Ellipse>
+                                <Ellipse x:Name="Thumb" Width="18" Height="18" Margin="9,0,0,0"
+                                         HorizontalAlignment="Left" VerticalAlignment="Center" Fill="#CFD8E8" Stroke="#80FFFFFF" StrokeThickness="1">
+                                    <Ellipse.RenderTransform><TranslateTransform x:Name="ThumbTranslate"/></Ellipse.RenderTransform>
+                                </Ellipse>
+                            </Grid>
+                            <ContentPresenter Grid.Column="1" Margin="8,0,0,0"
+                                              VerticalAlignment="{TemplateBinding VerticalContentAlignment}"
+                                              RecognizesAccessKey="True"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsChecked" Value="True">
+                                <Trigger.EnterActions>
+                                    <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="22" Duration="0:0:0.28">
+                                                <DoubleAnimation.EasingFunction><BackEase Amplitude="0.3" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbShadowTranslate" Storyboard.TargetProperty="X" To="22" Duration="0:0:0.28">
+                                                <DoubleAnimation.EasingFunction><BackEase Amplitude="0.3" EasingMode="EaseOut"/></DoubleAnimation.EasingFunction>
+                                            </DoubleAnimation>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowFill" Storyboard.TargetProperty="Opacity" To="1" Duration="0:0:0.18"/>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowSheen" Storyboard.TargetProperty="Opacity" To="0.72" Duration="0:0:0.22"/>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveGlow" Storyboard.TargetProperty="Opacity" To="0.72" Duration="0:0:0.28"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.EnterActions>
+                                <Trigger.ExitActions>
+                                    <BeginStoryboard HandoffBehavior="SnapshotAndReplace">
+                                        <Storyboard>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbTranslate" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.20"/>
+                                            <DoubleAnimation Storyboard.TargetName="ThumbShadowTranslate" Storyboard.TargetProperty="X" To="0" Duration="0:0:0.20"/>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowFill" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/>
+                                            <DoubleAnimation Storyboard.TargetName="RainbowSheen" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.14"/>
+                                            <DoubleAnimation Storyboard.TargetName="ActiveGlow" Storyboard.TargetProperty="Opacity" To="0" Duration="0:0:0.16"/>
+                                        </Storyboard>
+                                    </BeginStoryboard>
+                                </Trigger.ExitActions>
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#CCFFFFFF"/>
+                                <Setter TargetName="Thumb" Property="Fill" Value="#FFFFFF"/>
+                                <Setter TargetName="Thumb" Property="Stroke" Value="#E6FFFFFF"/>
+                            </Trigger>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#7EEBFF"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="Thumb" Property="Opacity" Value="0.82"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Track" Property="BorderBrush" Value="#FFFFFF"/>
+                                <Setter TargetName="Track" Property="BorderThickness" Value="2"/>
+                            </Trigger>
+                            <Trigger Property="IsEnabled" Value="False">
+                                <Setter TargetName="CheckBoxRoot" Property="Opacity" Value="0.42"/>
+                                <Setter Property="Cursor" Value="Arrow"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
         </Style>
 
         <Style x:Key="HiddenHeadersTabControl" TargetType="TabControl">

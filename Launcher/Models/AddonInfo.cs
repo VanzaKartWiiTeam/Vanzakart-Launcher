@@ -17,6 +17,7 @@ public sealed class AddonInfo : INotifyPropertyChanged
     public string PreviewUrl { get; set; } = string.Empty;
     public DateTime InstalledUtc { get; set; } = DateTime.UtcNow;
     public List<string> Files { get; set; } = new();
+    public List<string> DisplacedFiles { get; set; } = new();
     public bool IsManaged { get; set; } = true;
 
     public bool IsEnabled
