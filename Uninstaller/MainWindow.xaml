@@ -383,8 +383,8 @@
                                     <TextBlock Text="Removal options" FontSize="16" FontWeight="Black" Margin="0,0,0,8"/>
                                     <Border Style="{StaticResource MetricCard}" Padding="16">
                                         <StackPanel>
-                                            <CheckBox x:Name="DeleteModCheckBox" Content="Remove VanzaKart modpack" IsChecked="True" Style="{StaticResource ModernCheckBox}"/>
-                                            <TextBlock Text="Turn this on only if you want to uninstall the modpack." Foreground="{StaticResource TextFaint}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                                            <CheckBox x:Name="DeleteModCheckBox" Content="Remove Stable and Beta modpacks" IsChecked="True" Style="{StaticResource ModernCheckBox}"/>
+                                            <TextBlock Text="Removes both VanzaKart and VKBeta when they are installed." Foreground="{StaticResource TextFaint}" FontSize="12" TextWrapping="Wrap" Margin="0,8,0,0"/>
                                         </StackPanel>
                                     </Border>
 

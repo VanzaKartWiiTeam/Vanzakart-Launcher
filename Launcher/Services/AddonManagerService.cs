@@ -13,18 +13,18 @@ public sealed class AddonManagerService
     public const string OfficialMusicPackId = "official-vanzakart-music-pack";
     private static readonly JsonSerializerOptions JsonOptions = new() { WriteIndented = true };
 
-    public string GetMyStuffFolder(LauncherSettings settings) =>
-        Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
+    public string GetMyStuffFolder(LauncherSettings settings, string modDirectoryName = "VanzaKart") =>
+        Path.Combine(settings.GetModFolder(), modDirectoryName, modDirectoryName, "My Stuff");
 
-    private string GetLibraryFolder(LauncherSettings settings) =>
-        Path.Combine(settings.GetModFolder(), "VanzaKart_UserData", "Addons");
+    private string GetLibraryFolder(LauncherSettings settings, string modDirectoryName = "VanzaKart") =>
+        Path.Combine(settings.GetModFolder(), $"{modDirectoryName}_UserData", "Addons");
 
-    public string GetManagedPayloadFolder(LauncherSettings settings, string addonId) =>
-        Path.Combine(GetLibraryFolder(settings), addonId, "payload");
+    public string GetManagedPayloadFolder(LauncherSettings settings, string addonId, string modDirectoryName = "VanzaKart") =>
+        Path.Combine(GetLibraryFolder(settings, modDirectoryName), addonId, "payload");
 
-    public IReadOnlyList<AddonInfo> Load(LauncherSettings settings)
+    public IReadOnlyList<AddonInfo> Load(LauncherSettings settings, string modDirectoryName = "VanzaKart")
     {
-        var library = GetLibraryFolder(settings);
+        var library = GetLibraryFolder(settings, modDirectoryName);
         var addons = new List<AddonInfo>();
         if (Directory.Exists(library))
         {
@@ -44,7 +44,7 @@ public sealed class AddonManagerService
             }
         }
 
-        AddUnmanagedEntries(settings, addons);
+        AddUnmanagedEntries(settings, addons, modDirectoryName);
         return addons.OrderByDescending(addon => addon.IsEnabled).ThenBy(addon => addon.Name, StringComparer.CurrentCultureIgnoreCase).ToArray();
     }
 
@@ -55,7 +55,8 @@ public sealed class AddonManagerService
         NetworkService network,
         IProgress<(long current, long total)>? progress = null,
         IProgress<string>? stageProgress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
         var extension = Path.GetExtension(file.FileName);
 
@@ -90,8 +91,8 @@ public sealed class AddonManagerService
                 InstalledUtc = DateTime.UtcNow
             };
             stageProgress?.Report("Installing files...");
-            await SavePayloadAsync(settings, addon, payloadRoot, cancellationToken);
-            await SetEnabledAsync(settings, addon, true, cancellationToken);
+            await SavePayloadAsync(settings, addon, payloadRoot, cancellationToken, modDirectoryName);
+            await SetEnabledAsync(settings, addon, true, cancellationToken, modDirectoryName);
             return addon;
         }
         finally
@@ -100,7 +101,11 @@ public sealed class AddonManagerService
         }
     }
 
-    public async Task<AddonInfo> ImportAsync(LauncherSettings settings, string sourcePath, CancellationToken cancellationToken = default)
+    public async Task<AddonInfo> ImportAsync(
+        LauncherSettings settings,
+        string sourcePath,
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "VanzaKart", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(tempRoot);
@@ -132,8 +137,8 @@ public sealed class AddonManagerService
                 IsEnabled = false,
                 InstalledUtc = DateTime.UtcNow
             };
-            await SavePayloadAsync(settings, addon, payloadRoot, cancellationToken);
-            await SetEnabledAsync(settings, addon, true, cancellationToken);
+            await SavePayloadAsync(settings, addon, payloadRoot, cancellationToken, modDirectoryName);
+            await SetEnabledAsync(settings, addon, true, cancellationToken, modDirectoryName);
             return addon;
         }
         finally
@@ -145,7 +150,8 @@ public sealed class AddonManagerService
     public async Task<AddonInfo> InstallOfficialMusicPackAsync(
         LauncherSettings settings,
         string archivePath,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
         var tempRoot = Path.Combine(Path.GetTempPath(), "VanzaKart", Guid.NewGuid().ToString("N"));
         var extracted = Path.Combine(tempRoot, "extracted");
@@ -162,8 +168,8 @@ public sealed class AddonManagerService
                 IsEnabled = false,
                 InstalledUtc = DateTime.UtcNow
             };
-            await SavePayloadAsync(settings, addon, FindPayloadRoot(extracted), cancellationToken);
-            await SetEnabledAsync(settings, addon, true, cancellationToken);
+            await SavePayloadAsync(settings, addon, FindPayloadRoot(extracted), cancellationToken, modDirectoryName);
+            await SetEnabledAsync(settings, addon, true, cancellationToken, modDirectoryName);
             return addon;
         }
         finally
@@ -176,12 +182,13 @@ public sealed class AddonManagerService
         LauncherSettings settings,
         IReadOnlyList<ModManifestFile> serverFiles,
         string downloadedFilesRoot,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
-        var current = Load(settings).FirstOrDefault(addon => addon.IsManaged &&
+        var current = Load(settings, modDirectoryName).FirstOrDefault(addon => addon.IsManaged &&
             addon.Id.Equals(OfficialMusicPackId, StringComparison.OrdinalIgnoreCase))
             ?? throw new InvalidOperationException("The Music Pack is not installed.");
-        var addonFolder = Path.Combine(GetLibraryFolder(settings), OfficialMusicPackId);
+        var addonFolder = Path.Combine(GetLibraryFolder(settings, modDirectoryName), OfficialMusicPackId);
         var oldPayload = Path.Combine(addonFolder, "payload");
         var updateFolder = addonFolder + $".update-{Guid.NewGuid():N}";
         var updatePayload = Path.Combine(updateFolder, "payload");
@@ -216,12 +223,12 @@ public sealed class AddonManagerService
                 Files = serverFiles.Select(file => file.Path.Replace('\\', '/')).ToList()
             };
 
-            if (wasEnabled) await SetEnabledAsync(settings, current, false, cancellationToken);
+            if (wasEnabled) await SetEnabledAsync(settings, current, false, cancellationToken, modDirectoryName);
             await WriteManifestAsync(updateFolder, updated, cancellationToken);
             Directory.Move(addonFolder, backupFolder);
             Directory.Move(updateFolder, addonFolder);
             swapped = true;
-            if (wasEnabled) await SetEnabledAsync(settings, updated, true, cancellationToken);
+            if (wasEnabled) await SetEnabledAsync(settings, updated, true, cancellationToken, modDirectoryName);
             if (Directory.Exists(backupFolder)) Directory.Delete(backupFolder, true);
         }
         catch
@@ -229,28 +236,33 @@ public sealed class AddonManagerService
             try
             {
                 if (swapped && updated?.IsEnabled == true)
-                    await SetEnabledAsync(settings, updated, false, CancellationToken.None);
+                    await SetEnabledAsync(settings, updated, false, CancellationToken.None, modDirectoryName);
             }
             catch { }
             try { if (Directory.Exists(addonFolder) && Directory.Exists(backupFolder)) Directory.Delete(addonFolder, true); } catch { }
             try { if (Directory.Exists(backupFolder) && !Directory.Exists(addonFolder)) Directory.Move(backupFolder, addonFolder); } catch { }
-            try { if (wasEnabled && Directory.Exists(addonFolder)) await SetEnabledAsync(settings, current, true, CancellationToken.None); } catch { }
+            try { if (wasEnabled && Directory.Exists(addonFolder)) await SetEnabledAsync(settings, current, true, CancellationToken.None, modDirectoryName); } catch { }
             try { if (Directory.Exists(updateFolder)) Directory.Delete(updateFolder, true); } catch { }
             throw;
         }
     }
 
-    public async Task SetEnabledAsync(LauncherSettings settings, AddonInfo addon, bool enabled, CancellationToken cancellationToken = default)
+    public async Task SetEnabledAsync(
+        LauncherSettings settings,
+        AddonInfo addon,
+        bool enabled,
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
         if (!addon.IsManaged)
         {
             if (enabled) return;
-            await AdoptUnmanagedAsync(settings, addon, cancellationToken);
+            await AdoptUnmanagedAsync(settings, addon, cancellationToken, modDirectoryName);
             return;
         }
 
-        var myStuff = GetMyStuffFolder(settings);
-        var addonFolder = Path.Combine(GetLibraryFolder(settings), addon.Id);
+        var myStuff = GetMyStuffFolder(settings, modDirectoryName);
+        var addonFolder = Path.Combine(GetLibraryFolder(settings, modDirectoryName), addon.Id);
         var payload = Path.Combine(addonFolder, "payload");
         var isOfficialMusicPack = addon.Id.Equals(OfficialMusicPackId, StringComparison.OrdinalIgnoreCase);
         var displaced = Path.Combine(addonFolder, "displaced");
@@ -258,7 +270,7 @@ public sealed class AddonManagerService
         {
             if (!isOfficialMusicPack)
             {
-                var conflicts = Load(settings)
+                var conflicts = Load(settings, modDirectoryName)
                     .Where(other => other.IsManaged && other.IsEnabled && !string.Equals(other.Id, addon.Id, StringComparison.OrdinalIgnoreCase))
                     .SelectMany(other => other.Files)
                     .ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -358,23 +370,32 @@ public sealed class AddonManagerService
         await WriteManifestAsync(addonFolder, addon, cancellationToken);
     }
 
-    public async Task DeleteAsync(LauncherSettings settings, AddonInfo addon, CancellationToken cancellationToken = default)
+    public async Task DeleteAsync(
+        LauncherSettings settings,
+        AddonInfo addon,
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
         if (!addon.IsManaged)
-            await SetEnabledAsync(settings, addon, false, cancellationToken);
+            await SetEnabledAsync(settings, addon, false, cancellationToken, modDirectoryName);
         else if (addon.IsEnabled)
-            await SetEnabledAsync(settings, addon, false, cancellationToken);
+            await SetEnabledAsync(settings, addon, false, cancellationToken, modDirectoryName);
 
-        var folder = Path.Combine(GetLibraryFolder(settings), addon.Id);
+        var folder = Path.Combine(GetLibraryFolder(settings, modDirectoryName), addon.Id);
         if (Directory.Exists(folder)) Directory.Delete(folder, true);
     }
 
-    private async Task SavePayloadAsync(LauncherSettings settings, AddonInfo addon, string sourceRoot, CancellationToken cancellationToken)
+    private async Task SavePayloadAsync(
+        LauncherSettings settings,
+        AddonInfo addon,
+        string sourceRoot,
+        CancellationToken cancellationToken,
+        string modDirectoryName)
     {
-        var addonFolder = Path.Combine(GetLibraryFolder(settings), addon.Id);
+        var addonFolder = Path.Combine(GetLibraryFolder(settings, modDirectoryName), addon.Id);
         var payload = Path.Combine(addonFolder, "payload");
-        var previous = Load(settings).FirstOrDefault(item => item.IsManaged && string.Equals(item.Id, addon.Id, StringComparison.OrdinalIgnoreCase));
-        if (previous?.IsEnabled == true) await SetEnabledAsync(settings, previous, false, cancellationToken);
+        var previous = Load(settings, modDirectoryName).FirstOrDefault(item => item.IsManaged && string.Equals(item.Id, addon.Id, StringComparison.OrdinalIgnoreCase));
+        if (previous?.IsEnabled == true) await SetEnabledAsync(settings, previous, false, cancellationToken, modDirectoryName);
         if (Directory.Exists(addonFolder)) Directory.Delete(addonFolder, true);
         Directory.CreateDirectory(payload);
 
@@ -392,14 +413,18 @@ public sealed class AddonManagerService
         await WriteManifestAsync(addonFolder, addon, cancellationToken);
     }
 
-    private async Task AdoptUnmanagedAsync(LauncherSettings settings, AddonInfo addon, CancellationToken cancellationToken)
+    private async Task AdoptUnmanagedAsync(
+        LauncherSettings settings,
+        AddonInfo addon,
+        CancellationToken cancellationToken,
+        string modDirectoryName)
     {
         addon.Id = $"local-{Guid.NewGuid():N}";
         addon.IsManaged = true;
         addon.IsEnabled = false;
-        var addonFolder = Path.Combine(GetLibraryFolder(settings), addon.Id);
+        var addonFolder = Path.Combine(GetLibraryFolder(settings, modDirectoryName), addon.Id);
         var payload = Path.Combine(addonFolder, "payload");
-        var myStuff = GetMyStuffFolder(settings);
+        var myStuff = GetMyStuffFolder(settings, modDirectoryName);
         foreach (var relative in addon.Files)
         {
             var source = SafeCombine(myStuff, relative);
@@ -413,9 +438,9 @@ public sealed class AddonManagerService
         await WriteManifestAsync(addonFolder, addon, cancellationToken);
     }
 
-    private void AddUnmanagedEntries(LauncherSettings settings, List<AddonInfo> addons)
+    private void AddUnmanagedEntries(LauncherSettings settings, List<AddonInfo> addons, string modDirectoryName)
     {
-        var myStuff = GetMyStuffFolder(settings);
+        var myStuff = GetMyStuffFolder(settings, modDirectoryName);
         if (!Directory.Exists(myStuff)) return;
         var owned = addons.Where(a => a.IsManaged && a.IsEnabled).SelectMany(a => a.Files).ToHashSet(StringComparer.OrdinalIgnoreCase);
         var looseFiles = Directory.EnumerateFiles(myStuff, "*", SearchOption.TopDirectoryOnly)

@@ -459,7 +459,12 @@ public partial class MainWindow : Window
             "launcher_settings.json",
             "user_preferences.json",
             "mod_version.txt",
-            "VanzaKart_launcher.json"
+            "mod_beta_version.txt",
+            "musicpack_version.txt",
+            "musicpack_beta_version.txt",
+            "mod_install_state.json",
+            "VanzaKart_launcher.json",
+            "VKBeta_launcher.json"
         };
 
         foreach (var file in filesToBackup)
@@ -471,10 +476,13 @@ public partial class MainWindow : Window
             }
         }
 
-        var userDataDir = Path.Combine(targetDir, "VanzaKart_UserData");
-        if (Directory.Exists(userDataDir))
+        foreach (var userDataName in new[] { "VanzaKart_UserData", "VKBeta_UserData" })
         {
-            CopyDirectory(userDataDir, Path.Combine(backupDir, "VanzaKart_UserData"));
+            var userDataDir = Path.Combine(targetDir, userDataName);
+            if (Directory.Exists(userDataDir))
+            {
+                CopyDirectory(userDataDir, Path.Combine(backupDir, userDataName));
+            }
         }
     }
 

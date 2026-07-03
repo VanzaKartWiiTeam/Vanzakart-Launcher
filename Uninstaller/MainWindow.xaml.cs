@@ -113,7 +113,6 @@ public partial class MainWindow : Window
 
                 Dispatcher.Invoke(() => UninstallProgressBar.Value = 48);
 
-                DeleteSettings();
                 DeleteLogs();
 
                 Dispatcher.Invoke(() => UninstallProgressBar.Value = 62);
@@ -122,6 +121,8 @@ public partial class MainWindow : Window
                 {
                     DeleteExternalUserData();
                 }
+
+                DeleteSettings();
 
                 Dispatcher.Invoke(() => UninstallProgressBar.Value = 76);
 
@@ -188,7 +189,12 @@ public partial class MainWindow : Window
             "launcher_settings.json",
             "user_preferences.json",
             "VanzaKart_launcher.json",
-            "mod_version.txt"
+            "VKBeta_launcher.json",
+            "mod_version.txt",
+            "mod_beta_version.txt",
+            "musicpack_version.txt",
+            "musicpack_beta_version.txt",
+            "mod_install_state.json"
         })
         {
             TryDeleteFile(Path.Combine(_installDir, file));
@@ -211,7 +217,7 @@ public partial class MainWindow : Window
 
     private void DeleteInstalledMod()
     {
-        AppendLog("Deleting installed modpack.");
+        AppendLog("Deleting installed Stable and Beta modpacks.");
         var userFolder = TryReadDolphinUserFolder();
         if (string.IsNullOrWhiteSpace(userFolder))
         {
@@ -220,6 +226,7 @@ public partial class MainWindow : Window
         }
 
         DeleteKnownPath(Path.Combine(userFolder, "Load", "Riivolution", "VanzaKart"));
+        DeleteKnownPath(Path.Combine(userFolder, "Load", "Riivolution", "VKBeta"));
     }
 
     private void DeleteExternalUserData()
@@ -233,6 +240,7 @@ public partial class MainWindow : Window
         }
 
         DeleteKnownPath(Path.Combine(userFolder, "Load", "Riivolution", "VanzaKart_UserData"));
+        DeleteKnownPath(Path.Combine(userFolder, "Load", "Riivolution", "VKBeta_UserData"));
     }
 
     private string? TryReadDolphinUserFolder()

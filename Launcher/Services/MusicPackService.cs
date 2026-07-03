@@ -20,11 +20,12 @@ public sealed class MusicPackService
         _addonManager = addonManager;
     }
 
-    public Models.AddonInfo? GetInstalled(Models.LauncherSettings settings) =>
-        _addonManager.Load(settings).FirstOrDefault(addon =>
+    public Models.AddonInfo? GetInstalled(Models.LauncherSettings settings, string modDirectoryName = "VanzaKart") =>
+        _addonManager.Load(settings, modDirectoryName).FirstOrDefault(addon =>
             addon.IsManaged && addon.Id.Equals(AddonManagerService.OfficialMusicPackId, StringComparison.OrdinalIgnoreCase));
 
-    public bool IsInstalled(Models.LauncherSettings settings) => GetInstalled(settings) != null;
+    public bool IsInstalled(Models.LauncherSettings settings, string modDirectoryName = "VanzaKart") =>
+        GetInstalled(settings, modDirectoryName) != null;
 
     public async Task InstallAsync(
         Models.LauncherSettings settings,
@@ -34,13 +35,14 @@ public sealed class MusicPackService
         IEnumerable<string> filesBaseUrls,
         IProgress<(long current, long total)>? progress,
         IProgress<string>? stages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string modDirectoryName = "VanzaKart")
     {
-        if (IsInstalled(settings))
+        if (IsInstalled(settings, modDirectoryName))
         {
             if (string.IsNullOrWhiteSpace(manifestUrl))
                 throw new InvalidDataException("The Music Pack differential manifest URL is missing.");
-            await UpdateDifferentialAsync(settings, manifestUrl, filesBaseUrls, progress, stages, cancellationToken);
+            await UpdateDifferentialAsync(settings, manifestUrl, filesBaseUrls, progress, stages, cancellationToken, modDirectoryName);
             return;
         }
 
@@ -64,7 +66,7 @@ public sealed class MusicPackService
             }
 
             stages?.Report("Extracting and installing into My Stuff...");
-            await _addonManager.InstallOfficialMusicPackAsync(settings, temporary, cancellationToken);
+            await _addonManager.InstallOfficialMusicPackAsync(settings, temporary, cancellationToken, modDirectoryName);
         }
         catch
         {
@@ -84,7 +86,8 @@ public sealed class MusicPackService
         IEnumerable<string> filesBaseUrls,
         IProgress<(long current, long total)>? progress,
         IProgress<string>? stages,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        string modDirectoryName)
     {
         stages?.Report("Downloading Music Pack update manifest...");
         var separator = manifestUrl.Contains('?') ? '&' : '?';
@@ -93,8 +96,8 @@ public sealed class MusicPackService
             ?? throw new InvalidDataException("The Music Pack update manifest is invalid.");
         ValidateManifest(manifest);
 
-        var installed = GetInstalled(settings) ?? throw new InvalidOperationException("The Music Pack is not installed.");
-        var payload = _addonManager.GetManagedPayloadFolder(settings, installed.Id);
+        var installed = GetInstalled(settings, modDirectoryName) ?? throw new InvalidOperationException("The Music Pack is not installed.");
+        var payload = _addonManager.GetManagedPayloadFolder(settings, installed.Id, modDirectoryName);
         stages?.Report("Comparing installed Music Pack files...");
         var changed = new List<ModManifestFile>();
         foreach (var file in manifest.Files)
@@ -137,7 +140,7 @@ public sealed class MusicPackService
             }
 
             stages?.Report(changed.Count == 0 ? "Removing obsolete files..." : "Applying differential Music Pack update...");
-            await _addonManager.ApplyOfficialMusicPackUpdateAsync(settings, manifest.Files, stagingRoot, cancellationToken);
+            await _addonManager.ApplyOfficialMusicPackUpdateAsync(settings, manifest.Files, stagingRoot, cancellationToken, modDirectoryName);
         }
         finally
         {
@@ -213,15 +216,22 @@ public sealed class MusicPackService
         return Convert.ToHexString(await SHA256.HashDataAsync(stream, cancellationToken));
     }
 
-    public async Task SetEnabledAsync(Models.LauncherSettings settings, bool enabled, CancellationToken cancellationToken = default)
+    public async Task SetEnabledAsync(
+        Models.LauncherSettings settings,
+        bool enabled,
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
-        var addon = GetInstalled(settings) ?? throw new InvalidOperationException("The Music Pack is not installed.");
-        await _addonManager.SetEnabledAsync(settings, addon, enabled, cancellationToken);
+        var addon = GetInstalled(settings, modDirectoryName) ?? throw new InvalidOperationException("The Music Pack is not installed.");
+        await _addonManager.SetEnabledAsync(settings, addon, enabled, cancellationToken, modDirectoryName);
     }
 
-    public async Task UninstallAsync(Models.LauncherSettings settings, CancellationToken cancellationToken = default)
+    public async Task UninstallAsync(
+        Models.LauncherSettings settings,
+        CancellationToken cancellationToken = default,
+        string modDirectoryName = "VanzaKart")
     {
-        var addon = GetInstalled(settings);
-        if (addon != null) await _addonManager.DeleteAsync(settings, addon, cancellationToken);
+        var addon = GetInstalled(settings, modDirectoryName);
+        if (addon != null) await _addonManager.DeleteAsync(settings, addon, cancellationToken, modDirectoryName);
     }
 }

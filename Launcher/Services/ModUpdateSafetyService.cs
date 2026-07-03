@@ -54,8 +54,8 @@ public sealed class ModUpdateSafetyService
     public string GetOperationLogPath()
         => Path.Combine(AppContext.BaseDirectory, "Logs", "mod-update.log");
 
-    public string GetModRoot(LauncherSettings settings)
-        => Path.Combine(settings.GetModFolder(), "VanzaKart");
+    public string GetModRoot(LauncherSettings settings, string modDirectoryName = "VanzaKart")
+        => Path.Combine(settings.GetModFolder(), modDirectoryName);
 
     public async Task<List<ModManifestFile>> ScanLocalFilesAsync(
         string modSubFolder,
@@ -91,15 +91,15 @@ public sealed class ModUpdateSafetyService
         return result;
     }
 
-    public string GetUserDataRoot(LauncherSettings settings)
-        => Path.Combine(settings.GetModFolder(), "VanzaKart_UserData");
+    public string GetUserDataRoot(LauncherSettings settings, string modDirectoryName = "VanzaKart")
+        => Path.Combine(settings.GetModFolder(), $"{modDirectoryName}_UserData");
 
-    public string GetMyStuffPath(LauncherSettings settings)
-        => Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
+    public string GetMyStuffPath(LauncherSettings settings, string modDirectoryName = "VanzaKart")
+        => Path.Combine(settings.GetModFolder(), modDirectoryName, modDirectoryName, "My Stuff");
 
-    public bool IsProtectedUserDataPath(string path, LauncherSettings settings)
+    public bool IsProtectedUserDataPath(string path, LauncherSettings settings, string modDirectoryName = "VanzaKart")
     {
-        var modRoot = GetModRoot(settings);
+        var modRoot = GetModRoot(settings, modDirectoryName);
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(modRoot))
             return false;
 
@@ -117,11 +117,12 @@ public sealed class ModUpdateSafetyService
 
     public async Task<ModUpdateBackup> CreateBackupAsync(
         LauncherSettings settings,
+        string modDirectoryName = "VanzaKart",
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var modRoot = GetModRoot(settings);
-        var userDataRoot = GetUserDataRoot(settings);
+        var modRoot = GetModRoot(settings, modDirectoryName);
+        var userDataRoot = GetUserDataRoot(settings, modDirectoryName);
         var backupId = DateTime.Now.ToString("yyyyMMdd_HHmmss");
         var backupFolder = Path.Combine(GetBackupRoot(), backupId);
         var files = new List<ModUpdateBackupFile>();
@@ -187,12 +188,13 @@ public sealed class ModUpdateSafetyService
         string destinationRoot,
         string modSubFolder,
         LauncherSettings settings,
+        string modDirectoryName = "VanzaKart",
         IProgress<int>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var modRoot = GetModRoot(settings);
+        var modRoot = GetModRoot(settings, modDirectoryName);
 
-        var protectedAbsolutePaths = BuildProtectedAbsolutePaths(settings, modRoot);
+        var protectedAbsolutePaths = BuildProtectedAbsolutePaths(settings, modRoot, modDirectoryName);
 
         using var archive = ZipFile.OpenRead(zipPath);
         var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
@@ -340,11 +342,12 @@ public sealed class ModUpdateSafetyService
 
     public async Task MigrateUserDataAsync(
         LauncherSettings settings,
+        string modDirectoryName = "VanzaKart",
         IProgress<string>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        var modRoot = GetModRoot(settings);
-        var userDataRoot = GetUserDataRoot(settings);
+        var modRoot = GetModRoot(settings, modDirectoryName);
+        var userDataRoot = GetUserDataRoot(settings, modDirectoryName);
         if (!Directory.Exists(modRoot))
             return;
 
@@ -363,14 +366,17 @@ public sealed class ModUpdateSafetyService
         await WriteLogAsync($"Migration: {migrated} user files copied to {userDataRoot}", cancellationToken);
     }
 
-    internal IReadOnlyList<string> BuildProtectedAbsolutePaths(LauncherSettings settings, string modRoot)
+    internal IReadOnlyList<string> BuildProtectedAbsolutePaths(
+        LauncherSettings settings,
+        string modRoot,
+        string modDirectoryName = "VanzaKart")
     {
         var list = new List<string>
         {
 
-            GetMyStuffPath(settings),
+            GetMyStuffPath(settings, modDirectoryName),
 
-            GetUserDataRoot(settings)
+            GetUserDataRoot(settings, modDirectoryName)
         };
 
         if (Directory.Exists(modRoot))

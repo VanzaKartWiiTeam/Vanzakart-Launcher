@@ -2,7 +2,7 @@ namespace VanzaKartLauncher.Services;
 
 public static class LauncherConfig
 {
-    public const string CurrentLauncherVersion = "1.3.0-rc.6";
+    public const string CurrentLauncherVersion = "1.3.0";
     public const string ModUrl = "https://sitodaking.it:8443/Modpack/VanzaKart.zip";
     public const string LauncherZipUrl = "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip";
     public const string VersionJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json";
@@ -15,7 +15,7 @@ public static class LauncherConfig
     public const string RoomsApiUrl = "https://sitodaking.it:8443/api/vk_rooms.php";
     public const string ModManifestUrl = "https://sitodaking.it:8443/Modpack/manifest_files.json";
     public const string ModFilesUrl = "https://sitodaking.it:8443/Modpack/files/";
-    public const string BetaModUrl = "https://sitodaking.it:8443/VanzakartBeta/VanzaKart.zip";
+    public const string BetaModUrl = "https://sitodaking.it:8443/VanzakartBeta/VKBeta.zip";
     public const string BetaModManifestUrl = "https://sitodaking.it:8443/VanzakartBeta/manifest_files.json";
     public const string BetaModFilesUrl = "https://sitodaking.it:8443/VanzakartBeta/files/";
     public const string MusicPackUrl = "https://sitodaking.it:8443/MusicPack/vanzakart_musicpack.zip";

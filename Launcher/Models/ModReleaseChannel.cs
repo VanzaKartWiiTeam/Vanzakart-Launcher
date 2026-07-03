@@ -11,7 +11,15 @@ public enum ModReleaseChannel
 
 public sealed class ModInstallationState
 {
+    public ModChannelInstallationState Stable { get; set; } = new();
+    public ModChannelInstallationState Beta { get; set; } = new();
+
+    public ModChannelInstallationState Get(ModReleaseChannel channel) =>
+        channel == ModReleaseChannel.Beta ? Beta : Stable;
+}
+
+public sealed class ModChannelInstallationState
+{
     public string Version { get; set; } = string.Empty;
-    public ModReleaseChannel Channel { get; set; } = ModReleaseChannel.Stable;
-    public DateTime InstalledAtUtc { get; set; }
+    public DateTime? InstalledAtUtc { get; set; }
 }

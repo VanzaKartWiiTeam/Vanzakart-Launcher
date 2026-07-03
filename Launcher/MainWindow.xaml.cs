@@ -71,7 +71,9 @@ public partial class MainWindow : Window
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
     private readonly string _localModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_version.txt");
+    private readonly string _localBetaModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_beta_version.txt");
     private readonly string _localMusicPackVersionFile = Path.Combine(AppContext.BaseDirectory, "musicpack_version.txt");
+    private readonly string _localBetaMusicPackVersionFile = Path.Combine(AppContext.BaseDirectory, "musicpack_beta_version.txt");
 
     private string _latestModVersion = string.Empty;
     private string _latestModUrl = LauncherConfig.ModUrl;
@@ -126,7 +128,8 @@ public partial class MainWindow : Window
         // Verify if a mod update is required based on last known version from check
         var localVersion = GetInstalledModVersion();
         var lastKnownVersion = GetLastKnownVersionForSelectedChannel();
-        if (_installedModState.Channel != SelectedModReleaseChannel ||
+        var initialSettings = _settingsService.Load();
+        if (!IsModInstalled(initialSettings, SelectedModReleaseChannel) ||
             (!string.IsNullOrWhiteSpace(lastKnownVersion) && lastKnownVersion != localVersion))
         {
             _isModUpdateRequired = true;
@@ -434,15 +437,31 @@ public partial class MainWindow : Window
 
     private ModReleaseChannel SelectedModReleaseChannel => _userPreferences.ModReleaseChannel;
 
-    private string GetInstalledModVersion()
+    private static string GetModDirectoryName(ModReleaseChannel channel) =>
+        channel == ModReleaseChannel.Beta ? "VKBeta" : "VanzaKart";
+
+    private static string GetModRoot(LauncherSettings settings, ModReleaseChannel channel) =>
+        Path.Combine(settings.GetModFolder(), GetModDirectoryName(channel));
+
+    private string GetInstalledModVersion() => GetInstalledModVersion(SelectedModReleaseChannel);
+
+    private string GetInstalledModVersion(ModReleaseChannel channel)
     {
-        if (!string.IsNullOrWhiteSpace(_installedModState.Version))
+        var channelState = _installedModState.Get(channel);
+        if (!string.IsNullOrWhiteSpace(channelState.Version))
         {
-            return _installedModState.Version;
+            return channelState.Version;
         }
 
-        return File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
+        var versionFile = GetModVersionFile(channel);
+        return File.Exists(versionFile) ? File.ReadAllText(versionFile).Trim() : "0.0";
     }
+
+    private string GetModVersionFile(ModReleaseChannel channel) =>
+        channel == ModReleaseChannel.Beta ? _localBetaModVersionFile : _localModVersionFile;
+
+    private string GetMusicPackVersionFile(ModReleaseChannel channel) =>
+        channel == ModReleaseChannel.Beta ? _localBetaMusicPackVersionFile : _localMusicPackVersionFile;
 
     private string GetLastKnownVersionForSelectedChannel() =>
         SelectedModReleaseChannel == ModReleaseChannel.Beta
@@ -450,7 +469,10 @@ public partial class MainWindow : Window
             : _userPreferences.LastKnownLatestModVersion;
 
     private bool IsChannelSwitchPending(LauncherSettings settings) =>
-        IsModInstalled(settings) && _installedModState.Channel != SelectedModReleaseChannel;
+        !IsModInstalled(settings, SelectedModReleaseChannel) &&
+        IsModInstalled(settings, SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? ModReleaseChannel.Stable
+            : ModReleaseChannel.Beta);
 
     private static string GetChannelDisplayName(ModReleaseChannel channel) =>
         channel == ModReleaseChannel.Beta ? "Beta" : "Stable";
@@ -485,11 +507,16 @@ public partial class MainWindow : Window
         var selectedName = GetChannelDisplayName(SelectedModReleaseChannel);
         ReleaseChannelTitleTextBlock.Text = $"{selectedName} channel";
         ReleaseChannelDescriptionTextBlock.Text = SelectedModReleaseChannel == ModReleaseChannel.Beta
-            ? "Preview builds from VanzakartBeta. They may contain unfinished features or regressions; switching keeps your licenses, Mii and user files protected."
-            : "Recommended builds tested for regular play. You can return here at any time after trying Beta.";
-        InstalledReleaseChannelTextBlock.Text = IsModInstalled(BuildSettingsFromUi())
-            ? $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)} {GetInstalledModVersion()}"
-            : "Installed channel: none";
+            ? "Preview builds installed separately as VKBeta. Switching back to Stable never removes or reinstalls either modpack."
+            : "Recommended builds installed separately from VKBeta. Switching channels is immediate when both are up to date.";
+        var settings = BuildSettingsFromUi();
+        var installedChannels = new[] { ModReleaseChannel.Stable, ModReleaseChannel.Beta }
+            .Where(channel => IsModInstalled(settings, channel))
+            .Select(channel => $"{GetChannelDisplayName(channel)} {GetInstalledModVersion(channel)}")
+            .ToArray();
+        InstalledReleaseChannelTextBlock.Text = installedChannels.Length > 0
+            ? $"Installed: {string.Join(" • ", installedChannels)}"
+            : "Installed: none";
         ReleaseChannelSettingsCard.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
         ModReleaseChannelComboBox.IsEnabled = !_isBusy;
@@ -514,10 +541,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var installed = IsModInstalled(BuildSettingsFromUi());
         var message = requestedChannel == ModReleaseChannel.Beta
-            ? "Join the Beta channel?\n\nBeta builds can be unstable and may contain unfinished changes. The launcher will back up protected user data before switching. You can return to Stable at any time."
-            : "Return to the Stable channel?\n\nThe launcher will replace Beta core files with the latest stable release while preserving protected user data.";
+            ? "Join the Beta channel?\n\nBeta builds can be unstable and may contain unfinished changes. VKBeta is kept separate from Stable, so you can switch back instantly without reinstalling it."
+            : "Return to the Stable channel?\n\nVanzaKart and VKBeta remain installed separately. No files from either modpack will be replaced by this switch.";
 
         if (ShowCustomDialog("Change modpack channel", message, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
         {
@@ -532,7 +558,12 @@ public partial class MainWindow : Window
         _latestModVersion = string.Empty;
         _latestModSha256 = string.Empty;
         _lastUpdateError = string.Empty;
-        _isModUpdateRequired = installed && _installedModState.Channel != requestedChannel;
+        var settingsAfterSwitch = BuildSettingsFromUi();
+        var requestedInstalled = IsModInstalled(settingsAfterSwitch, requestedChannel);
+        var requestedVersion = GetInstalledModVersion(requestedChannel);
+        var requestedLatest = GetLastKnownVersionForSelectedChannel();
+        _isModUpdateRequired = !requestedInstalled ||
+            (!string.IsNullOrWhiteSpace(requestedLatest) && requestedLatest != requestedVersion);
         RefreshReleaseChannelUi();
         RefreshAllState();
 
@@ -543,12 +574,12 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (installed && _installedModState.Channel != requestedChannel)
-        {
-            ShowToast(
-                $"{GetChannelDisplayName(requestedChannel)} selected",
-                $"Open Mods and choose Switch to {GetChannelDisplayName(requestedChannel)} to apply the channel change.");
-        }
+        var ready = IsModInstalled(BuildSettingsFromUi(), requestedChannel) && !_isModUpdateRequired;
+        ShowToast(
+            $"{GetChannelDisplayName(requestedChannel)} selected",
+            ready
+                ? $"{GetModDirectoryName(requestedChannel)} is already installed and ready to play."
+                : $"Install or update {GetModDirectoryName(requestedChannel)} from Mods before playing.");
     }
 
     private void RestoreReleaseChannelSelection()
@@ -655,9 +686,12 @@ public partial class MainWindow : Window
         }
     }
 
-    private static bool IsModInstalled(LauncherSettings settings)
+    private bool IsModInstalled(LauncherSettings settings) => IsModInstalled(settings, SelectedModReleaseChannel);
+
+    private static bool IsModInstalled(LauncherSettings settings, ModReleaseChannel channel)
     {
-        var xmlPath = Path.Combine(settings.GetModFolder(), "VanzaKart", "Riivolution", "VanzaKart.xml");
+        var modDirectoryName = GetModDirectoryName(channel);
+        var xmlPath = Path.Combine(settings.GetModFolder(), modDirectoryName, "Riivolution", $"{modDirectoryName}.xml");
         return File.Exists(xmlPath);
     }
 
@@ -667,15 +701,16 @@ public partial class MainWindow : Window
         var installed = IsModInstalled(settings);
         var localVersion = installed ? GetInstalledModVersion() : "Not installed";
         var switchPending = IsChannelSwitchPending(settings);
-        var myStuffFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
+        var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var myStuffFolder = Path.Combine(settings.GetModFolder(), modDirectoryName, modDirectoryName, "My Stuff");
         var conflicts = _modConflictService.ScanAddonConflicts(myStuffFolder);
 
         InstalledVersionText.Text = localVersion;
         LatestVersionText.Text = string.IsNullOrEmpty(_latestModVersion) ? "Unknown" : _latestModVersion;
         CoreModStatusTextBlock.Text = switchPending
-            ? $"{GetChannelDisplayName(_installedModState.Channel)} {localVersion} is installed. Apply the switch to {GetChannelDisplayName(SelectedModReleaseChannel)} before playing."
+            ? $"{modDirectoryName} is not installed yet. The other channel remains available and unchanged."
             : installed
-            ? $"Installed: {GetChannelDisplayName(_installedModState.Channel)} {localVersion}"
+            ? $"Installed: {GetChannelDisplayName(SelectedModReleaseChannel)} {localVersion}"
             : "Core modpack is not installed yet.";
         AddonFolderTextBlock.Text = Directory.Exists(myStuffFolder)
             ? myStuffFolder
@@ -692,7 +727,7 @@ public partial class MainWindow : Window
         ModChannelBadgeBorder.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
         InstallButton.Content = switchPending
-            ? $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)}"
+            ? $"Install {modDirectoryName}"
             : _isModUpdateRequired ? "Update" : installed ? "Reinstall" : "Install";
         ModConflictTextBlock.Text = conflicts.Count == 0
             ? "No addon conflicts detected."
@@ -707,10 +742,12 @@ public partial class MainWindow : Window
 
     private void RefreshMusicPackCard(LauncherSettings settings, bool coreInstalled)
     {
-        var installedPack = _musicPackService.GetInstalled(settings);
+        var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var installedPack = _musicPackService.GetInstalled(settings, modDirectoryName);
         var packInstalled = installedPack != null;
-        var localVersion = packInstalled && File.Exists(_localMusicPackVersionFile)
-            ? File.ReadAllText(_localMusicPackVersionFile).Trim()
+        var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
+        var localVersion = packInstalled && File.Exists(musicPackVersionFile)
+            ? File.ReadAllText(musicPackVersionFile).Trim()
             : packInstalled ? "Unknown" : "Not installed";
         var latestVersion = string.IsNullOrWhiteSpace(_latestMusicPackVersion) ? "Unknown" : _latestMusicPackVersion;
         var updateAvailable = packInstalled && !string.IsNullOrWhiteSpace(_latestMusicPackVersion) &&
@@ -741,7 +778,7 @@ public partial class MainWindow : Window
     private void RefreshInstalledAddons()
     {
         _installedAddons.Clear();
-        foreach (var addon in _addonManagerService.Load(BuildSettingsFromUi())
+        foreach (var addon in _addonManagerService.Load(BuildSettingsFromUi(), GetModDirectoryName(SelectedModReleaseChannel))
                      .Where(addon => !addon.Id.Equals(AddonManagerService.OfficialMusicPackId, StringComparison.OrdinalIgnoreCase)))
         {
             _installedAddons.Add(addon);
@@ -762,7 +799,7 @@ public partial class MainWindow : Window
         var latest = string.IsNullOrWhiteSpace(_latestModVersion) ? "Unknown" : _latestModVersion;
 
         HomeInstalledVersionTextBlock.Text = installed
-            ? $"{GetChannelDisplayName(_installedModState.Channel)} {localVersion}"
+            ? $"{GetChannelDisplayName(SelectedModReleaseChannel)} {localVersion}"
             : localVersion;
         HomeLatestVersionTextBlock.Text = $"{GetChannelDisplayName(SelectedModReleaseChannel)} {latest}";
 
@@ -796,7 +833,7 @@ public partial class MainWindow : Window
                     $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)}",
                     "#3C2D12",
                     "#FFD166",
-                    $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)}. Selected channel: {GetChannelDisplayName(SelectedModReleaseChannel)}.");
+                    $"{GetModDirectoryName(SelectedModReleaseChannel)} must be installed once; the other modpack remains untouched.");
             }
             else
             {
@@ -1272,7 +1309,8 @@ public partial class MainWindow : Window
             $"Launcher version: {LauncherConfig.CurrentLauncherVersion}\n" +
             $"Latest mod version: {(_latestModVersion.Length == 0 ? "unknown" : _latestModVersion)}\n" +
             $"Selected channel: {GetChannelDisplayName(SelectedModReleaseChannel)}\n" +
-            $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)}\n" +
+            $"Stable installed: {IsModInstalled(settings, ModReleaseChannel.Stable)} ({GetInstalledModVersion(ModReleaseChannel.Stable)})\n" +
+            $"Beta installed: {IsModInstalled(settings, ModReleaseChannel.Beta)} ({GetInstalledModVersion(ModReleaseChannel.Beta)})\n" +
             $"Dolphin: {settings.DolphinPath}\n" +
             $"User folder: {settings.UserFolderPath}\n" +
             $"ROM: {settings.RomPath}\n" +
@@ -1293,8 +1331,9 @@ public partial class MainWindow : Window
         OpenModFolderButton.IsEnabled = !value;
         GameBananaSearchButton.IsEnabled = !value;
         MusicPackInstallButton.IsEnabled = !value && IsModInstalled(BuildSettingsFromUi()) && !string.IsNullOrWhiteSpace(_latestMusicPackUrl);
-        MusicPackRemoveButton.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
-        MusicPackEnabledCheckBox.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
+        var selectedModDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        MusicPackRemoveButton.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi(), selectedModDirectoryName);
+        MusicPackEnabledCheckBox.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi(), selectedModDirectoryName);
         ModReleaseChannelComboBox.IsEnabled = !value;
     }
 
@@ -1398,8 +1437,9 @@ public partial class MainWindow : Window
 
         var settings = BuildSettingsFromUi();
         var modFolder = settings.GetModFolder();
-        var modSubFolder = Path.Combine(modFolder, "VanzaKart");
-        var isUpdate = IsModInstalled(settings);
+        var modDirectoryName = GetModDirectoryName(targetChannel);
+        var modSubFolder = Path.Combine(modFolder, modDirectoryName);
+        var isUpdate = IsModInstalled(settings, targetChannel);
 
         SetStatus($"Connecting to {GetChannelDisplayName(targetChannel)} channel", (WpfBrush)FindResource("TextSecondary"));
         SetUpdateState("Connecting", $"Preparing {GetChannelDisplayName(targetChannel)} download...", 0);
@@ -1452,6 +1492,7 @@ public partial class MainWindow : Window
                 modFolder,
                 modSubFolder,
                 settings,
+                modDirectoryName,
                 extractProgress);
 
             if (File.Exists(_tempZipPath))
@@ -1472,7 +1513,7 @@ public partial class MainWindow : Window
                     SetUpdateState("Backup", msg, 3));
 
                 backup = await _modUpdateSafetyService.CreateBackupAsync(
-                    settings, backupProgress);
+                    settings, modDirectoryName, backupProgress);
 
                 if (backup.Files.Count > 0)
                 {
@@ -1637,7 +1678,7 @@ public partial class MainWindow : Window
                         _modUpdateSafetyService.RemoveEmptyDirectories(
                             modSubFolder,
                             modSubFolder,
-                            _modUpdateSafetyService.BuildProtectedAbsolutePaths(settings, modSubFolder));
+                            _modUpdateSafetyService.BuildProtectedAbsolutePaths(settings, modSubFolder, modDirectoryName));
 
                         result = new ModUpdateResult
                         {
@@ -1671,13 +1712,10 @@ public partial class MainWindow : Window
             // ── STEP 6: write version ────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
             {
-                File.WriteAllText(_localModVersionFile, _latestModVersion);
-                _installedModState = new ModInstallationState
-                {
-                    Version = _latestModVersion,
-                    Channel = targetChannel,
-                    InstalledAtUtc = DateTime.UtcNow
-                };
+                File.WriteAllText(GetModVersionFile(targetChannel), _latestModVersion);
+                var installedChannel = _installedModState.Get(targetChannel);
+                installedChannel.Version = _latestModVersion;
+                installedChannel.InstalledAtUtc = DateTime.UtcNow;
                 _modInstallationStateService.Save(_installedModState);
                 if (targetChannel == ModReleaseChannel.Beta)
                 {
@@ -1854,14 +1892,22 @@ public partial class MainWindow : Window
             return;
         }
 
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings))
+        {
+            ShowCustomDialog(
+                $"{GetModDirectoryName(SelectedModReleaseChannel)} not installed",
+                $"Install the {GetChannelDisplayName(SelectedModReleaseChannel)} modpack once before launching. The other channel remains installed and unchanged.",
+                MessageBoxButton.OK);
+            _navigationService.Navigate("Mods");
+            return;
+        }
+
         if (_isModUpdateRequired)
         {
-            var channelSwitchPending = IsChannelSwitchPending(BuildSettingsFromUi());
             var result = ShowCustomDialog(
-                channelSwitchPending ? "Channel switch pending" : "Update available",
-                channelSwitchPending
-                    ? $"The {GetChannelDisplayName(_installedModState.Channel)} channel is still installed, while {GetChannelDisplayName(SelectedModReleaseChannel)} is selected. Launch the installed channel anyway?"
-                    : "The installed mod version is not the latest. Do you want to launch the game anyway?",
+                "Update available",
+                "The selected modpack version is not the latest. Do you want to launch it anyway?",
                 MessageBoxButton.YesNo);
             if (result != MessageBoxResult.Yes)
             {
@@ -1870,7 +1916,6 @@ public partial class MainWindow : Window
             }
         }
 
-        var settings = BuildSettingsFromUi();
         if (string.IsNullOrWhiteSpace(settings.DolphinPath) ||  
             string.IsNullOrWhiteSpace(settings.RomPath) ||
             string.IsNullOrWhiteSpace(settings.UserFolderPath))
@@ -1880,8 +1925,9 @@ public partial class MainWindow : Window
             return;
         }
             
-        var rootDir = Path.Combine(settings.GetModFolder(), "VanzaKart");
-        var xmlPath = Path.Combine(rootDir, "Riivolution", "VanzaKart.xml");
+        var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var rootDir = GetModRoot(settings, SelectedModReleaseChannel);
+        var xmlPath = Path.Combine(rootDir, "Riivolution", $"{modDirectoryName}.xml");
         if (!File.Exists(xmlPath))
         {
             ShowCustomDialog("Mod not found", "Install the VanzaKart modpack before launching.", MessageBoxButton.OK);
@@ -1902,17 +1948,17 @@ public partial class MainWindow : Window
             int optionChoice = _userPreferences.ModOptionChoice;
             int saveChoice = _userPreferences.SeparateSavegame ? 1 : 0;
 
-            var jsonPath = Path.Combine(AppContext.BaseDirectory, "VanzaKart_launcher.json");
+            var jsonPath = Path.Combine(AppContext.BaseDirectory, $"{modDirectoryName}_launcher.json");
             var json = $@"{{
   ""base-file"": ""{EscapeJsonValue(settings.RomPath)}"",
-  ""display-name"": ""VanzaKart Modpack"",
+  ""display-name"": ""{modDirectoryName} Modpack"",
   ""riivolution"": {{
     ""patches"": [
       {{
         ""options"": [
-          {{ ""choice"": 1, ""option-name"": ""Pack"", ""section-name"": ""VanzaKart"" }},
-          {(optionChoice == 2 ? "{ \"choice\": 2, \"option-name\": \"MyStuff\", \"section-name\": \"VanzaKart\" }," : "")}
-          {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""VanzaKart"" }}
+          {{ ""choice"": 1, ""option-name"": ""Pack"", ""section-name"": ""{modDirectoryName}"" }},
+          {(optionChoice == 2 ? $"{{ \"choice\": 2, \"option-name\": \"MyStuff\", \"section-name\": \"{modDirectoryName}\" }}," : "")}
+          {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""{modDirectoryName}"" }}
         ],
         ""root"": ""{EscapeJsonValue(rootDir)}"",
         ""xml"": ""{EscapeJsonValue(xmlPath)}""
@@ -2027,9 +2073,11 @@ public partial class MainWindow : Window
             }
 
             var currentSettings = BuildSettingsFromUi();
-            var musicPackInstalled = _musicPackService.IsInstalled(currentSettings);
-            var localMusicPackVersion = musicPackInstalled && File.Exists(_localMusicPackVersionFile)
-                ? File.ReadAllText(_localMusicPackVersionFile).Trim()
+            var selectedModDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+            var selectedMusicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
+            var musicPackInstalled = _musicPackService.IsInstalled(currentSettings, selectedModDirectoryName);
+            var localMusicPackVersion = musicPackInstalled && File.Exists(selectedMusicPackVersionFile)
+                ? File.ReadAllText(selectedMusicPackVersionFile).Trim()
                 : string.Empty;
             var musicPackUpdateAvailable = musicPackInstalled && !string.IsNullOrWhiteSpace(info.MusicPackVersion) &&
                                            !string.Equals(localMusicPackVersion, info.MusicPackVersion, StringComparison.OrdinalIgnoreCase);
@@ -2037,28 +2085,21 @@ public partial class MainWindow : Window
             if (IsModInstalled(currentSettings))
             {
                 var localVersion = GetInstalledModVersion();
-                var channelSwitchPending = IsChannelSwitchPending(currentSettings);
-                if (channelSwitchPending || (!string.IsNullOrWhiteSpace(_latestModVersion) && _latestModVersion != localVersion))
+                if (!string.IsNullOrWhiteSpace(_latestModVersion) && _latestModVersion != localVersion)
                 {
                     _isModUpdateRequired = true;
                     SetStatus(
-                        channelSwitchPending
-                            ? $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)} is ready"
-                            : $"Mod update available (v{_latestModVersion})",
+                        $"Mod update available (v{_latestModVersion})",
                         (WpfBrush)FindResource("WarningBrush"));
                     SetUpdateState(
-                        channelSwitchPending ? "Channel switch" : "Update available",
-                        channelSwitchPending
-                            ? $"Installed {GetChannelDisplayName(_installedModState.Channel)} {localVersion}; selected {GetChannelDisplayName(SelectedModReleaseChannel)} {_latestModVersion}."
-                            : $"Installed {localVersion}, latest {_latestModVersion}.",
+                        "Update available",
+                        $"Installed {localVersion}, latest {_latestModVersion}.",
                         0);
                     if (showMessages)
                     {
                         ShowToast(
-                            channelSwitchPending ? "Channel switch ready" : "Update available",
-                            channelSwitchPending
-                                ? $"{GetChannelDisplayName(SelectedModReleaseChannel)} v{_latestModVersion} is ready to apply."
-                                : $"VanzaKart v{_latestModVersion} is ready to install.");
+                            "Update available",
+                            $"{selectedModDirectoryName} v{_latestModVersion} is ready to install.");
                     }
                 }
                 else
@@ -2075,6 +2116,12 @@ public partial class MainWindow : Window
                                 : "VanzaKart and its official packages are already up to date.");
                     }
                 }
+            }
+            else
+            {
+                _isModUpdateRequired = true;
+                SetStatus($"Install {selectedModDirectoryName} to use this channel", (WpfBrush)FindResource("WarningBrush"));
+                SetUpdateState("Installation required", $"{selectedModDirectoryName} has not been installed yet.", 0);
             }
 
             RefreshAllState();
@@ -2429,7 +2476,8 @@ public partial class MainWindow : Window
             return;
         }
 
-        var folder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
+        var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var folder = Path.Combine(settings.GetModFolder(), modDirectoryName, modDirectoryName, "My Stuff");
         Directory.CreateDirectory(folder);
         OpenFolder(folder);
         RefreshModsView();
@@ -2946,7 +2994,10 @@ public partial class MainWindow : Window
             foreach (var path in files)
             {
                 if (Directory.Exists(path) || File.Exists(path))
-                    await _addonManagerService.ImportAsync(settings, path);
+                    await _addonManagerService.ImportAsync(
+                        settings,
+                        path,
+                        modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel));
             }
 
             ShowToast("Addons imported", "The addons are installed and enabled. You can now toggle each one separately.");
@@ -2987,8 +3038,10 @@ public partial class MainWindow : Window
             }
         }
 
-        var alreadyCurrent = _musicPackService.IsInstalled(settings) && File.Exists(_localMusicPackVersionFile) &&
-                             string.Equals(File.ReadAllText(_localMusicPackVersionFile).Trim(), _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
+        var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
+        var alreadyCurrent = _musicPackService.IsInstalled(settings, modDirectoryName) && File.Exists(musicPackVersionFile) &&
+                             string.Equals(File.ReadAllText(musicPackVersionFile).Trim(), _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
         if (alreadyCurrent && ShowCustomDialog("Music Pack up to date", "The latest Music Pack is already installed. Reinstall it anyway?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
 
@@ -3009,8 +3062,9 @@ public partial class MainWindow : Window
             var stages = new Progress<string>(dialog.SetStage);
             await _musicPackService.InstallAsync(settings, BuildMusicPackMirrorList().Distinct(StringComparer.OrdinalIgnoreCase),
                 _latestMusicPackSha256, _latestMusicPackManifestUrl,
-                BuildMusicPackFilesBaseUrls().Distinct(StringComparer.OrdinalIgnoreCase), progress, stages, cancellation.Token);
-            File.WriteAllText(_localMusicPackVersionFile, _latestMusicPackVersion);
+                BuildMusicPackFilesBaseUrls().Distinct(StringComparer.OrdinalIgnoreCase), progress, stages, cancellation.Token,
+                modDirectoryName);
+            File.WriteAllText(musicPackVersionFile, _latestMusicPackVersion);
             dialog.MarkCompleted("Music Pack installed", "The official package was extracted into My Stuff and is enabled.");
             ShowToast("Music Pack ready", $"Version {_latestMusicPackVersion} installed.");
         }
@@ -3036,7 +3090,10 @@ public partial class MainWindow : Window
         checkBox.IsEnabled = false;
         try
         {
-            await _musicPackService.SetEnabledAsync(BuildSettingsFromUi(), enabled);
+            await _musicPackService.SetEnabledAsync(
+                BuildSettingsFromUi(),
+                enabled,
+                modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel));
             ShowToast(enabled ? "Music Pack enabled" : "Music Pack disabled",
                 enabled ? "Its files are active in My Stuff." : "Its files were removed from My Stuff but remain installed.");
         }
@@ -3056,8 +3113,10 @@ public partial class MainWindow : Window
             return;
         try
         {
-            await _musicPackService.UninstallAsync(BuildSettingsFromUi());
-            if (File.Exists(_localMusicPackVersionFile)) File.Delete(_localMusicPackVersionFile);
+            var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+            await _musicPackService.UninstallAsync(BuildSettingsFromUi(), modDirectoryName: modDirectoryName);
+            var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
+            if (File.Exists(musicPackVersionFile)) File.Delete(musicPackVersionFile);
             ShowToast("Music Pack removed", "The core Modpack was not changed.");
             RefreshModsView();
         }
@@ -3188,7 +3247,15 @@ public partial class MainWindow : Window
                 GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}: {percent}%";
             });
             var stages = new Progress<string>(dialog.SetStage);
-            await _addonManagerService.InstallGameBananaAsync(settings, mod, selectedFile, _networkService, progress, stages, cancellation.Token);
+            await _addonManagerService.InstallGameBananaAsync(
+                settings,
+                mod,
+                selectedFile,
+                _networkService,
+                progress,
+                stages,
+                cancellation.Token,
+                GetModDirectoryName(SelectedModReleaseChannel));
             dialog.MarkCompleted();
             GameBananaStatusTextBlock.Text = $"{mod.Name} installed and enabled.";
             ShowToast("Addon installed", mod.Name);
@@ -3219,7 +3286,11 @@ public partial class MainWindow : Window
         try
         {
             var settings = BuildSettingsFromUi();
-            await Task.Run(() => _addonManagerService.SetEnabledAsync(settings, addon, enabled));
+            await Task.Run(() => _addonManagerService.SetEnabledAsync(
+                settings,
+                addon,
+                enabled,
+                modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel)));
             ShowToast(enabled ? "Addon enabled" : "Addon disabled", addon.Name);
         }
         catch (Exception ex)
@@ -3237,7 +3308,10 @@ public partial class MainWindow : Window
         try
         {
             var settings = BuildSettingsFromUi();
-            await Task.Run(() => _addonManagerService.DeleteAsync(settings, addon));
+            await Task.Run(() => _addonManagerService.DeleteAsync(
+                settings,
+                addon,
+                modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel)));
             ShowToast("Addon removed", addon.Name);
             RefreshModsView();
         }
@@ -3257,7 +3331,9 @@ public partial class MainWindow : Window
             return;
         }
 
-        var folder = _addonManagerService.GetMyStuffFolder(BuildSettingsFromUi());
+        var folder = _addonManagerService.GetMyStuffFolder(
+            BuildSettingsFromUi(),
+            GetModDirectoryName(SelectedModReleaseChannel));
         Directory.CreateDirectory(folder);
         OpenFolder(folder);
     }
@@ -3961,10 +4037,11 @@ public sealed class CustomDialog : Window
     public CustomDialog(string title, string message, MessageBoxButton buttons)
     {
         _buttons = buttons;
-        var usesExpandedLayout = message.Length > 190 || message.Count(ch => ch == '\n') >= 4;
+        var usesExpandedLayout = message.Length > 120 || message.Count(ch => ch == '\n') >= 2;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
-        Width = 560;
-        Height = usesExpandedLayout ? 420 : 330;
+        Width = 600;
+        MinHeight = usesExpandedLayout ? 400 : 330;
+        SizeToContent = SizeToContent.Height;
         ResizeMode = ResizeMode.NoResize;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
@@ -4000,10 +4077,11 @@ public sealed class CustomDialog : Window
 
         root = new Border
         {
-            Width = 460,
-            Height = usesExpandedLayout ? 320 : 230,
+            Width = 520,
+            MinHeight = usesExpandedLayout ? 300 : 230,
             HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
             VerticalAlignment = System.Windows.VerticalAlignment.Center,
+            Margin = new Thickness(40),
             Opacity = 0,
             Padding = new Thickness(24),
             CornerRadius = new CornerRadius(16),
@@ -4023,7 +4101,7 @@ public sealed class CustomDialog : Window
 
         var dialogGrid = new Grid();
         dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
 
         var titleTextBlock = new TextBlock
@@ -4044,17 +4122,11 @@ public sealed class CustomDialog : Window
             FontSize = 14,
             Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
             TextWrapping = TextWrapping.Wrap,
-            FontFamily = new FontFamily("Segoe UI")
+            FontFamily = new FontFamily("Segoe UI"),
+            Margin = new Thickness(0, 0, 0, 22)
         };
-        var messageScrollViewer = new ScrollViewer
-        {
-            Content = messageTextBlock,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
-            Margin = new Thickness(0, 0, 0, 18)
-        };
-        Grid.SetRow(messageScrollViewer, 1);
-        dialogGrid.Children.Add(messageScrollViewer);
+        Grid.SetRow(messageTextBlock, 1);
+        dialogGrid.Children.Add(messageTextBlock);
 
         var buttonPanel = new StackPanel
         {

@@ -32,7 +32,7 @@ Generate the release with the same payload structure used by Stable:
 .\Generate-ModRelease.ps1 -ModPath "C:\path\to\VanzaKart" -Version "1.4.0-beta.1" -Channel Beta -OutputDir ".\dist-beta"
 ```
 
-Upload the generated `VanzaKart.zip`, `manifest_files.json`, and `files/` directory to `/VanzakartBeta/`. Stable releases continue to use `/Modpack/`. Upload the generated `versions.json` to `/Launcher/` last; it keeps Stable, Beta, Launcher, and Music Pack metadata together.
+Upload the generated `VKBeta.zip`, `manifest_files.json`, and `files/` directory to `/VanzakartBeta/`. The Beta archive contains a top-level `VKBeta/` folder; Stable releases continue to use `VanzaKart.zip` under `/Modpack/`. Upload the generated `versions.json` to `/Launcher/` last; it keeps Stable, Beta, Launcher, and Music Pack metadata together.
 
 ## 🛠️ Technical Architecture
 

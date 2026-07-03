@@ -197,7 +197,7 @@ try {
     if ($null -ne $betaManifest) {
         $betaVersion = [string]$betaManifest.mod_version
         $canonical["beta_mod_version"] = $betaVersion
-        $canonical["beta_mod_url"] = "$betaBaseUrl/VanzaKart.zip"
+        $canonical["beta_mod_url"] = "$betaBaseUrl/VKBeta.zip"
         $canonical["beta_mod_manifest_url"] = $BetaManifestUrl
         $canonical["beta_mod_files_url"] = "$betaBaseUrl/files/"
         $canonical["beta_mod_mirrors"] = As-StringArray $null
