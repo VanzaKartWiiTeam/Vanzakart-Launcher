@@ -22,7 +22,7 @@ public sealed class NetworkService
     {
         try
         {
-            using var request = new HttpRequestMessage(HttpMethod.Head, "https://sitodaking.it/");
+            using var request = new HttpRequestMessage(HttpMethod.Head, "https://sitodaking.it:8443/");
             using var response = await _httpClient.SendAsync(request, cancellationToken);
             return response.IsSuccessStatusCode;
         }

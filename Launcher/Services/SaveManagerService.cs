@@ -615,7 +615,7 @@ public sealed class SaveManagerService
             NoseSize = random.Next(2, 9),
             NoseVertical = random.Next(6, 18),
             MouthType = random.Next(0, 24),
-            MouthColor = random.Next(0, 4),
+            MouthColor = random.Next(0, 3),
             MouthSize = random.Next(2, 9),
             MouthVertical = random.Next(8, 20),
             GlassesType = random.Next(0, 8),

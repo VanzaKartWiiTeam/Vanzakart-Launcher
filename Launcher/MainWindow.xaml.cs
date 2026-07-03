@@ -53,6 +53,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<GameBananaMod> _gameBananaMods = new();
     private readonly Stopwatch _downloadStopwatch = new();
     private readonly ModUpdateSafetyService _modUpdateSafetyService = new();
+    private readonly ModInstallationStateService _modInstallationStateService = new();
+    private readonly SemaphoreSlim _updateCheckLock = new(1, 1);
     private bool _isRefreshingMiis;
     private bool _isRenderingLicenseAvatars;
     private bool _isRenderingLauncherMiiAvatars;
@@ -64,6 +66,8 @@ public partial class MainWindow : Window
     private CancellationTokenSource? _filesystemRefreshCts;
 
     private UserPreferences _userPreferences;
+    private ModInstallationState _installedModState;
+    private bool _isLoadingReleaseChannel;
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
     private readonly string _localModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_version.txt");
@@ -100,10 +104,18 @@ public partial class MainWindow : Window
     private bool _isLoadingGameBanana;
     private CancellationTokenSource? _gameBananaSearchCts;
     private long _downloadBaselineBytes = -1;
+    private int _releaseChannelRevision;
 
     public MainWindow()
     {
         _userPreferences = _preferencesService.Load();
+        if (!Enum.IsDefined(_userPreferences.ModReleaseChannel))
+        {
+            _userPreferences.ModReleaseChannel = ModReleaseChannel.Stable;
+        }
+        var legacyModVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : string.Empty;
+        _installedModState = _modInstallationStateService.Load(legacyModVersion);
+        ConfigureModReleaseDefaults(SelectedModReleaseChannel);
         _gameBananaService = new GameBananaService(_networkService);
         _musicPackService = new MusicPackService(_networkService, _archiveService, _addonManagerService);
 
@@ -112,11 +124,13 @@ public partial class MainWindow : Window
         _friendsViewModel = new FriendsViewModel(_networkService);
 
         // Verify if a mod update is required based on last known version from check
-        var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
-        if (!string.IsNullOrWhiteSpace(_userPreferences.LastKnownLatestModVersion) && _userPreferences.LastKnownLatestModVersion != localVersion)
+        var localVersion = GetInstalledModVersion();
+        var lastKnownVersion = GetLastKnownVersionForSelectedChannel();
+        if (_installedModState.Channel != SelectedModReleaseChannel ||
+            (!string.IsNullOrWhiteSpace(lastKnownVersion) && lastKnownVersion != localVersion))
         {
             _isModUpdateRequired = true;
-            _latestModVersion = _userPreferences.LastKnownLatestModVersion;
+            _latestModVersion = lastKnownVersion;
         }
 
         InitializeComponent();
@@ -377,6 +391,7 @@ public partial class MainWindow : Window
     {
         RefreshDerivedState();
         RefreshModsView();
+        RefreshReleaseChannelUi();
         RefreshLicenseView();
         RefreshPlayStats();
         RefreshDebugInfo();
@@ -411,6 +426,136 @@ public partial class MainWindow : Window
         SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
         SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
         GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 2;
+        _isLoadingReleaseChannel = true;
+        ModReleaseChannelComboBox.SelectedIndex = SelectedModReleaseChannel == ModReleaseChannel.Beta ? 1 : 0;
+        _isLoadingReleaseChannel = false;
+        RefreshReleaseChannelUi();
+    }
+
+    private ModReleaseChannel SelectedModReleaseChannel => _userPreferences.ModReleaseChannel;
+
+    private string GetInstalledModVersion()
+    {
+        if (!string.IsNullOrWhiteSpace(_installedModState.Version))
+        {
+            return _installedModState.Version;
+        }
+
+        return File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
+    }
+
+    private string GetLastKnownVersionForSelectedChannel() =>
+        SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? _userPreferences.LastKnownLatestBetaModVersion
+            : _userPreferences.LastKnownLatestModVersion;
+
+    private bool IsChannelSwitchPending(LauncherSettings settings) =>
+        IsModInstalled(settings) && _installedModState.Channel != SelectedModReleaseChannel;
+
+    private static string GetChannelDisplayName(ModReleaseChannel channel) =>
+        channel == ModReleaseChannel.Beta ? "Beta" : "Stable";
+
+    private void ConfigureModReleaseDefaults(ModReleaseChannel channel)
+    {
+        if (channel == ModReleaseChannel.Beta)
+        {
+            _latestModUrl = LauncherConfig.BetaModUrl;
+            _latestModManifestUrl = LauncherConfig.BetaModManifestUrl;
+            _latestModFilesUrl = LauncherConfig.BetaModFilesUrl;
+        }
+        else
+        {
+            _latestModUrl = LauncherConfig.ModUrl;
+            _latestModManifestUrl = LauncherConfig.ModManifestUrl;
+            _latestModFilesUrl = LauncherConfig.ModFilesUrl;
+        }
+
+        _latestModMirrors = Array.Empty<string>();
+        _latestModFilesMirrors = Array.Empty<string>();
+        _latestModSha256 = string.Empty;
+    }
+
+    private void RefreshReleaseChannelUi()
+    {
+        if (ReleaseChannelTitleTextBlock == null)
+        {
+            return;
+        }
+
+        var selectedName = GetChannelDisplayName(SelectedModReleaseChannel);
+        ReleaseChannelTitleTextBlock.Text = $"{selectedName} channel";
+        ReleaseChannelDescriptionTextBlock.Text = SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? "Preview builds from VanzakartBeta. They may contain unfinished features or regressions; switching keeps your licenses, Mii and user files protected."
+            : "Recommended builds tested for regular play. You can return here at any time after trying Beta.";
+        InstalledReleaseChannelTextBlock.Text = IsModInstalled(BuildSettingsFromUi())
+            ? $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)} {GetInstalledModVersion()}"
+            : "Installed channel: none";
+        ReleaseChannelSettingsCard.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
+            SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
+        ModReleaseChannelComboBox.IsEnabled = !_isBusy;
+    }
+
+    private async void ModReleaseChannelComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isLoadingReleaseChannel || ModReleaseChannelComboBox.SelectedItem is not ComboBoxItem selectedItem)
+        {
+            return;
+        }
+
+        if (!Enum.TryParse<ModReleaseChannel>(selectedItem.Tag?.ToString(), true, out var requestedChannel) ||
+            requestedChannel == SelectedModReleaseChannel)
+        {
+            return;
+        }
+
+        if (_isBusy)
+        {
+            RestoreReleaseChannelSelection();
+            return;
+        }
+
+        var installed = IsModInstalled(BuildSettingsFromUi());
+        var message = requestedChannel == ModReleaseChannel.Beta
+            ? "Join the Beta channel?\n\nBeta builds can be unstable and may contain unfinished changes. The launcher will back up protected user data before switching. You can return to Stable at any time."
+            : "Return to the Stable channel?\n\nThe launcher will replace Beta core files with the latest stable release while preserving protected user data.";
+
+        if (ShowCustomDialog("Change modpack channel", message, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        {
+            RestoreReleaseChannelSelection();
+            return;
+        }
+
+        _userPreferences.ModReleaseChannel = requestedChannel;
+        _releaseChannelRevision++;
+        _preferencesService.Save(_userPreferences);
+        ConfigureModReleaseDefaults(requestedChannel);
+        _latestModVersion = string.Empty;
+        _latestModSha256 = string.Empty;
+        _lastUpdateError = string.Empty;
+        _isModUpdateRequired = installed && _installedModState.Channel != requestedChannel;
+        RefreshReleaseChannelUi();
+        RefreshAllState();
+
+        await CheckForUpdatesAsync(showMessages: false);
+
+        if (requestedChannel != SelectedModReleaseChannel)
+        {
+            return;
+        }
+
+        if (installed && _installedModState.Channel != requestedChannel)
+        {
+            ShowToast(
+                $"{GetChannelDisplayName(requestedChannel)} selected",
+                $"Open Mods and choose Switch to {GetChannelDisplayName(requestedChannel)} to apply the channel change.");
+        }
+    }
+
+    private void RestoreReleaseChannelSelection()
+    {
+        _isLoadingReleaseChannel = true;
+        ModReleaseChannelComboBox.SelectedIndex = SelectedModReleaseChannel == ModReleaseChannel.Beta ? 1 : 0;
+        _isLoadingReleaseChannel = false;
     }
 
     private void SaveSettingsFromUi()
@@ -493,7 +638,10 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
-            SetStatus($"Mod update available (v{_latestModVersion})", (WpfBrush)FindResource("WarningBrush"));
+            var pendingText = IsChannelSwitchPending(settings)
+                ? $"Switch to the {GetChannelDisplayName(SelectedModReleaseChannel)} channel required"
+                : $"Mod update available (v{_latestModVersion})";
+            SetStatus(pendingText, (WpfBrush)FindResource("WarningBrush"));
             return;
         }
 
@@ -516,15 +664,18 @@ public partial class MainWindow : Window
     private void RefreshModsView()
     {
         var settings = BuildSettingsFromUi();
-        var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "Not installed";
         var installed = IsModInstalled(settings);
+        var localVersion = installed ? GetInstalledModVersion() : "Not installed";
+        var switchPending = IsChannelSwitchPending(settings);
         var myStuffFolder = Path.Combine(settings.GetModFolder(), "VanzaKart", "VanzaKart", "My Stuff");
         var conflicts = _modConflictService.ScanAddonConflicts(myStuffFolder);
 
         InstalledVersionText.Text = localVersion;
         LatestVersionText.Text = string.IsNullOrEmpty(_latestModVersion) ? "Unknown" : _latestModVersion;
-        CoreModStatusTextBlock.Text = installed
-            ? $"Installed version: {localVersion}"
+        CoreModStatusTextBlock.Text = switchPending
+            ? $"{GetChannelDisplayName(_installedModState.Channel)} {localVersion} is installed. Apply the switch to {GetChannelDisplayName(SelectedModReleaseChannel)} before playing."
+            : installed
+            ? $"Installed: {GetChannelDisplayName(_installedModState.Channel)} {localVersion}"
             : "Core modpack is not installed yet.";
         AddonFolderTextBlock.Text = Directory.Exists(myStuffFolder)
             ? myStuffFolder
@@ -534,7 +685,15 @@ public partial class MainWindow : Window
             : "Install the core mod before importing addons.";
         VersioningTextBlock.Text = string.IsNullOrEmpty(_latestModVersion)
             ? "Waiting for manifest"
-            : $"Manifest latest: v{_latestModVersion}";
+            : $"{GetChannelDisplayName(SelectedModReleaseChannel)} manifest latest: v{_latestModVersion}";
+        ModChannelBadgeTextBlock.Text = GetChannelDisplayName(SelectedModReleaseChannel).ToUpperInvariant();
+        ModChannelBadgeBorder.Background = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
+            SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#4A2B18" : "#163754"));
+        ModChannelBadgeBorder.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
+            SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
+        InstallButton.Content = switchPending
+            ? $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)}"
+            : _isModUpdateRequired ? "Update" : installed ? "Reinstall" : "Install";
         ModConflictTextBlock.Text = conflicts.Count == 0
             ? "No addon conflicts detected."
             : $"{conflicts.Count} conflict(s): {string.Join(", ", conflicts.Take(3).Select(conflict => conflict.FileName))}";
@@ -599,11 +758,13 @@ public partial class MainWindow : Window
 
         var settings = BuildSettingsFromUi();
         var installed = IsModInstalled(settings);
-        var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "Not installed";
+        var localVersion = installed ? GetInstalledModVersion() : "Not installed";
         var latest = string.IsNullOrWhiteSpace(_latestModVersion) ? "Unknown" : _latestModVersion;
 
-        HomeInstalledVersionTextBlock.Text = localVersion;
-        HomeLatestVersionTextBlock.Text = latest;
+        HomeInstalledVersionTextBlock.Text = installed
+            ? $"{GetChannelDisplayName(_installedModState.Channel)} {localVersion}"
+            : localVersion;
+        HomeLatestVersionTextBlock.Text = $"{GetChannelDisplayName(SelectedModReleaseChannel)} {latest}";
 
         if (!string.IsNullOrWhiteSpace(_lastUpdateError))
         {
@@ -628,11 +789,23 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
-            SetHomeUpdateBadge("Update", "Update available", "#3C2D12", "#FFD166", $"Installed {localVersion}, latest {latest}.");
+            if (IsChannelSwitchPending(settings))
+            {
+                SetHomeUpdateBadge(
+                    "Channel",
+                    $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)}",
+                    "#3C2D12",
+                    "#FFD166",
+                    $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)}. Selected channel: {GetChannelDisplayName(SelectedModReleaseChannel)}.");
+            }
+            else
+            {
+                SetHomeUpdateBadge("Update", "Update available", "#3C2D12", "#FFD166", $"Installed {localVersion}, latest {latest}.");
+            }
             return;
         }
 
-        SetHomeUpdateBadge("Ready", "Up to date", "#153827", "#4DFFB0", "Installed mod is ready.");
+        SetHomeUpdateBadge("Ready", $"{GetChannelDisplayName(SelectedModReleaseChannel)} is up to date", "#153827", "#4DFFB0", "Installed mod is ready.");
     }
 
     private void SetHomeUpdateBadge(string badge, string title, string background, string border, string detail)
@@ -1098,12 +1271,15 @@ public partial class MainWindow : Window
             $"Update required: {_isModUpdateRequired}\n" +
             $"Launcher version: {LauncherConfig.CurrentLauncherVersion}\n" +
             $"Latest mod version: {(_latestModVersion.Length == 0 ? "unknown" : _latestModVersion)}\n" +
+            $"Selected channel: {GetChannelDisplayName(SelectedModReleaseChannel)}\n" +
+            $"Installed channel: {GetChannelDisplayName(_installedModState.Channel)}\n" +
             $"Dolphin: {settings.DolphinPath}\n" +
             $"User folder: {settings.UserFolderPath}\n" +
             $"ROM: {settings.RomPath}\n" +
             $"Mod folder: {settings.GetModFolder()}\n" +
             $"Settings file: {_settingsService.GetSettingsPath()}\n" +
-            $"Preferences file: {_preferencesService.GetPreferencesPath()}";
+            $"Preferences file: {_preferencesService.GetPreferencesPath()}\n" +
+            $"Mod state file: {_modInstallationStateService.GetStatePath()}";
     }
 
     private void SetBusy(bool value)
@@ -1119,6 +1295,7 @@ public partial class MainWindow : Window
         MusicPackInstallButton.IsEnabled = !value && IsModInstalled(BuildSettingsFromUi()) && !string.IsNullOrWhiteSpace(_latestMusicPackUrl);
         MusicPackRemoveButton.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
         MusicPackEnabledCheckBox.IsEnabled = !value && _musicPackService.IsInstalled(BuildSettingsFromUi());
+        ModReleaseChannelComboBox.IsEnabled = !value;
     }
 
     private void SetStatus(string text, WpfBrush brush)
@@ -1184,9 +1361,18 @@ public partial class MainWindow : Window
 
         SaveSettingsFromUi();
 
-        if (IsModInstalled(settings) && !string.IsNullOrEmpty(_latestModVersion))
+        if (!await EnsureSelectedModReleaseLoadedAsync())
         {
-            var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
+            ShowCustomDialog(
+                "Release unavailable",
+                $"The {GetChannelDisplayName(SelectedModReleaseChannel)} release metadata could not be loaded. Check the server connection and try again.",
+                MessageBoxButton.OK);
+            return;
+        }
+
+        if (IsModInstalled(settings) && !string.IsNullOrEmpty(_latestModVersion) && !IsChannelSwitchPending(settings))
+        {
+            var localVersion = GetInstalledModVersion();
             if (localVersion == _latestModVersion)
             {
                 var result = ShowCustomDialog("Mod up to date", "The mod is already up to date. Reinstall anyway?", MessageBoxButton.YesNo);
@@ -1202,6 +1388,7 @@ public partial class MainWindow : Window
 
     private async Task PerformModInstallation()
     {
+        var targetChannel = SelectedModReleaseChannel;
         SetBusy(true);
         ResetDownloadMetrics();
         DownloadProgressBar.Visibility = Visibility.Visible;
@@ -1214,8 +1401,8 @@ public partial class MainWindow : Window
         var modSubFolder = Path.Combine(modFolder, "VanzaKart");
         var isUpdate = IsModInstalled(settings);
 
-        SetStatus("Connecting to update channel", (WpfBrush)FindResource("TextSecondary"));
-        SetUpdateState("Connecting", "Preparing download...", 0);
+        SetStatus($"Connecting to {GetChannelDisplayName(targetChannel)} channel", (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState("Connecting", $"Preparing {GetChannelDisplayName(targetChannel)} download...", 0);
 
         ModUpdateBackup? backup = null;
 
@@ -1304,8 +1491,14 @@ public partial class MainWindow : Window
                     SetUpdateState("Download", "Downloading update manifest...", 5);
                     SetStatus("Fetching update manifest", (WpfBrush)FindResource("TextSecondary"));
 
-                    var manifestJson = await _networkService.DownloadStringAsync(_latestModManifestUrl);
+                    var manifestJson = await _networkService.DownloadStringAsync(AddNoCacheQuery(_latestModManifestUrl));
                     manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'));
+                    ValidateModManifest(manifest);
+                    _latestModVersion = manifest!.ModVersion;
+                    if (!string.IsNullOrWhiteSpace(manifest.ArchiveSha256))
+                    {
+                        _latestModSha256 = manifest.ArchiveSha256;
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -1387,7 +1580,7 @@ public partial class MainWindow : Window
 
                             try
                             {
-                                var mirrors = BuildModFileMirrorList(file.Path);
+                                var mirrors = BuildModFileMirrorList(file);
                                 await _networkService.DownloadFileWithResumeAsync(mirrors, tempFile, fileProgress);
 
                                 var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(tempFile, default);
@@ -1398,7 +1591,8 @@ public partial class MainWindow : Window
                             }
                             catch (Exception ex)
                             {
-                                var primaryUrl = $"{_latestModFilesUrl.TrimEnd('/')}/{file.Path.Replace('\\', '/')}";
+                                var primaryUrl = BuildModFileMirrorList(file).FirstOrDefault()
+                                    ?? $"{_latestModFilesUrl.TrimEnd('/')}/{EscapeRelativeUrlPath(file.Path)}";
                                 await WriteUpdateLogAsync($"Failed to download file '{file.Path}' from URL '{primaryUrl}'. Error: {ex.Message}");
                                 if (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase) ||
                                     ex.Message.Contains("Not Found", StringComparison.OrdinalIgnoreCase))
@@ -1478,7 +1672,21 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
             {
                 File.WriteAllText(_localModVersionFile, _latestModVersion);
-                _userPreferences.LastKnownLatestModVersion = _latestModVersion;
+                _installedModState = new ModInstallationState
+                {
+                    Version = _latestModVersion,
+                    Channel = targetChannel,
+                    InstalledAtUtc = DateTime.UtcNow
+                };
+                _modInstallationStateService.Save(_installedModState);
+                if (targetChannel == ModReleaseChannel.Beta)
+                {
+                    _userPreferences.LastKnownLatestBetaModVersion = _latestModVersion;
+                }
+                else
+                {
+                    _userPreferences.LastKnownLatestModVersion = _latestModVersion;
+                }
                 _preferencesService.Save(_userPreferences);
             }
 
@@ -1489,7 +1697,7 @@ public partial class MainWindow : Window
             var summary = BuildSafeUpdateStatusMessage(isUpdate, result, backup);
             SetUpdateState("Completed", summary, 100);
             SetStatus(
-                isUpdate ? "Update completed. Ready to race." : "Installation completed. Ready to race.",
+                $"{GetChannelDisplayName(targetChannel)} {(isUpdate ? "update" : "installation")} completed. Ready to race.",
                 (WpfBrush)FindResource("SuccessBrush"));
 
             ShowToast(
@@ -1620,8 +1828,23 @@ public partial class MainWindow : Window
     {
         if (ShowCustomDialog("Repair installation", "This will re-download and reinstall the mod. Continue?", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
         {
+            if (!await EnsureSelectedModReleaseLoadedAsync())
+            {
+                ShowCustomDialog("Release unavailable", "The selected channel metadata could not be loaded. Try checking for updates first.", MessageBoxButton.OK);
+                return;
+            }
             await PerformModInstallation();
         }
+    }
+
+    private async Task<bool> EnsureSelectedModReleaseLoadedAsync()
+    {
+        if (!_lastUpdateCheckUtc.HasValue || DateTime.UtcNow - _lastUpdateCheckUtc.Value > TimeSpan.FromMinutes(5))
+        {
+            await CheckForUpdatesAsync(showMessages: false);
+        }
+
+        return string.IsNullOrWhiteSpace(_lastUpdateError) && !string.IsNullOrWhiteSpace(_latestModVersion);
     }
 
     private async void LaunchButton_OnClick(object sender, RoutedEventArgs e)
@@ -1633,9 +1856,12 @@ public partial class MainWindow : Window
 
         if (_isModUpdateRequired)
         {
+            var channelSwitchPending = IsChannelSwitchPending(BuildSettingsFromUi());
             var result = ShowCustomDialog(
-                "Update available",
-                "The installed mod version is not the latest. Do you want to launch the game anyway?",
+                channelSwitchPending ? "Channel switch pending" : "Update available",
+                channelSwitchPending
+                    ? $"The {GetChannelDisplayName(_installedModState.Channel)} channel is still installed, while {GetChannelDisplayName(SelectedModReleaseChannel)} is selected. Launch the installed channel anyway?"
+                    : "The installed mod version is not the latest. Do you want to launch the game anyway?",
                 MessageBoxButton.YesNo);
             if (result != MessageBoxResult.Yes)
             {
@@ -1725,6 +1951,21 @@ public partial class MainWindow : Window
 
     private async Task CheckForUpdatesAsync(bool showMessages)
     {
+        await _updateCheckLock.WaitAsync();
+        try
+        {
+            await CheckForUpdatesCoreAsync(showMessages);
+        }
+        finally
+        {
+            _updateCheckLock.Release();
+        }
+    }
+
+    private async Task CheckForUpdatesCoreAsync(bool showMessages)
+    {
+        var requestedChannel = SelectedModReleaseChannel;
+        var channelRevision = _releaseChannelRevision;
         try
         {
             if (showMessages)
@@ -1738,18 +1979,30 @@ public partial class MainWindow : Window
             var noCacheUrl = $"{LauncherConfig.VersionJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             var json = await _networkService.DownloadStringAsync(noCacheUrl);
             var info = JsonSerializer.Deserialize<VersionInfo>(json.TrimStart('\uFEFF', '\u200B')) ?? new VersionInfo();
+            var modRelease = await ResolveModReleaseAsync(info, requestedChannel);
+            if (channelRevision != _releaseChannelRevision)
+            {
+                return;
+            }
             _lastUpdateCheckUtc = DateTime.UtcNow;
             _lastUpdateError = string.Empty;
 
-            _latestModVersion = info.ModVersion;
-            _userPreferences.LastKnownLatestModVersion = info.ModVersion;
+            _latestModVersion = modRelease.Version;
+            if (SelectedModReleaseChannel == ModReleaseChannel.Beta)
+            {
+                _userPreferences.LastKnownLatestBetaModVersion = modRelease.Version;
+            }
+            else
+            {
+                _userPreferences.LastKnownLatestModVersion = modRelease.Version;
+            }
             _preferencesService.Save(_userPreferences);
-            _latestModUrl = string.IsNullOrWhiteSpace(info.ModUrl) ? LauncherConfig.ModUrl : info.ModUrl;
-            _latestModMirrors = info.ModMirrors ?? Array.Empty<string>();
-            _latestModSha256 = info.ModSha256;
-            _latestModManifestUrl = string.IsNullOrWhiteSpace(info.ModManifestUrl) ? LauncherConfig.ModManifestUrl : info.ModManifestUrl;
-            _latestModFilesUrl = string.IsNullOrWhiteSpace(info.ModFilesUrl) ? LauncherConfig.ModFilesUrl : info.ModFilesUrl;
-            _latestModFilesMirrors = info.ModFilesMirrors ?? Array.Empty<string>();
+            _latestModUrl = modRelease.ArchiveUrl;
+            _latestModMirrors = modRelease.ArchiveMirrors;
+            _latestModSha256 = modRelease.ArchiveSha256;
+            _latestModManifestUrl = modRelease.ManifestUrl;
+            _latestModFilesUrl = modRelease.FilesUrl;
+            _latestModFilesMirrors = modRelease.FilesMirrors;
             _latestMusicPackVersion = info.MusicPackVersion;
             _latestMusicPackUrl = string.IsNullOrWhiteSpace(info.MusicPackUrl) ? LauncherConfig.MusicPackUrl : info.MusicPackUrl;
             _latestMusicPackMirrors = info.MusicPackMirrors ?? Array.Empty<string>();
@@ -1783,15 +2036,29 @@ public partial class MainWindow : Window
 
             if (IsModInstalled(currentSettings))
             {
-                var localVersion = File.Exists(_localModVersionFile) ? File.ReadAllText(_localModVersionFile).Trim() : "0.0";
-                if (!string.IsNullOrWhiteSpace(info.ModVersion) && info.ModVersion != localVersion)
+                var localVersion = GetInstalledModVersion();
+                var channelSwitchPending = IsChannelSwitchPending(currentSettings);
+                if (channelSwitchPending || (!string.IsNullOrWhiteSpace(_latestModVersion) && _latestModVersion != localVersion))
                 {
                     _isModUpdateRequired = true;
-                    SetStatus($"Mod update available (v{info.ModVersion})", (WpfBrush)FindResource("WarningBrush"));
-                    SetUpdateState("Update available", $"Installed {localVersion}, latest {info.ModVersion}.", 0);
+                    SetStatus(
+                        channelSwitchPending
+                            ? $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)} is ready"
+                            : $"Mod update available (v{_latestModVersion})",
+                        (WpfBrush)FindResource("WarningBrush"));
+                    SetUpdateState(
+                        channelSwitchPending ? "Channel switch" : "Update available",
+                        channelSwitchPending
+                            ? $"Installed {GetChannelDisplayName(_installedModState.Channel)} {localVersion}; selected {GetChannelDisplayName(SelectedModReleaseChannel)} {_latestModVersion}."
+                            : $"Installed {localVersion}, latest {_latestModVersion}.",
+                        0);
                     if (showMessages)
                     {
-                        ShowToast("Update available", $"VanzaKart v{info.ModVersion} is ready to install.");
+                        ShowToast(
+                            channelSwitchPending ? "Channel switch ready" : "Update available",
+                            channelSwitchPending
+                                ? $"{GetChannelDisplayName(SelectedModReleaseChannel)} v{_latestModVersion} is ready to apply."
+                                : $"VanzaKart v{_latestModVersion} is ready to install.");
                     }
                 }
                 else
@@ -1814,8 +2081,14 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
+            if (channelRevision != _releaseChannelRevision)
+            {
+                return;
+            }
+
             _lastUpdateCheckUtc = DateTime.UtcNow;
             _lastUpdateError = ex.Message;
+            _latestModVersion = string.Empty;
             SetStatus("Update check failed", (WpfBrush)FindResource("DangerBrush"));
             SetUpdateState("Network error", ex.Message, 0);
             if (showMessages)
@@ -1898,16 +2171,27 @@ public partial class MainWindow : Window
         {
             yield return mirror;
         }
-        yield return LauncherConfig.ModUrl;
+        var channelDefaultUrl = SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? LauncherConfig.BetaModUrl
+            : LauncherConfig.ModUrl;
+        if (!channelDefaultUrl.Equals(_latestModUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return channelDefaultUrl;
+        }
     }
 
-    private IEnumerable<string> BuildModFileMirrorList(string fileRelativePath)
+    private IEnumerable<string> BuildModFileMirrorList(ModManifestFile file)
     {
-        var escapedPath = fileRelativePath.Replace('\\', '/');
+        var fileRelativePath = file.Path;
+        var escapedPath = EscapeRelativeUrlPath(fileRelativePath);
+        var rawPath = fileRelativePath.Replace('\\', '/');
+        var hashPath = BuildHashAddressedRelativePath(file.Sha256);
+        var fileUrls = new List<string>();
 
         if (!string.IsNullOrWhiteSpace(_latestModFilesUrl))
         {
-            yield return $"{_latestModFilesUrl.TrimEnd('/')}/{escapedPath}";
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(_latestModFilesUrl, escapedPath, rawPath));
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(_latestModFilesUrl, hashPath, hashPath));
         }
 
         if (_latestModFilesMirrors != null)
@@ -1916,16 +2200,152 @@ public partial class MainWindow : Window
             {
                 if (!string.IsNullOrWhiteSpace(mirror))
                 {
-                    yield return $"{mirror.TrimEnd('/')}/{escapedPath}";
+                    fileUrls.AddRange(BuildDifferentialFileUrlCandidates(mirror, escapedPath, rawPath));
+                    fileUrls.AddRange(BuildDifferentialFileUrlCandidates(mirror, hashPath, hashPath));
                 }
             }
         }
 
-        var defaultFilesUrl = LauncherConfig.ModFilesUrl;
+        var defaultFilesUrl = SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? LauncherConfig.BetaModFilesUrl
+            : LauncherConfig.ModFilesUrl;
         if (!string.IsNullOrWhiteSpace(defaultFilesUrl) && defaultFilesUrl != _latestModFilesUrl)
         {
-            yield return $"{defaultFilesUrl.TrimEnd('/')}/{escapedPath}";
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(defaultFilesUrl, escapedPath, rawPath));
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(defaultFilesUrl, hashPath, hashPath));
         }
+
+        foreach (var url in fileUrls.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            yield return url;
+        }
+    }
+
+    private async Task<ModReleaseMetadata> ResolveModReleaseAsync(VersionInfo stableInfo, ModReleaseChannel channel)
+    {
+        if (channel == ModReleaseChannel.Stable)
+        {
+            if (string.IsNullOrWhiteSpace(stableInfo.ModVersion))
+            {
+                throw new InvalidDataException("The stable versions manifest does not contain a mod version.");
+            }
+
+            return new ModReleaseMetadata(
+                stableInfo.ModVersion,
+                string.IsNullOrWhiteSpace(stableInfo.ModUrl) ? LauncherConfig.ModUrl : stableInfo.ModUrl,
+                stableInfo.ModMirrors ?? Array.Empty<string>(),
+                stableInfo.ModSha256,
+                string.IsNullOrWhiteSpace(stableInfo.ModManifestUrl) ? LauncherConfig.ModManifestUrl : stableInfo.ModManifestUrl,
+                string.IsNullOrWhiteSpace(stableInfo.ModFilesUrl) ? LauncherConfig.ModFilesUrl : stableInfo.ModFilesUrl,
+                stableInfo.ModFilesMirrors ?? Array.Empty<string>());
+        }
+
+        var betaManifestUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModManifestUrl)
+            ? LauncherConfig.BetaModManifestUrl
+            : stableInfo.BetaModManifestUrl;
+        var manifestJson = await _networkService.DownloadStringAsync(AddNoCacheQuery(betaManifestUrl));
+        var manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'))
+            ?? throw new InvalidDataException("The Beta update manifest is invalid.");
+        ValidateModManifest(manifest);
+
+        if (!string.IsNullOrWhiteSpace(stableInfo.BetaModVersion) &&
+            !stableInfo.BetaModVersion.Equals(manifest.ModVersion, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidDataException(
+                $"Beta metadata is out of sync: versions.json reports {stableInfo.BetaModVersion}, but the Beta manifest reports {manifest.ModVersion}.");
+        }
+
+        return new ModReleaseMetadata(
+            manifest.ModVersion,
+            string.IsNullOrWhiteSpace(stableInfo.BetaModUrl) ? LauncherConfig.BetaModUrl : stableInfo.BetaModUrl,
+            stableInfo.BetaModMirrors ?? Array.Empty<string>(),
+            string.IsNullOrWhiteSpace(manifest.ArchiveSha256) ? stableInfo.BetaModSha256 : manifest.ArchiveSha256,
+            betaManifestUrl,
+            string.IsNullOrWhiteSpace(stableInfo.BetaModFilesUrl) ? LauncherConfig.BetaModFilesUrl : stableInfo.BetaModFilesUrl,
+            stableInfo.BetaModFilesMirrors ?? Array.Empty<string>());
+    }
+
+    private sealed record ModReleaseMetadata(
+        string Version,
+        string ArchiveUrl,
+        string[] ArchiveMirrors,
+        string ArchiveSha256,
+        string ManifestUrl,
+        string FilesUrl,
+        string[] FilesMirrors);
+
+    private static string BuildHashAddressedRelativePath(string sha256)
+    {
+        return $"_by_sha256/{sha256.Trim().ToLowerInvariant()}";
+    }
+
+    private static void ValidateModManifest(ModManifest? manifest)
+    {
+        if (manifest == null || string.IsNullOrWhiteSpace(manifest.ModVersion) || manifest.Files == null || manifest.Files.Count == 0)
+        {
+            throw new InvalidDataException("The mod update manifest is empty or invalid.");
+        }
+
+        var paths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in manifest.Files)
+        {
+            var normalizedPath = (file.Path ?? string.Empty).Replace('\\', '/');
+            var sha256 = file.Sha256 ?? string.Empty;
+            if (string.IsNullOrWhiteSpace(normalizedPath) ||
+                normalizedPath.StartsWith('/') ||
+                normalizedPath.Split('/').Any(segment => segment is "" or "." or "..") ||
+                file.Size < 0 ||
+                sha256.Length != 64 ||
+                !sha256.All(Uri.IsHexDigit) ||
+                !paths.Add(normalizedPath))
+            {
+                throw new InvalidDataException($"Invalid or duplicate mod manifest entry: {file.Path}");
+            }
+        }
+
+        var archiveSha256 = manifest.ArchiveSha256 ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(archiveSha256) &&
+            (archiveSha256.Length != 64 || !archiveSha256.All(Uri.IsHexDigit)))
+        {
+            throw new InvalidDataException("The mod archive hash in the manifest is invalid.");
+        }
+    }
+
+    private static IEnumerable<string> BuildDifferentialFileUrlCandidates(string baseUrl, string escapedPath, string rawPath)
+    {
+        var escapedUrl = $"{baseUrl.TrimEnd('/')}/{escapedPath}";
+        var rawUrl = $"{baseUrl.TrimEnd('/')}/{rawPath}";
+
+        yield return AddNoCacheQuery(escapedUrl);
+        if (!rawUrl.Equals(escapedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return AddNoCacheQuery(rawUrl);
+        }
+
+        yield return escapedUrl;
+        if (!rawUrl.Equals(escapedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return rawUrl;
+        }
+    }
+
+    private static string AddNoCacheQuery(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        var separator = url.Contains('?') ? '&' : '?';
+        return $"{url}{separator}t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+    }
+
+    private static string EscapeRelativeUrlPath(string relativePath)
+    {
+        return string.Join(
+            "/",
+            relativePath
+                .Replace('\\', '/')
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
     }
 
     private IEnumerable<string> BuildLauncherMirrorList()
@@ -2943,7 +3363,7 @@ public partial class MainWindow : Window
 
     private void NewsVideo_Loaded(object sender, RoutedEventArgs e)
     {
-        if (sender is MediaElement me)
+        if (sender is MediaElement { DataContext: NewsItem { HasVideo: true } } me && me.Source != null)
         {
             me.Play();
         }
@@ -3055,6 +3475,16 @@ public partial class MainWindow : Window
                 $"The settings file could not be deleted.\n\n{ex.Message}",
                 MessageBoxButton.OK);
         }
+    }
+
+    private void NewsVideo_MediaFailed(object sender, ExceptionRoutedEventArgs e)
+    {
+        if (sender is MediaElement mediaElement)
+        {
+            mediaElement.Stop();
+        }
+
+        e.Handled = true;
     }
 
     private void SeedNews()
@@ -3591,8 +4021,12 @@ public sealed class CustomDialog : Window
             }
         };
 
-        var stack = new StackPanel();
-        stack.Children.Add(new TextBlock
+        var dialogGrid = new Grid();
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+        dialogGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+
+        var titleTextBlock = new TextBlock
         {
             Text = title,
             FontSize = 20,
@@ -3600,21 +4034,33 @@ public sealed class CustomDialog : Window
             Foreground = WpfBrushes.White,
             Margin = new Thickness(0, 0, 0, 12),
             FontFamily = new FontFamily("Segoe UI")
-        });
-        stack.Children.Add(new TextBlock
+        };
+        Grid.SetRow(titleTextBlock, 0);
+        dialogGrid.Children.Add(titleTextBlock);
+
+        var messageTextBlock = new TextBlock
         {
             Text = message,
             FontSize = 14,
             Foreground = new SolidColorBrush(WpfColor.FromRgb(0xA7, 0xB4, 0xCE)),
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 0, 0, 24),
             FontFamily = new FontFamily("Segoe UI")
-        });
+        };
+        var messageScrollViewer = new ScrollViewer
+        {
+            Content = messageTextBlock,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Margin = new Thickness(0, 0, 0, 18)
+        };
+        Grid.SetRow(messageScrollViewer, 1);
+        dialogGrid.Children.Add(messageScrollViewer);
 
         var buttonPanel = new StackPanel
         {
             Orientation = System.Windows.Controls.Orientation.Horizontal,
-            HorizontalAlignment = System.Windows.HorizontalAlignment.Right
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Right,
+            Margin = new Thickness(0, 4, 0, 6)
         };
 
         var primaryButton = CreateDialogButton(buttons == MessageBoxButton.YesNo ? "Yes" : "OK", true);
@@ -3637,8 +4083,9 @@ public sealed class CustomDialog : Window
             buttonPanel.Children.Add(secondaryButton);
         }
 
-        stack.Children.Add(buttonPanel);
-        root.Child = stack;
+        Grid.SetRow(buttonPanel, 2);
+        dialogGrid.Children.Add(buttonPanel);
+        root.Child = dialogGrid;
         var container = new Grid { Background = WpfBrushes.Transparent };
         container.Children.Add(root);
         Content = container;

@@ -14,4 +14,6 @@ public class UserPreferences
     public int LaunchCount { get; set; }
     public double TotalPlayTimeMinutes { get; set; }
     public string LastKnownLatestModVersion { get; set; } = string.Empty;
+    public string LastKnownLatestBetaModVersion { get; set; } = string.Empty;
+    public ModReleaseChannel ModReleaseChannel { get; set; } = ModReleaseChannel.Stable;
 }

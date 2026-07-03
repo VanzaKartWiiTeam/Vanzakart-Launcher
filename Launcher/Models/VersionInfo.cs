@@ -42,6 +42,33 @@ public sealed class VersionInfo
     [JsonConverter(typeof(StringArrayOrSingleConverter))]
     public string[] ModFilesMirrors { get; set; } = Array.Empty<string>();
 
+    [JsonPropertyName("beta_mod_version")]
+    public string BetaModVersion { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_url")]
+    public string BetaModUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_mirrors")]
+    [JsonConverter(typeof(StringArrayOrSingleConverter))]
+    public string[] BetaModMirrors { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("beta_mod_sha256")]
+    public string BetaModSha256 { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_manifest_url")]
+    public string BetaModManifestUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_files_url")]
+    public string BetaModFilesUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_files_mirrors")]
+    [JsonConverter(typeof(StringArrayOrSingleConverter))]
+    public string[] BetaModFilesMirrors { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("beta_changelog")]
+    [JsonConverter(typeof(StringArrayOrSingleConverter))]
+    public string[] BetaChangelog { get; set; } = Array.Empty<string>();
+
     [JsonPropertyName("music_pack_version")]
     public string MusicPackVersion { get; set; } = string.Empty;
 

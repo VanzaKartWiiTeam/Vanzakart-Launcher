@@ -11,6 +11,8 @@
     La nuova versione della mod (es. 1.2.0).
 .PARAMETER OutputDir
     La directory in cui generare i file da caricare sul server (default: .\dist).
+.PARAMETER Channel
+    Il canale da pubblicare: Stable usa /Modpack, Beta usa /VanzakartBeta.
 #>
 
 param (
@@ -23,7 +25,10 @@ param (
     [Parameter(Mandatory=$false)]
     [string]$OutputDir = ".\dist",
 
-    [string]$VersionsJsonUrl = "https://sitodaking.it/Launcher/versions.json",
+    [string]$VersionsJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json",
+    [ValidateSet("Stable", "Beta")]
+    [string]$Channel = "Stable",
+    [string]$ServerBaseUrl = "https://sitodaking.it:8443",
     [string[]]$Changelog = @()
 )
 
@@ -99,6 +104,34 @@ function Get-FileSha256 {
     }
 }
 
+function Needs-HashAddressedFallback {
+    param([string]$WebPath)
+    return $WebPath -match '[^A-Za-z0-9._~/-]'
+}
+
+function Test-ModPayloadRoot {
+    param([string]$Path)
+    if (-not (Test-Path -LiteralPath $Path -PathType Container)) { return $false }
+    return (Test-Path -LiteralPath (Join-Path $Path "Riivolution") -PathType Container) -and
+           (Test-Path -LiteralPath (Join-Path $Path "VanzaKart") -PathType Container)
+}
+
+function Resolve-ModPayloadRoot {
+    param([string]$SourcePath)
+
+    $sourceFullPath = [System.IO.Path]::GetFullPath($SourcePath)
+    if (Test-ModPayloadRoot -Path $sourceFullPath) {
+        return $sourceFullPath
+    }
+
+    $nestedVanzaKart = Join-Path $sourceFullPath "VanzaKart"
+    if (Test-ModPayloadRoot -Path $nestedVanzaKart) {
+        return [System.IO.Path]::GetFullPath($nestedVanzaKart)
+    }
+
+    throw "La cartella sorgente non sembra una release VanzaKart valida. Passa la cartella che contiene Riivolution/ e VanzaKart/, oppure la cartella padre che contiene VanzaKart/Riivolution/ e VanzaKart/VanzaKart/."
+}
+
 function Normalize-JsonText {
     param([string]$Text)
     if ($null -eq $Text) { return "" }
@@ -108,17 +141,24 @@ function Normalize-JsonText {
         [char]0x20, [char]0x09, [char]0x0D, [char]0x0A))
 }
 
-Write-Host "=== Generazione Rilascio VanzaKart v$Version ===" -ForegroundColor Cyan
+$serverDirectory = if ($Channel -eq "Beta") { "VanzakartBeta" } else { "Modpack" }
+$modReleaseBaseUrl = "$($ServerBaseUrl.TrimEnd('/'))/$serverDirectory"
+
+Write-Host "=== Generazione Rilascio VanzaKart v$Version ($Channel) ===" -ForegroundColor Cyan
 
 # Risolvi percorsi assoluti
 $absoluteModPath = [System.IO.Path]::GetFullPath($ModPath)
 $absoluteOutputDir = [System.IO.Path]::GetFullPath($OutputDir)
 
-if (-not (Test-Path $absoluteModPath -PathType Container)) {
+if (-not (Test-Path -LiteralPath $absoluteModPath -PathType Container)) {
     Write-Error "La cartella mod specificata non esiste: $absoluteModPath"
 }
 
 Write-Host "Mod Path: $absoluteModPath"
+$payloadRoot = Resolve-ModPayloadRoot -SourcePath $absoluteModPath
+Write-Host "Payload Root: $payloadRoot"
+Write-Host "Differential manifest root: contenuto di Payload Root, senza il prefisso VanzaKart/" -ForegroundColor DarkCyan
+Write-Host "Full ZIP root: VanzaKart/" -ForegroundColor DarkCyan
 Write-Host "Output Dir: $absoluteOutputDir"
 
 # Scarica il versions.json attuale dal server prima di generare il rilascio.
@@ -145,26 +185,28 @@ Write-Host "Versione launcher attuale scaricata: $currentLauncherVersion" -Foreg
 # Crea directory temporanee e di output
 $tempZipFolder = Join-Path $env:TEMP "vanzakart_release_temp_$([guid]::NewGuid().ToString())"
 $filesOutputDir = Join-Path $absoluteOutputDir "files"
+$hashFilesOutputDir = Join-Path $filesOutputDir "_by_sha256"
 
-if (Test-Path $absoluteOutputDir) {
+if (Test-Path -LiteralPath $absoluteOutputDir) {
     Write-Host "Rimozione vecchia cartella di output..." -ForegroundColor Yellow
-    Remove-Item -Path $absoluteOutputDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $absoluteOutputDir -Recurse -Force -ErrorAction SilentlyContinue
 }
-New-Item -ItemType Directory -Force -Path $absoluteOutputDir | Out-Null
-New-Item -ItemType Directory -Force -Path $filesOutputDir | Out-Null
-New-Item -ItemType Directory -Force -Path $tempZipFolder | Out-Null
+[System.IO.Directory]::CreateDirectory($absoluteOutputDir) | Out-Null
+[System.IO.Directory]::CreateDirectory($filesOutputDir) | Out-Null
+[System.IO.Directory]::CreateDirectory($hashFilesOutputDir) | Out-Null
+[System.IO.Directory]::CreateDirectory($tempZipFolder) | Out-Null
 
 # Conserva le directory strutturali anche quando non contengono file. Verranno
 # inoltre aggiunte esplicitamente come directory entry nello ZIP finale.
 $alwaysIncludedRelativeDirs = @()
 foreach ($requiredDir in $AlwaysIncludedDirs) {
-    $matchingDirs = Get-ChildItem -Path $absoluteModPath -Recurse -Directory |
+    $matchingDirs = Get-ChildItem -LiteralPath $payloadRoot -Recurse -Directory |
         Where-Object { $_.Name.Equals($requiredDir, [System.StringComparison]::OrdinalIgnoreCase) }
     foreach ($directory in $matchingDirs) {
-        $relativeDir = Get-RelativePath -BasePath $absoluteModPath -Path $directory.FullName
+        $relativeDir = Get-RelativePath -BasePath $payloadRoot -Path $directory.FullName
         $alwaysIncludedRelativeDirs += $relativeDir
-        New-Item -ItemType Directory -Force -Path (Join-Path $tempZipFolder $relativeDir) | Out-Null
-        New-Item -ItemType Directory -Force -Path (Join-Path $filesOutputDir $relativeDir) | Out-Null
+        [System.IO.Directory]::CreateDirectory((Join-Path $tempZipFolder (Join-Path "VanzaKart" $relativeDir))) | Out-Null
+        [System.IO.Directory]::CreateDirectory((Join-Path $filesOutputDir $relativeDir)) | Out-Null
         Write-Host " - Directory obbligatoria preservata: $relativeDir" -ForegroundColor DarkCyan
     }
 }
@@ -174,13 +216,18 @@ Write-Host "Scansione dei file e calcolo degli hash..."
 $manifestFiles = @()
 $allowedFilesCount = 0
 $skippedFilesCount = 0
+$hashFallbackFilesCount = 0
+$hashFallbackUniqueHashes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
-# Recupera ricorsivamente tutti i file nella cartella mod
-$files = Get-ChildItem -Path $absoluteModPath -Recurse -File
+# Recupera ricorsivamente tutti i file nella cartella payload del modpack.
+# Il manifest differenziale deve essere relativo a questa cartella, mentre lo
+# ZIP completo deve contenere un livello root VanzaKart/ perché viene estratto
+# dentro Load/Riivolution.
+$files = Get-ChildItem -LiteralPath $payloadRoot -Recurse -File
 
 foreach ($file in $files) {
     # Ottieni il percorso relativo del file
-    $relativePath = Get-RelativePath -BasePath $absoluteModPath -Path $file.FullName
+    $relativePath = Get-RelativePath -BasePath $payloadRoot -Path $file.FullName
     
     # Controlla se il file è protetto/personale
     if (Is-FileProtected -RelativePath $relativePath) {
@@ -207,23 +254,56 @@ foreach ($file in $files) {
     # Copia nella cartella dei file singoli per l'aggiornamento differenziale
     $destFile = Join-Path $filesOutputDir $relativePath
     $destDir = [System.IO.Path]::GetDirectoryName($destFile)
-    if (-not (Test-Path $destDir)) {
-        New-Item -ItemType Directory -Force -Path $destDir | Out-Null
+    if (-not (Test-Path -LiteralPath $destDir)) {
+        [System.IO.Directory]::CreateDirectory($destDir) | Out-Null
     }
-    Copy-Item -Path $file.FullName -Destination $destFile -Force
+    Copy-Item -LiteralPath $file.FullName -Destination $destFile -Force
+
+    # Copia anche in una posizione URL-safe basata sull'hash solo quando il
+    # path contiene caratteri che alcuni web server/CDN possono rifiutare o
+    # interpretare male, ad esempio parentesi quadre.
+    if (Needs-HashAddressedFallback -WebPath $webPath) {
+        $hashDestFile = Join-Path $hashFilesOutputDir $sha256
+        Copy-Item -LiteralPath $file.FullName -Destination $hashDestFile -Force
+        $hashFallbackFilesCount++
+        [void]$hashFallbackUniqueHashes.Add($sha256)
+    }
     
     # Copia nella cartella temporanea per lo ZIP
-    $tempZipFile = Join-Path $tempZipFolder $relativePath
+    $tempZipFile = Join-Path $tempZipFolder (Join-Path "VanzaKart" $relativePath)
     $tempZipDir = [System.IO.Path]::GetDirectoryName($tempZipFile)
-    if (-not (Test-Path $tempZipDir)) {
-        New-Item -ItemType Directory -Force -Path $tempZipDir | Out-Null
+    if (-not (Test-Path -LiteralPath $tempZipDir)) {
+        [System.IO.Directory]::CreateDirectory($tempZipDir) | Out-Null
     }
-    Copy-Item -Path $file.FullName -Destination $tempZipFile -Force
+    Copy-Item -LiteralPath $file.FullName -Destination $tempZipFile -Force
 }
 
 Write-Host "Scansione completata." -ForegroundColor Green
 Write-Host " - File inclusi: $allowedFilesCount"
 Write-Host " - File privati esclusi (es. saves, My Stuff): $skippedFilesCount"
+Write-Host " - Path sensibili coperti da fallback _by_sha256: $hashFallbackFilesCount"
+Write-Host " - File hash unici creati in _by_sha256: $($hashFallbackUniqueHashes.Count)"
+
+Write-Host "Verifica coerenza manifest/cartella files..." -ForegroundColor Yellow
+$missingDifferentialFiles = @()
+foreach ($entry in $manifestFiles) {
+    $relativeDiskPath = ([string]$entry.path).Replace('/', [System.IO.Path]::DirectorySeparatorChar)
+    $expectedPath = Join-Path $filesOutputDir $relativeDiskPath
+    $expectedHashPath = Join-Path $hashFilesOutputDir ([string]$entry.sha256)
+    if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+        $missingDifferentialFiles += [string]$entry.path
+    }
+    if ((Needs-HashAddressedFallback -WebPath ([string]$entry.path)) -and
+        -not (Test-Path -LiteralPath $expectedHashPath -PathType Leaf)) {
+        $missingDifferentialFiles += "_by_sha256/$([string]$entry.sha256) ($([string]$entry.path))"
+    }
+}
+
+if ($missingDifferentialFiles.Count -gt 0) {
+    $preview = ($missingDifferentialFiles | Select-Object -First 20) -join "`n - "
+    throw "Release differenziale non valida: $($missingDifferentialFiles.Count) file sono nel manifest ma non esistono in dist/files.`n - $preview"
+}
+Write-Host " - OK: tutti i file del manifest esistono nella cartella files; i path sensibili hanno fallback _by_sha256." -ForegroundColor Green
 
 # 1. Scrittura del file manifest_files.json
 $manifestObject = @{
@@ -249,7 +329,7 @@ if ($alwaysIncludedRelativeDirs.Count -gt 0) {
     $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Update)
     try {
         foreach ($relativeDir in $alwaysIncludedRelativeDirs) {
-            $entryName = $relativeDir.Replace('\', '/').TrimEnd('/') + '/'
+            $entryName = ("VanzaKart/" + $relativeDir.Replace('\', '/')).TrimEnd('/') + '/'
             $existingEntry = $zip.Entries | Where-Object { $_.FullName.Equals($entryName, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
             if (-not $existingEntry) { [void]$zip.CreateEntry($entryName) }
         }
@@ -267,20 +347,26 @@ Compress-Archive -Path "$filesOutputDir\*" -DestinationPath $filesZipPath -Force
 Write-Host "Creato archivio dei file differenziali: files.zip" -ForegroundColor Green
 
 # Pulisci cartella temporanea
-Remove-Item -Path $tempZipFolder -Recurse -Force -ErrorAction SilentlyContinue
+Remove-Item -LiteralPath $tempZipFolder -Recurse -Force -ErrorAction SilentlyContinue
 
 # Calcola hash dello ZIP generato
 $zipSha256 = Get-FileSha256 -FilePath $zipPath
+
+# Inserisce l'hash dello ZIP anche nel manifest del canale. Il launcher usa questo
+# valore per verificare i full download Beta senza dipendere dal versions.json Stable.
+$manifestObject["archive_sha256"] = $zipSha256
+$manifestJsonContent = ConvertTo-Json -InputObject $manifestObject -Depth 100
+[System.IO.File]::WriteAllText($manifestJsonPath, $manifestJsonContent, [System.Text.UTF8Encoding]::new($false))
 
 # 4. Creazione o aggiornamento di versions.json
 $versionsJsonPath = Join-Path $absoluteOutputDir "versions.json"
 $baseVersionsObject = @{
     "mod_version" = $Version
     "launcher_version" = $currentLauncherVersion
-    "mod_url" = "https://sitodaking.it/Modpack/VanzaKart.zip"
+    "mod_url" = "$modReleaseBaseUrl/VanzaKart.zip"
     "mod_sha256" = $zipSha256
-    "mod_manifest_url" = "https://sitodaking.it/Modpack/manifest_files.json"
-    "mod_files_url" = "https://sitodaking.it/Modpack/files/"
+    "mod_manifest_url" = "$modReleaseBaseUrl/manifest_files.json"
+    "mod_files_url" = "$modReleaseBaseUrl/files/"
     "mod_mirrors" = @()
     "mod_files_mirrors" = @()
     "launcher_url" = "https://sitodaking.it/Launcher/vanzakart_launcher.zip"
@@ -298,17 +384,29 @@ foreach ($prop in $existingVersions.PSObject.Properties) {
     $baseVersionsObject[$prop.Name] = $prop.Value
 }
 
-# Aggiorna soltanto le proprietà relative alla nuova release della mod. La versione
-# del launcher resta quella letta dal versions.json attuale.
-$baseVersionsObject["mod_version"] = $Version
+# Aggiorna soltanto il gruppo di proprietà del canale pubblicato. In questo modo
+# una release Beta non sostituisce mai i riferimenti Stable nel versions.json.
 $baseVersionsObject["launcher_version"] = $currentLauncherVersion
-$baseVersionsObject["mod_sha256"] = $zipSha256
-$baseVersionsObject["mod_manifest_url"] = "https://sitodaking.it/Modpack/manifest_files.json"
-$baseVersionsObject["mod_files_url"] = "https://sitodaking.it/Modpack/files/"
-$baseVersionsObject["mod_url"] = "https://sitodaking.it/Modpack/VanzaKart.zip"
-$baseVersionsObject["mod_mirrors"] = @($existingVersions.mod_mirrors)
-$baseVersionsObject["mod_files_mirrors"] = @($existingVersions.mod_files_mirrors)
-$baseVersionsObject["changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Modpack $Version" })
+if ($Channel -eq "Beta") {
+    $baseVersionsObject["beta_mod_version"] = $Version
+    $baseVersionsObject["beta_mod_sha256"] = $zipSha256
+    $baseVersionsObject["beta_mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
+    $baseVersionsObject["beta_mod_files_url"] = "$modReleaseBaseUrl/files/"
+    $baseVersionsObject["beta_mod_url"] = "$modReleaseBaseUrl/VanzaKart.zip"
+    $baseVersionsObject["beta_mod_mirrors"] = @()
+    $baseVersionsObject["beta_mod_files_mirrors"] = @()
+    $baseVersionsObject["beta_changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Beta $Version" })
+}
+else {
+    $baseVersionsObject["mod_version"] = $Version
+    $baseVersionsObject["mod_sha256"] = $zipSha256
+    $baseVersionsObject["mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
+    $baseVersionsObject["mod_files_url"] = "$modReleaseBaseUrl/files/"
+    $baseVersionsObject["mod_url"] = "$modReleaseBaseUrl/VanzaKart.zip"
+    $baseVersionsObject["mod_mirrors"] = @($existingVersions.mod_mirrors)
+    $baseVersionsObject["mod_files_mirrors"] = @($existingVersions.mod_files_mirrors)
+    $baseVersionsObject["changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Modpack $Version" })
+}
 
 # Questi valori appartengono alle altre release e devono sempre restare invariati.
 $baseVersionsObject["launcher_url"] = if ($existingVersions.launcher_url) { [string]$existingVersions.launcher_url } else { "https://sitodaking.it/Launcher/vanzakart_launcher.zip" }
@@ -326,9 +424,9 @@ Write-Host "Creato/Aggiornato il file: versions.json" -ForegroundColor Green
 Write-Host "`n=== PROCESSO COMPLETATO ===" -ForegroundColor Green
 Write-Host "I file generati nella cartella '$OutputDir' sono pronti per essere caricati!"
 Write-Host "Ecco le istruzioni per il rilascio:"
-Write-Host "1. Carica il contenuto di '$OutputDir' sul tuo server web (es. dentro la cartella /Modpack/ e /Launcher/)."
-Write-Host "   - Il file 'versions.json' deve risiedere all'URL configurato nel Launcher (di default: https://sitodaking.it/Launcher/versions.json)"
-Write-Host "   - Il file 'manifest_files.json' e 'VanzaKart.zip' devono risiedere all'URL configurato (di default: https://sitodaking.it/Modpack/)"
-Write-Host "   - La cartella 'files' deve risiedere all'URL configurato (di default: https://sitodaking.it/Modpack/files/)"
-Write-Host "   - Il file 'files.zip' contiene una copia compressa della cartella 'files'."
+Write-Host "1. Carica il contenuto di '$OutputDir' nella cartella /$serverDirectory/ del server."
+Write-Host "   - Carica 'versions.json' in /Launcher/ per ultimo: contiene insieme i dati Stable, Beta, Launcher e Music Pack."
+Write-Host "   - Il file 'manifest_files.json' e 'VanzaKart.zip' devono risiedere in $modReleaseBaseUrl/"
+Write-Host "   - La cartella 'files' deve risiedere in $modReleaseBaseUrl/files/"
+Write-Host "   - Il file 'files.zip' contiene una copia compressa della cartella 'files', inclusa la fallback _by_sha256 per i download differenziali."
 Write-Host "2. Assicurati che i permessi di lettura sui file sul server siano corretti."

@@ -119,8 +119,12 @@ public sealed class MusicPackService
                 var target = SafeCombine(stagingRoot, file.Path);
                 Directory.CreateDirectory(Path.GetDirectoryName(target)!);
                 var partial = target + ".download";
+                var escapedPath = EscapeRelativeUrlPath(file.Path);
+                var rawPath = file.Path.Replace('\\', '/');
+                var hashPath = BuildHashAddressedRelativePath(file.Sha256);
                 var urls = filesBaseUrls.Where(url => !string.IsNullOrWhiteSpace(url))
-                    .Select(url => $"{url.TrimEnd('/')}/{file.Path.Replace('\\', '/')}");
+                    .SelectMany(url => BuildDifferentialFileUrlCandidates(url, escapedPath, rawPath)
+                        .Concat(BuildDifferentialFileUrlCandidates(url, hashPath, hashPath)));
                 var fileProgress = new Progress<(long current, long total)>(value =>
                     progress?.Report((completedBytes + value.current, totalBytes)));
                 await _network.DownloadFileWithResumeAsync(urls, partial, fileProgress, cancellationToken);
@@ -159,6 +163,48 @@ public sealed class MusicPackService
         var result = Path.GetFullPath(Path.Combine(root, relative.Replace('/', Path.DirectorySeparatorChar)));
         if (!result.StartsWith(fullRoot, StringComparison.OrdinalIgnoreCase)) throw new InvalidDataException("Unsafe Music Pack path.");
         return result;
+    }
+
+    private static string EscapeRelativeUrlPath(string relativePath)
+    {
+        return string.Join(
+            "/",
+            relativePath
+                .Replace('\\', '/')
+                .Split('/', StringSplitOptions.RemoveEmptyEntries)
+                .Select(Uri.EscapeDataString));
+    }
+
+    private static IEnumerable<string> BuildDifferentialFileUrlCandidates(string baseUrl, string escapedPath, string rawPath)
+    {
+        var escapedUrl = $"{baseUrl.TrimEnd('/')}/{escapedPath}";
+        var rawUrl = $"{baseUrl.TrimEnd('/')}/{rawPath}";
+
+        yield return AddNoCacheQuery(escapedUrl);
+        if (!rawUrl.Equals(escapedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return AddNoCacheQuery(rawUrl);
+        }
+
+        yield return escapedUrl;
+        if (!rawUrl.Equals(escapedUrl, StringComparison.OrdinalIgnoreCase))
+        {
+            yield return rawUrl;
+        }
+    }
+
+    private static string BuildHashAddressedRelativePath(string sha256)
+    {
+        return $"_by_sha256/{sha256.Trim().ToLowerInvariant()}";
+    }
+
+    private static string AddNoCacheQuery(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url))
+            return url;
+
+        var separator = url.Contains('?') ? '&' : '?';
+        return $"{url}{separator}t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
     }
 
     private static async Task<string> ComputeSha256Async(string path, CancellationToken cancellationToken)

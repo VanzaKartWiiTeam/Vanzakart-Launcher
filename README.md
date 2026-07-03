@@ -8,6 +8,7 @@ A custom-built, modern, and professional launcher designed to manage and boot Va
 
 * **Sleek Gaming Interface:** A dark-themed, edgy UI enhanced with subtle neon accents and glow gradients, delivering a premium and immersive user experience right from the desktop.
 * **Smart Update System:** Built-in network and extraction engines that automatically download, unpack, and install the latest patches, ensuring your game is always up to date.
+* **Stable/Beta Channels:** Players can opt into preview builds and safely return to Stable. The launcher tracks the selected and installed channels separately and preserves protected user data during every switch.
 * **Streamlined Deployment:** Comes with dedicated Setup and Uninstaller modules, guaranteeing a clean, safe, and effortless installation process on Windows environments.
 * **Emulation Ready:** Specifically tailored to hook seamlessly into Dolphin and manage your Riivolution setups without requiring manual folder configurations.
 
@@ -22,6 +23,16 @@ You can always find the latest stable version of the mod and the launcher direct
 2. Run the provided Setup executable.
 3. Follow the quick installation wizard.
 4. Launch VanzaKart and hit the track!
+
+## Publishing a Beta modpack
+
+Generate the release with the same payload structure used by Stable:
+
+```powershell
+.\Generate-ModRelease.ps1 -ModPath "C:\path\to\VanzaKart" -Version "1.4.0-beta.1" -Channel Beta -OutputDir ".\dist-beta"
+```
+
+Upload the generated `VanzaKart.zip`, `manifest_files.json`, and `files/` directory to `/VanzakartBeta/`. Stable releases continue to use `/Modpack/`. Upload the generated `versions.json` to `/Launcher/` last; it keeps Stable, Beta, Launcher, and Music Pack metadata together.
 
 ## 🛠️ Technical Architecture
 

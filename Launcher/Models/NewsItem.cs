@@ -13,9 +13,33 @@ public sealed class NewsItem
 
     // Media support
     public string? MediaPath { get; init; }
-    public bool HasMedia => !string.IsNullOrEmpty(MediaPath);
-    public bool HasImage => HasMedia && IsImageFile(MediaPath!);
-    public bool HasVideo => HasMedia && IsVideoFile(MediaPath!);
+    public string? ResolvedMediaPath => ResolveMediaPath(MediaPath);
+    public bool HasMedia => !string.IsNullOrEmpty(ResolvedMediaPath);
+    public bool HasImage => ResolvedMediaPath is { } path && IsImageFile(path);
+    public bool HasVideo => ResolvedMediaPath is { } path && IsVideoFile(path);
+    public string? ImageMediaPath => HasImage ? ResolvedMediaPath : null;
+    public string? VideoMediaPath => HasVideo ? ResolvedMediaPath : null;
+
+    private static string? ResolveMediaPath(string? path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+        {
+            return null;
+        }
+
+        if (!Uri.TryCreate(path, UriKind.Absolute, out var uri) ||
+            !uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+            !uri.Host.Equals("sitodaking.it", StringComparison.OrdinalIgnoreCase) ||
+            !uri.IsDefaultPort)
+        {
+            return path;
+        }
+
+        // The VanzaKart HTTPS media endpoint is served on 8443. The default
+        // HTTPS endpoint currently presents a certificate that Windows Media
+        // Player rejects with a modal warning for every news card.
+        return new UriBuilder(uri) { Port = 8443 }.Uri.AbsoluteUri;
+    }
 
     private static bool IsImageFile(string path)
     {

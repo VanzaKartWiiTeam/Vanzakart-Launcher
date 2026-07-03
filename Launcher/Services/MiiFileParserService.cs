@@ -80,6 +80,14 @@ public sealed class MiiFileParserService
             throw new InvalidDataException("Wii Mii data must be exactly 74 bytes.");
         }
 
+        // Auto-fix invalid mouth color (3) to 2 (maximum valid index)
+        var mouthVal = ReadUInt16BigEndian(rawBlock, 0x2E);
+        if (((mouthVal >> 9) & 0x03) > 2)
+        {
+            mouthVal &= 0xFDFF; // Turn 3 into 2
+            WriteUInt16BigEndian(rawBlock, 0x2E, mouthVal);
+        }
+
         if (!LooksLikeWiiMii(rawBlock))
         {
             throw new InvalidDataException("The Mii block failed validation.");
@@ -562,7 +570,7 @@ public sealed class MiiFileParserService
         normalized.NoseSize = Math.Clamp(normalized.NoseSize, 0, 15);
         normalized.NoseVertical = Math.Clamp(normalized.NoseVertical, 0, 31);
         normalized.MouthType = Math.Clamp(normalized.MouthType, 0, 23);
-        normalized.MouthColor = Math.Clamp(normalized.MouthColor, 0, 3);
+        normalized.MouthColor = Math.Clamp(normalized.MouthColor, 0, 2);
         normalized.MouthSize = Math.Clamp(normalized.MouthSize, 0, 15);
         normalized.MouthVertical = Math.Clamp(normalized.MouthVertical, 0, 31);
         normalized.GlassesType = Math.Clamp(normalized.GlassesType, 0, 8);

@@ -43,6 +43,7 @@ public sealed class NetworkService
             catch (Exception ex) when (attempt < DefaultRetryCount && ex is HttpRequestException or IOException or TaskCanceledException)
             {
                 lastError = ex;
+                TryDeletePartialOnRecoverableFailure(destinationPath);
                 await Task.Delay(TimeSpan.FromMilliseconds(450 * attempt), cancellationToken);
             }
         }
@@ -57,6 +58,7 @@ public sealed class NetworkService
         CancellationToken cancellationToken = default)
     {
         Exception? lastError = null;
+        var errors = new List<string>();
         var candidates = urls
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct(StringComparer.OrdinalIgnoreCase)
@@ -77,10 +79,14 @@ public sealed class NetworkService
             catch (Exception ex) when (ex is HttpRequestException or IOException or TaskCanceledException)
             {
                 lastError = ex;
+                errors.Add($"{url} -> {ex.Message}");
             }
         }
 
-        throw lastError ?? new HttpRequestException("All download mirrors failed.");
+        throw new HttpRequestException(
+            "All download mirrors failed." +
+            (errors.Count > 0 ? $"{Environment.NewLine}{string.Join(Environment.NewLine, errors)}" : string.Empty),
+            lastError);
     }
 
     private async Task DownloadFileWithResumeCoreAsync(
@@ -112,6 +118,11 @@ public sealed class NetworkService
         {
             File.Delete(destinationPath);
             existingLength = 0;
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new IOException($"Resume request failed with HTTP {(int)response.StatusCode} ({response.ReasonPhrase}). Retrying from byte 0.");
+            }
         }
 
         response.EnsureSuccessStatusCode();
@@ -141,6 +152,20 @@ public sealed class NetworkService
             await destination.WriteAsync(buffer.AsMemory(0, read), cancellationToken);
             current += read;
             progress?.Report((current, total));
+        }
+    }
+
+    private static void TryDeletePartialOnRecoverableFailure(string destinationPath)
+    {
+        try
+        {
+            if (File.Exists(destinationPath))
+            {
+                File.Delete(destinationPath);
+            }
+        }
+        catch
+        {
         }
     }
 }

@@ -939,7 +939,7 @@
                                     <TextBlock x:Name="MouthTypeValueTextBlock" Text="Mouth style 1" FontWeight="Bold" FontSize="13" Foreground="{StaticResource EditorTextSecondary}" Visibility="Collapsed"/>
                                     <Slider x:Name="MouthTypeSlider" Minimum="0" Maximum="23" ValueChanged="EditorControl_OnChanged" Visibility="Collapsed"/>
                                     <TextBlock x:Name="MouthColorValueTextBlock" Text="Color 1" FontWeight="Bold" FontSize="13" Foreground="{StaticResource EditorTextSecondary}"/>
-                                    <Slider x:Name="MouthColorSlider" Minimum="0" Maximum="3" ValueChanged="EditorControl_OnChanged"/>
+                                    <Slider x:Name="MouthColorSlider" Minimum="0" Maximum="2" ValueChanged="EditorControl_OnChanged"/>
                                     <TextBlock x:Name="MouthSizeValueTextBlock" Text="Size 1" FontWeight="Bold" FontSize="13" Foreground="{StaticResource EditorTextSecondary}"/>
                                     <Slider x:Name="MouthSizeSlider" Minimum="0" Maximum="8" ValueChanged="EditorControl_OnChanged"/>
                                     <TextBlock x:Name="MouthVerticalValueTextBlock" Text="Position 1" FontWeight="Bold" FontSize="13" Foreground="{StaticResource EditorTextSecondary}"/>

@@ -2,7 +2,9 @@ param(
     [string]$MusicPackPath = "",
     [string]$Version = "",
     [string]$OutputDir = (Join-Path $PSScriptRoot "MusicPackRelease"),
-    [string]$VersionsJsonUrl = "https://sitodaking.it/Launcher/versions.json",
+    [string]$VersionsJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json",
+    [string]$ServerBaseUrl = "https://sitodaking.it:8443",
+    [string]$BetaManifestUrl = "",
     [string[]]$Changelog = @()
 )
 
@@ -37,6 +39,11 @@ function Normalize-JsonText {
         [char]0xFEFF, [char]0x200B,
         [char]0x00EF, [char]0x00BB, [char]0x00BF,
         [char]0x20, [char]0x09, [char]0x0D, [char]0x0A))
+}
+
+function Needs-HashAddressedFallback {
+    param([string]$WebPath)
+    return $WebPath -match '[^A-Za-z0-9._~/-]'
 }
 
 try {
@@ -76,6 +83,38 @@ try {
     if (-not $versions.mod_version) { throw "versions.json non contiene mod_version." }
     if (-not $versions.launcher_version) { throw "versions.json non contiene launcher_version." }
 
+    $serverBaseUrl = $ServerBaseUrl.TrimEnd('/')
+    $betaBaseUrl = "$serverBaseUrl/VanzakartBeta"
+    if ([string]::IsNullOrWhiteSpace($BetaManifestUrl)) {
+        $BetaManifestUrl = "$betaBaseUrl/manifest_files.json"
+    }
+
+    # Il Music Pack rigenera il versions.json centrale: aggiorna i dati Beta dal
+    # manifest del canale quando è online, oppure conserva quelli già pubblicati.
+    $betaManifest = $null
+    try {
+        Write-Host "Lettura metadati canale Beta da $BetaManifestUrl..." -ForegroundColor Yellow
+        $betaCacheBuster = [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds()
+        $betaJson = Normalize-JsonText ((Invoke-WebRequest -UseBasicParsing -Uri "${BetaManifestUrl}?t=$betaCacheBuster" -TimeoutSec 30).Content)
+        $betaManifest = $betaJson | ConvertFrom-Json
+        if (-not $betaManifest.mod_version -or @($betaManifest.files).Count -eq 0) {
+            throw "Il manifest Beta non contiene mod_version o files."
+        }
+        if ($betaManifest.archive_sha256 -and ([string]$betaManifest.archive_sha256) -notmatch '^[0-9a-fA-F]{64}$') {
+            throw "archive_sha256 del manifest Beta non è valido."
+        }
+        Write-Host "Beta rilevata: $($betaManifest.mod_version) ($(@($betaManifest.files).Count) file)." -ForegroundColor Green
+    }
+    catch {
+        $betaManifest = $null
+        if ($versions.beta_mod_version) {
+            Write-Host "Manifest Beta non disponibile; mantengo i metadati Beta già presenti in versions.json. Dettaglio: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        }
+        else {
+            Write-Host "Manifest Beta non disponibile e nessun metadato Beta precedente da conservare. Dettaglio: $($_.Exception.Message)" -ForegroundColor DarkYellow
+        }
+    }
+
     $outputParent = [IO.Path]::GetDirectoryName($outputRoot)
     if ([string]::IsNullOrWhiteSpace($outputParent)) { $outputParent = $PSScriptRoot }
     New-Item -ItemType Directory -Force -Path $outputParent | Out-Null
@@ -90,8 +129,12 @@ try {
 
     Write-Host "Creazione aggiornamento differenziale..." -ForegroundColor Yellow
     $filesRoot = Join-Path $stagingRoot "files"
+    $hashFilesRoot = Join-Path $filesRoot "_by_sha256"
     New-Item -ItemType Directory -Force -Path $filesRoot | Out-Null
+    New-Item -ItemType Directory -Force -Path $hashFilesRoot | Out-Null
     $manifestFiles = [System.Collections.Generic.List[object]]::new()
+    $hashFallbackFilesCount = 0
+    $hashFallbackUniqueHashes = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($file in $sourceFiles) {
         $relative = $file.FullName.Substring($payloadRoot.TrimEnd('\').Length).TrimStart('\')
         $webPath = $relative.Replace('\', '/')
@@ -100,8 +143,36 @@ try {
         $destination = Join-Path $filesRoot $relative
         New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($destination)) | Out-Null
         Copy-Item -LiteralPath $file.FullName -Destination $destination -Force
+        if (Needs-HashAddressedFallback -WebPath $webPath) {
+            Copy-Item -LiteralPath $file.FullName -Destination (Join-Path $hashFilesRoot $hash) -Force
+            $hashFallbackFilesCount++
+            [void]$hashFallbackUniqueHashes.Add($hash)
+        }
     }
-    Write-JsonNoBom -Value ([ordered]@{ mod_version = $Version; files = $manifestFiles }) -Path (Join-Path $stagingRoot "manifest_files.json")
+
+    $missingDifferentialFiles = [System.Collections.Generic.List[string]]::new()
+    foreach ($entry in $manifestFiles) {
+        $relativeDiskPath = ([string]$entry.path).Replace('/', [IO.Path]::DirectorySeparatorChar)
+        $expectedPath = Join-Path $filesRoot $relativeDiskPath
+        $expectedHashPath = Join-Path $hashFilesRoot ([string]$entry.sha256)
+        if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+            $missingDifferentialFiles.Add([string]$entry.path)
+        }
+        if ((Needs-HashAddressedFallback -WebPath ([string]$entry.path)) -and
+            -not (Test-Path -LiteralPath $expectedHashPath -PathType Leaf)) {
+            $missingDifferentialFiles.Add("_by_sha256/$([string]$entry.sha256) ($([string]$entry.path))")
+        }
+    }
+    if ($missingDifferentialFiles.Count -gt 0) {
+        $preview = ($missingDifferentialFiles | Select-Object -First 20) -join "`n - "
+        throw "Release differenziale Music Pack non valida: $($missingDifferentialFiles.Count) file sono nel manifest ma non esistono nella cartella files.`n - $preview"
+    }
+
+    Write-Host "Path sensibili coperti da fallback _by_sha256: $hashFallbackFilesCount" -ForegroundColor DarkCyan
+    Write-Host "File hash unici creati in _by_sha256: $($hashFallbackUniqueHashes.Count)" -ForegroundColor DarkCyan
+
+    $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+    Write-JsonNoBom -Value ([ordered]@{ mod_version = $Version; archive_sha256 = $zipHash; files = $manifestFiles }) -Path (Join-Path $stagingRoot "manifest_files.json")
 
     Write-Host "Creazione files.zip per il caricamento sul server..." -ForegroundColor Yellow
     $filesZipPath = Join-Path $stagingRoot "files.zip"
@@ -111,7 +182,6 @@ try {
         [IO.Compression.CompressionLevel]::Optimal,
         $false)
 
-    $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash
     $canonical = [ordered]@{}
     foreach ($property in $versions.PSObject.Properties) { $canonical[$property.Name] = $property.Value }
 
@@ -120,12 +190,40 @@ try {
     $canonical["mod_files_mirrors"] = As-StringArray $versions.mod_files_mirrors
     $canonical["launcher_mirrors"] = As-StringArray $versions.launcher_mirrors
     $canonical["changelog"] = As-StringArray $versions.changelog
+    $canonical["beta_mod_mirrors"] = As-StringArray $versions.beta_mod_mirrors
+    $canonical["beta_mod_files_mirrors"] = As-StringArray $versions.beta_mod_files_mirrors
+    $canonical["beta_changelog"] = As-StringArray $versions.beta_changelog
+
+    if ($null -ne $betaManifest) {
+        $betaVersion = [string]$betaManifest.mod_version
+        $canonical["beta_mod_version"] = $betaVersion
+        $canonical["beta_mod_url"] = "$betaBaseUrl/VanzaKart.zip"
+        $canonical["beta_mod_manifest_url"] = $BetaManifestUrl
+        $canonical["beta_mod_files_url"] = "$betaBaseUrl/files/"
+        $canonical["beta_mod_mirrors"] = As-StringArray $null
+        $canonical["beta_mod_files_mirrors"] = As-StringArray $null
+        $canonical["beta_mod_sha256"] = if ($betaManifest.archive_sha256) {
+            ([string]$betaManifest.archive_sha256).ToLowerInvariant()
+        }
+        elseif ($versions.beta_mod_version -eq $betaVersion) {
+            [string]$versions.beta_mod_sha256
+        }
+        else {
+            ""
+        }
+        if (-not $versions.beta_mod_version -or
+            $versions.beta_mod_version -ne $betaVersion -or
+            @($versions.beta_changelog).Count -eq 0) {
+            $canonical["beta_changelog"] = As-StringArray "VanzaKart Beta $betaVersion"
+        }
+    }
+
     $canonical["music_pack_version"] = $Version
-    $canonical["music_pack_url"] = "https://sitodaking.it/MusicPack/vanzakart_musicpack.zip"
+    $canonical["music_pack_url"] = "$serverBaseUrl/MusicPack/vanzakart_musicpack.zip"
     $canonical["music_pack_mirrors"] = As-StringArray $null
     $canonical["music_pack_sha256"] = $zipHash
-    $canonical["music_pack_manifest_url"] = "https://sitodaking.it/MusicPack/manifest_files.json"
-    $canonical["music_pack_files_url"] = "https://sitodaking.it/MusicPack/files/"
+    $canonical["music_pack_manifest_url"] = "$serverBaseUrl/MusicPack/manifest_files.json"
+    $canonical["music_pack_files_url"] = "$serverBaseUrl/MusicPack/files/"
     $canonical["music_pack_files_mirrors"] = As-StringArray $null
     $canonical["music_pack_changelog"] = if ($Changelog.Count -gt 0) { As-StringArray $Changelog } else { As-StringArray "VanzaKart Music Pack $Version" }
     Write-JsonNoBom -Value $canonical -Path (Join-Path $stagingRoot "versions.json")
@@ -144,7 +242,7 @@ try {
     }
 
     Write-Host "Release Music Pack $Version completata: $outputRoot" -ForegroundColor Green
-    Write-Host "Carica files.zip sul server ed estrailo dentro /MusicPack/files/."
+    Write-Host "Carica files.zip sul server ed estrailo dentro /MusicPack/files/ includendo anche la cartella _by_sha256."
     Write-Host "Carica vanzakart_musicpack.zip e manifest_files.json in /MusicPack/; versions.json in /Launcher/ per ultimo."
 }
 catch {

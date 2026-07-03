@@ -7,6 +7,9 @@ public sealed class ModManifest
     [JsonPropertyName("mod_version")]
     public string ModVersion { get; set; } = string.Empty;
 
+    [JsonPropertyName("archive_sha256")]
+    public string ArchiveSha256 { get; set; } = string.Empty;
+
     [JsonPropertyName("files")]
     public List<ModManifestFile> Files { get; set; } = new();
 }

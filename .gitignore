@@ -16,6 +16,7 @@ build/
 bld/
 TestResults/
 dist/
+dist-beta/
 
 *.log
 *.cache

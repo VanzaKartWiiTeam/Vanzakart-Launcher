@@ -3,6 +3,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -16,7 +18,8 @@ namespace VanzaKartSetup;
 
 public partial class MainWindow : Window
 {
-    private const string LauncherZipUrl = "https://sitodaking.it/Launcher/vanzakart_launcher.zip";
+    private const string VersionsJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json";
+    private const string DefaultLauncherZipUrl = "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip";
     private const long FallbackDownloadSizeBytes = 350L * 1024L * 1024L;
     private const long MinimumRequiredBytes = 900L * 1024L * 1024L;
 
@@ -34,6 +37,8 @@ public partial class MainWindow : Window
     private long _requiredSpaceBytes = MinimumRequiredBytes;
     private bool _isBusy;
     private string? _launcherExePath;
+    private string _launcherVersion = string.Empty;
+    private string _launcherZipUrl = DefaultLauncherZipUrl;
 
     public MainWindow()
     {
@@ -56,9 +61,9 @@ public partial class MainWindow : Window
         {
             AnimateEntrance();
             StartAmbientMotion();
-            DetectExistingInstallation();
             SetStep(SetupStep.Welcome, animate: false);
             await RefreshNetworkPreviewAsync();
+            DetectExistingInstallation();
         };
     }
 
@@ -71,7 +76,8 @@ public partial class MainWindow : Window
             var defaultDir = Path.Combine(localAppData, "VanzaKartLauncher");
             if (Directory.Exists(defaultDir))
             {
-                _existingInstall = new InstalledApplicationInfo(defaultDir, WindowsInstallRegistryService.ProductVersion, WindowsInstallRegistryService.ProductName);
+                var detectedVersion = string.IsNullOrWhiteSpace(_launcherVersion) ? "Unknown" : _launcherVersion;
+                _existingInstall = new InstalledApplicationInfo(defaultDir, detectedVersion, WindowsInstallRegistryService.ProductName);
             }
         }
 
@@ -95,11 +101,62 @@ public partial class MainWindow : Window
         EstimatedSizeTextBlock.Text = "Calculating...";
 
         var online = await _networkService.CheckInternetAsync();
-        _downloadSizeBytes = await _networkService.GetContentLengthAsync(LauncherZipUrl);
+        var releaseAvailable = await TryLoadLauncherReleaseInfoAsync();
+        _downloadSizeBytes = await _networkService.GetContentLengthAsync(_launcherZipUrl);
 
-        InternetStatusTextBlock.Text = online ? "Online" : "Not verified";
-        InternetStatusTextBlock.Foreground = (WpfBrush)FindResource(online ? "SuccessBrush" : "WarningBrush");
+        InternetStatusTextBlock.Text = releaseAvailable
+            ? $"Online · v{_launcherVersion}"
+            : online ? "Version unavailable" : "Not verified";
+        InternetStatusTextBlock.Foreground = (WpfBrush)FindResource(releaseAvailable ? "SuccessBrush" : "WarningBrush");
         EstimatedSizeTextBlock.Text = _downloadSizeBytes > 0 ? FormatBytes(_downloadSizeBytes) : "Variable";
+    }
+
+    private async Task<bool> TryLoadLauncherReleaseInfoAsync()
+    {
+        try
+        {
+            var separator = VersionsJsonUrl.Contains('?') ? '&' : '?';
+            var url = $"{VersionsJsonUrl}{separator}t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var json = await _networkService.DownloadStringAsync(url);
+            var info = JsonSerializer.Deserialize<SetupVersionInfo>(json.TrimStart('\uFEFF', '\u200B'));
+            if (info == null || !IsValidLauncherVersion(info.LauncherVersion))
+            {
+                throw new InvalidDataException("versions.json does not contain a valid launcher_version.");
+            }
+
+            var previousDownloadUrl = _launcherZipUrl;
+            _launcherVersion = info.LauncherVersion.Trim();
+            _launcherZipUrl = IsSafeHttpsUrl(info.LauncherUrl)
+                ? info.LauncherUrl.Trim()
+                : DefaultLauncherZipUrl;
+            if (!previousDownloadUrl.Equals(_launcherZipUrl, StringComparison.OrdinalIgnoreCase))
+            {
+                _downloadSizeBytes = 0;
+            }
+            AppendLog($"Latest launcher release: v{_launcherVersion}.");
+            return true;
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Could not read launcher release metadata: {ex.Message}");
+            return false;
+        }
+    }
+
+    private static bool IsSafeHttpsUrl(string? url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out var uri) &&
+        uri.Scheme.Equals(Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase);
+
+    private static bool IsValidLauncherVersion(string? version)
+    {
+        if (string.IsNullOrWhiteSpace(version))
+        {
+            return false;
+        }
+
+        var value = version.Trim();
+        return value.Length <= 64 && value.All(character =>
+            char.IsLetterOrDigit(character) || character is '.' or '-' or '_' or '+');
     }
 
     private async void NextButton_Click(object sender, RoutedEventArgs e)
@@ -181,9 +238,11 @@ public partial class MainWindow : Window
                 .FirstOrDefault(d => string.Equals(d.Name, root, StringComparison.OrdinalIgnoreCase));
 
             var online = await _networkService.CheckInternetAsync();
+            var metadataRefreshed = await TryLoadLauncherReleaseInfoAsync();
+            var releaseAvailable = metadataRefreshed || !string.IsNullOrWhiteSpace(_launcherVersion);
             if (_downloadSizeBytes <= 0)
             {
-                _downloadSizeBytes = await _networkService.GetContentLengthAsync(LauncherZipUrl);
+                _downloadSizeBytes = await _networkService.GetContentLengthAsync(_launcherZipUrl);
             }
 
             _requiredSpaceBytes = Math.Max(MinimumRequiredBytes, (_downloadSizeBytes > 0 ? _downloadSizeBytes : FallbackDownloadSizeBytes) * 3);
@@ -196,19 +255,17 @@ public partial class MainWindow : Window
             EstimatedTimeTextBlock.Text = _downloadSizeBytes > 0 ? EstimateDownloadTime(_downloadSizeBytes) : "During download";
             InternetCheckTextBlock.Text = online ? "Connection: online" : "Connection: not verified, download may fail";
             InternetCheckTextBlock.Foreground = (WpfBrush)FindResource(online ? "SuccessBrush" : "WarningBrush");
-            SpaceStatusTextBlock.Text = hasSpace
-                ? "Ready. Press Install to download and register VanzaKart in Windows."
+            SpaceStatusTextBlock.Text = !releaseAvailable
+                ? "Launcher version unavailable. Check the connection to versions.json and retry."
+                : hasSpace
+                ? $"Ready to install VanzaKart Launcher v{_launcherVersion}."
                 : "Not enough free space on the selected drive. Free up space or choose another folder.";
-            SpaceStatusTextBlock.Foreground = (WpfBrush)FindResource(hasSpace ? "TextSecondary" : "DangerBrush");
-            NextButton.IsEnabled = hasSpace;
+            SpaceStatusTextBlock.Foreground = (WpfBrush)FindResource(releaseAvailable && hasSpace ? "TextSecondary" : "DangerBrush");
+            NextButton.IsEnabled = releaseAvailable && hasSpace;
         }
         finally
         {
             FooterStatusTextBlock.Text = "Checks complete.";
-            if (_currentStep != SetupStep.Space)
-            {
-                NextButton.IsEnabled = true;
-            }
         }
     }
 
@@ -219,6 +276,12 @@ public partial class MainWindow : Window
 
         try
         {
+            var metadataRefreshed = await TryLoadLauncherReleaseInfoAsync();
+            if (!metadataRefreshed && string.IsNullOrWhiteSpace(_launcherVersion))
+            {
+                throw new InvalidOperationException("Unable to read launcher_version from versions.json. Installation cannot continue safely.");
+            }
+
             var targetDir = Path.GetFullPath(InstallPathTextBox.Text.Trim());
             var backupDir = Path.GetFullPath(BackupPathTextBox.Text.Trim());
             var cleanReinstall = CleanReinstallRadioButton.IsChecked == true && Directory.Exists(targetDir);
@@ -275,8 +338,8 @@ public partial class MainWindow : Window
             InstallProgressBar.Value = 84;
             InstallStatusTextBlock.Text = "Registering in Windows...";
             var estimatedSize = GetDirectorySize(targetDir);
-            _registryService.Register(targetDir, _launcherExePath, uninstallerPath, estimatedSize);
-            AppendLog("Windows uninstall registry entry created.");
+            _registryService.Register(targetDir, _launcherExePath, uninstallerPath, estimatedSize, _launcherVersion);
+            AppendLog($"Windows uninstall registry entry created for v{_launcherVersion}.");
 
             if (File.Exists(_tempZipPath))
             {
@@ -286,7 +349,7 @@ public partial class MainWindow : Window
             InstallProgressBar.Value = 100;
             InstallStatusTextBlock.Text = "Installation complete.";
             CompleteSummaryTextBlock.Text =
-                $"Installed in {targetDir}\nRegistered as {WindowsInstallRegistryService.ProductName} v{WindowsInstallRegistryService.ProductVersion}.";
+                $"Installed in {targetDir}\nRegistered as {WindowsInstallRegistryService.ProductName} v{_launcherVersion}.";
             AppendLog("Installation completed successfully.");
             SetStep(SetupStep.Complete);
         }
@@ -378,7 +441,7 @@ public partial class MainWindow : Window
         });
 
         AppendLog("Downloading launcher package.");
-        await _networkService.DownloadFileAsync(LauncherZipUrl, _tempZipPath, progress);
+        await _networkService.DownloadFileAsync(_launcherZipUrl, _tempZipPath, progress);
         _downloadStopwatch.Stop();
         DownloadProgressBar.Value = 100;
         DownloadStatusTextBlock.Text = $"Download complete in {FormatDuration(_downloadStopwatch.Elapsed)}.";
@@ -504,6 +567,10 @@ public partial class MainWindow : Window
             SetupStep.Complete => "Finish",
             _ => "Next"
         };
+        if (!_isBusy && step != SetupStep.Space)
+        {
+            NextButton.IsEnabled = true;
+        }
 
         foreach (var card in _stepCards)
         {
@@ -753,4 +820,13 @@ public enum SetupStep
     Download = 3,
     Install = 4,
     Complete = 5
+}
+
+public sealed class SetupVersionInfo
+{
+    [JsonPropertyName("launcher_version")]
+    public string LauncherVersion { get; set; } = string.Empty;
+
+    [JsonPropertyName("launcher_url")]
+    public string LauncherUrl { get; set; } = string.Empty;
 }

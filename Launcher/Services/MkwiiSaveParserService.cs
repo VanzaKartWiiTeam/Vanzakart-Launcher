@@ -366,6 +366,7 @@ public sealed class MkwiiSaveParserService
         WriteMiiString(data, rkpdOffset + 0x14, profile.Name);
         WriteUInt32BigEndian(data, rkpdOffset + 0x28, miiId);
         Buffer.BlockCopy(rawMii, 0x1C, data, rkpdOffset + 0x2C, 4);
+        Buffer.BlockCopy(rawMii, 0, data, rkpdOffset + 0x5680, rawMii.Length);
         WriteRksysChecksum(data, checksumMode);
 
         await File.WriteAllBytesAsync(rksysPath, data, cancellationToken);

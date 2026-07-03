@@ -8,7 +8,6 @@ public sealed class WindowsInstallRegistryService
 {
     public const string ProductName = "VanzaKart Launcher";
     public const string Publisher = "VanzaKart";
-    public const string ProductVersion = "1.3.0-rc";
     public const string UninstallKeyName = "VanzaKartLauncher";
 
     private const string UninstallRoot = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
@@ -32,7 +31,7 @@ public sealed class WindowsInstallRegistryService
 
             return new InstalledApplicationInfo(
                 installLocation,
-                key.GetValue("DisplayVersion") as string ?? ProductVersion,
+                key.GetValue("DisplayVersion") as string ?? "Unknown",
                 key.GetValue("DisplayName") as string ?? ProductName);
         }
         catch
@@ -41,8 +40,18 @@ public sealed class WindowsInstallRegistryService
         }
     }
 
-    public void Register(string installDir, string launcherExePath, string uninstallerPath, long estimatedSizeBytes)
+    public void Register(
+        string installDir,
+        string launcherExePath,
+        string uninstallerPath,
+        long estimatedSizeBytes,
+        string productVersion)
     {
+        if (string.IsNullOrWhiteSpace(productVersion))
+        {
+            throw new ArgumentException("The launcher version cannot be empty.", nameof(productVersion));
+        }
+
         Directory.CreateDirectory(installDir);
 
         using var key = Registry.CurrentUser.CreateSubKey($@"{UninstallRoot}\{UninstallKeyName}");
@@ -55,14 +64,14 @@ public sealed class WindowsInstallRegistryService
         var iconPath = File.Exists(launcherExePath) ? launcherExePath : uninstallerPath;
 
         key.SetValue("DisplayName", ProductName, RegistryValueKind.String);
-        key.SetValue("DisplayVersion", ProductVersion, RegistryValueKind.String);
+        key.SetValue("DisplayVersion", productVersion.Trim(), RegistryValueKind.String);
         key.SetValue("Publisher", Publisher, RegistryValueKind.String);
         key.SetValue("InstallLocation", installDir, RegistryValueKind.String);
         key.SetValue("InstallSource", AppContext.BaseDirectory, RegistryValueKind.String);
         key.SetValue("DisplayIcon", iconPath, RegistryValueKind.String);
         key.SetValue("UninstallString", uninstallCommand, RegistryValueKind.String);
         key.SetValue("QuietUninstallString", $"{uninstallCommand} /quiet", RegistryValueKind.String);
-        key.SetValue("URLInfoAbout", "https://sitodaking.it/", RegistryValueKind.String);
+        key.SetValue("URLInfoAbout", "https://vwfc.sitodaking.it/", RegistryValueKind.String);
         key.SetValue("NoModify", 1, RegistryValueKind.DWord);
         key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
         var estimatedSizeKb = (int)Math.Min(int.MaxValue, Math.Max(1, estimatedSizeBytes / 1024));

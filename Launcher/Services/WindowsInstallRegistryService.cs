@@ -58,7 +58,7 @@ public static class WindowsInstallRegistryService
             key.SetValue("DisplayIcon", launcherPath, RegistryValueKind.String);
             key.SetValue("UninstallString", uninstallCommand, RegistryValueKind.String);
             key.SetValue("QuietUninstallString", $"{uninstallCommand} /quiet", RegistryValueKind.String);
-            key.SetValue("URLInfoAbout", "https://sitodaking.it/", RegistryValueKind.String);
+            key.SetValue("URLInfoAbout", "https://vwfc.sitodaking.it/", RegistryValueKind.String);
             key.SetValue("NoModify", 1, RegistryValueKind.DWord);
             key.SetValue("NoRepair", 1, RegistryValueKind.DWord);
 
