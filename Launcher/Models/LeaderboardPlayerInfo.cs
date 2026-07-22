@@ -22,7 +22,19 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
     public int VrLast24Hours { get; init; }
     public int VrLastWeek { get; init; }
     public int VrLastMonth { get; init; }
-    public string? RankImageUrl { get; init; }
+    private string? _rankImageUrl;
+    public string? RankImageUrl
+    {
+        get
+        {
+            if (PrestigeRank >= 1 && PrestigeRank <= 8)
+            {
+                return $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{PrestigeRank}.png";
+            }
+            return _rankImageUrl;
+        }
+        init => _rankImageUrl = value;
+    }
 
     public bool IsSelf { get; set; }
 

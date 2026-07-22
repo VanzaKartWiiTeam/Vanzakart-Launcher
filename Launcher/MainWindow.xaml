@@ -1101,7 +1101,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.2" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.3" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1665,46 +1665,25 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
                                                       <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,7,0,0">
-                                                          <Grid Width="38" Height="38" Margin="0,0,7,0">
-                                                              <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
-                                                                  <Image.Style>
-                                                                      <Style TargetType="Image">
-                                                                          <Setter Property="Visibility" Value="Collapsed"/>
-                                                                          <Style.Triggers>
-                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                  <Setter Property="Visibility" Value="Visible"/>
-                                                                              </DataTrigger>
-                                                                          </Style.Triggers>
-                                                                      </Style>
-                                                                  </Image.Style>
-                                                              </Image>
-                                                              <Border Background="#1B263D" BorderBrush="#62728B" BorderThickness="1" CornerRadius="8">
-                                                                  <Border.Style>
-                                                                      <Style TargetType="Border">
+                                                      <Image Source="{Binding RankImageUrl}" Width="38" Height="38" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,6,0,0">
+                                                          <Image.Style>
+                                                              <Style TargetType="Image">
+                                                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                                                  <Style.Triggers>
+                                                                      <DataTrigger Binding="{Binding HasRankImage}" Value="True">
                                                                           <Setter Property="Visibility" Value="Visible"/>
-                                                                          <Style.Triggers>
-                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                  <Setter Property="Visibility" Value="Collapsed"/>
-                                                                              </DataTrigger>
-                                                                          </Style.Triggers>
-                                                                      </Style>
-                                                                  </Border.Style>
-                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="10" FontWeight="Black" Foreground="#D7E0EC" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                              </Border>
-                                                          </Grid>
-                                                          <StackPanel VerticalAlignment="Center">
-                                                              <TextBlock Text="{Binding GlobalRankLabel}" FontSize="11" FontWeight="Black" Foreground="#D7E0EC"/>
-                                                              <TextBlock Text="{Binding PrestigeLabel}" FontSize="9.5" Foreground="{StaticResource TextFaint}"/>
-                                                          </StackPanel>
-                                                      </StackPanel>
+                                                                      </DataTrigger>
+                                                                  </Style.Triggers>
+                                                              </Style>
+                                                          </Image.Style>
+                                                      </Image>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
                                          </Border>
 
                                          <!-- 1° POSTO (CENTRO) -->
-                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="20" Height="326" Margin="12,0,12,0" VerticalAlignment="Bottom">
+                                         <Border Grid.Column="1" Style="{StaticResource Podium1CardStyle}" Padding="16" Height="352" Margin="12,0,12,0" VerticalAlignment="Bottom">
                                              <Border.Background>
                                                  <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
                                                      <GradientStop Color="#F02A2032" Offset="0"/>
@@ -1778,41 +1757,18 @@
                                                              <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
                                                          </TextBlock.Effect>
                                                      </TextBlock>
-                                                      <Border Background="#332514" BorderBrush="#AAFFD166" BorderThickness="1" CornerRadius="8" Padding="10,5" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                                          <StackPanel Orientation="Horizontal">
-                                                              <Grid Width="48" Height="48" Margin="0,0,8,0">
-                                                                  <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
-                                                                      <Image.Style>
-                                                                          <Style TargetType="Image">
-                                                                              <Setter Property="Visibility" Value="Collapsed"/>
-                                                                              <Style.Triggers>
-                                                                                  <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                      <Setter Property="Visibility" Value="Visible"/>
-                                                                                  </DataTrigger>
-                                                                              </Style.Triggers>
-                                                                          </Style>
-                                                                      </Image.Style>
-                                                                  </Image>
-                                                                  <Border Background="#302817" BorderBrush="#FFD166" BorderThickness="1" CornerRadius="8">
-                                                                      <Border.Style>
-                                                                          <Style TargetType="Border">
-                                                                              <Setter Property="Visibility" Value="Visible"/>
-                                                                              <Style.Triggers>
-                                                                                  <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                      <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                  </DataTrigger>
-                                                                              </Style.Triggers>
-                                                                          </Style>
-                                                                      </Border.Style>
-                                                                      <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12" FontWeight="Black" Foreground="#FFD166" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                                  </Border>
-                                                              </Grid>
-                                                              <StackPanel VerticalAlignment="Center">
-                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12.5" FontWeight="Black" Foreground="#FFD166"/>
-                                                                  <TextBlock Text="{Binding PrestigeLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
-                                                              </StackPanel>
-                                                          </StackPanel>
-                                                     </Border>
+                                                      <Image Source="{Binding RankImageUrl}" Width="48" Height="48" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                          <Image.Style>
+                                                              <Style TargetType="Image">
+                                                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                                                  <Style.Triggers>
+                                                                      <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                          <Setter Property="Visibility" Value="Visible"/>
+                                                                      </DataTrigger>
+                                                                  </Style.Triggers>
+                                                              </Style>
+                                                          </Image.Style>
+                                                      </Image>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,7,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -1885,39 +1841,18 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
                                                       <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,7,0,0">
-                                                          <Grid Width="38" Height="38" Margin="0,0,7,0">
-                                                              <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
-                                                                  <Image.Style>
-                                                                      <Style TargetType="Image">
-                                                                          <Setter Property="Visibility" Value="Collapsed"/>
-                                                                          <Style.Triggers>
-                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                  <Setter Property="Visibility" Value="Visible"/>
-                                                                              </DataTrigger>
-                                                                          </Style.Triggers>
-                                                                      </Style>
-                                                                  </Image.Style>
-                                                              </Image>
-                                                              <Border Background="#2A1D26" BorderBrush="#B87356" BorderThickness="1" CornerRadius="8">
-                                                                  <Border.Style>
-                                                                      <Style TargetType="Border">
+                                                      <Image Source="{Binding RankImageUrl}" Width="38" Height="38" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,6,0,0">
+                                                          <Image.Style>
+                                                              <Style TargetType="Image">
+                                                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                                                  <Style.Triggers>
+                                                                      <DataTrigger Binding="{Binding HasRankImage}" Value="True">
                                                                           <Setter Property="Visibility" Value="Visible"/>
-                                                                          <Style.Triggers>
-                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                  <Setter Property="Visibility" Value="Collapsed"/>
-                                                                              </DataTrigger>
-                                                                          </Style.Triggers>
-                                                                      </Style>
-                                                                  </Border.Style>
-                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="10" FontWeight="Black" Foreground="#E3A07A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                                                              </Border>
-                                                          </Grid>
-                                                          <StackPanel VerticalAlignment="Center">
-                                                              <TextBlock Text="{Binding GlobalRankLabel}" FontSize="11" FontWeight="Black" Foreground="#E3A07A"/>
-                                                              <TextBlock Text="{Binding PrestigeLabel}" FontSize="9.5" Foreground="{StaticResource TextFaint}"/>
-                                                          </StackPanel>
-                                                      </StackPanel>
+                                                                      </DataTrigger>
+                                                                  </Style.Triggers>
+                                                              </Style>
+                                                          </Image.Style>
+                                                      </Image>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -2009,7 +1944,7 @@
                                                          <ColumnDefinition Width="64"/>  <!-- Avatar -->
                                                          <ColumnDefinition Width="*"/>   <!-- Player Name -->
                                                          <ColumnDefinition Width="100"/> <!-- VR -->
-                                                         <ColumnDefinition Width="150"/> <!-- Rank -->
+                                                         <ColumnDefinition Width="60"/> <!-- Rank -->
                                                          <ColumnDefinition Width="85"/>  <!-- 24h -->
                                                          <ColumnDefinition Width="120"/> <!-- Last seen -->
  
@@ -2040,7 +1975,7 @@
                                                                      <ColumnDefinition Width="64"/>  <!-- Avatar -->
                                                                      <ColumnDefinition Width="*"/>   <!-- Player Name -->
                                                                      <ColumnDefinition Width="100"/> <!-- Points -->
-                                                                     <ColumnDefinition Width="150"/> <!-- Rank -->
+                                                                     <ColumnDefinition Width="60"/> <!-- Rank -->
                                                                      <ColumnDefinition Width="85"/>  <!-- 24h -->
                                                                      <ColumnDefinition Width="120"/> <!-- Last seen -->
  
@@ -2115,25 +2050,19 @@
                                                                  <!-- Points -->
                                                                  <TextBlock Text="{Binding DisplayPoints}" FontSize="13.5" FontWeight="Bold" Foreground="#00F2FF" VerticalAlignment="Center" Grid.Column="3"/>
 
-                                                                 <!-- API rank and official server icon -->
-                                                                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
-                                                                     <Image Source="{Binding RankImageUrl}" Width="34" Height="34" Stretch="Uniform" Margin="0,0,8,0">
-                                                                         <Image.Style>
-                                                                             <Style TargetType="Image">
-                                                                                 <Setter Property="Visibility" Value="Collapsed"/>
-                                                                                 <Style.Triggers>
-                                                                                     <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                         <Setter Property="Visibility" Value="Visible"/>
-                                                                                     </DataTrigger>
-                                                                                 </Style.Triggers>
-                                                                             </Style>
-                                                                         </Image.Style>
-                                                                     </Image>
-                                                                     <StackPanel VerticalAlignment="Center">
-                                                                         <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
-                                                                         <TextBlock Text="{Binding PrestigeLabel}" FontSize="10" Foreground="{StaticResource TextFaint}"/>
-                                                                     </StackPanel>
-                                                                 </StackPanel>
+                                                                 <!-- API rank image -->
+                                                                 <Image Grid.Column="4" Source="{Binding RankImageUrl}" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                     <Image.Style>
+                                                                         <Style TargetType="Image">
+                                                                             <Setter Property="Visibility" Value="Collapsed"/>
+                                                                             <Style.Triggers>
+                                                                                 <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                     <Setter Property="Visibility" Value="Visible"/>
+                                                                                 </DataTrigger>
+                                                                             </Style.Triggers>
+                                                                         </Style>
+                                                                     </Image.Style>
+                                                                 </Image>
 
                                                                  <!-- VR movement from the extended API -->
                                                                  <TextBlock Text="{Binding VrLast24HoursLabel}" FontSize="12.5" FontWeight="SemiBold" Foreground="{Binding VrTrendColor}" VerticalAlignment="Center" Grid.Column="5" ToolTip="{Binding VrTrendToolTip}"/>

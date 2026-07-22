@@ -286,6 +286,13 @@ public sealed class LeaderboardViewModel : BaseViewModel
         LeaderboardApiPlayer rankedPlayer,
         LeaderboardDetailsPlayer? detail)
     {
+        int resolvedPrestigeRank = detail?.GetPrestigeRank(detail.PrestigeRank) 
+                                 ?? rankedPlayer.GetPrestigeRank(rankedPlayer.PrestigeRank);
+        if (resolvedPrestigeRank == 0 && detail != null)
+        {
+            resolvedPrestigeRank = rankedPlayer.GetPrestigeRank(rankedPlayer.PrestigeRank);
+        }
+
         return new LeaderboardPlayerInfo
         {
             Position = rankedPlayer.Position > 0 ? rankedPlayer.Position : detail?.Rank ?? 0,
@@ -294,7 +301,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
             FriendCode = string.IsNullOrWhiteSpace(rankedPlayer.FriendCode)
                 ? detail?.FriendCode ?? string.Empty
                 : rankedPlayer.FriendCode,
-            PrestigeRank = detail?.PrestigeRank ?? rankedPlayer.PrestigeRank,
+            PrestigeRank = resolvedPrestigeRank,
             LastSeen = detail?.LastSeen,
             IsSuspicious = detail?.IsSuspicious ?? false,
             VrLast24Hours = detail?.VrStats?.Last24Hours ?? 0,
@@ -507,6 +514,39 @@ public sealed class LeaderboardViewModel : BaseViewModel
             }
 
             return null;
+        }
+
+        public int GetPrestigeRank(int directPrestigeRank)
+        {
+            if (directPrestigeRank >= 1 && directPrestigeRank <= 8)
+            {
+                return directPrestigeRank;
+            }
+
+            if (AdditionalFields == null)
+            {
+                return 0;
+            }
+
+            string[] aliases = { "prestigeRank", "pr", "prestige_rank", "prestige", "rank_prestige" };
+            foreach (string alias in aliases)
+            {
+                var entry = AdditionalFields.FirstOrDefault(pair =>
+                    string.Equals(pair.Key, alias, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(entry.Key))
+                {
+                    if (entry.Value.ValueKind == JsonValueKind.Number && entry.Value.TryGetInt32(out int val) && val >= 1 && val <= 8)
+                    {
+                        return val;
+                    }
+                    if (entry.Value.ValueKind == JsonValueKind.String && int.TryParse(entry.Value.GetString(), out int strVal) && strVal >= 1 && strVal <= 8)
+                    {
+                        return strVal;
+                    }
+                }
+            }
+
+            return 0;
         }
 
         private static string? FirstNotEmpty(params string?[] values) =>
