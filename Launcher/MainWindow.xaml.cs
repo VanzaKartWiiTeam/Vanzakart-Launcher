@@ -1,4 +1,5 @@
 using Microsoft.Win32;
+using System.Collections.Concurrent;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Globalization;
@@ -52,6 +53,8 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<AddonInfo> _installedAddons = new();
     private readonly ObservableCollection<GameBananaMod> _gameBananaMods = new();
     private readonly Stopwatch _downloadStopwatch = new();
+    private static readonly SemaphoreSlim UpdateLogSemaphore = new(1, 1);
+    private const int DifferentialDownloadConcurrency = 4;
     private readonly ModUpdateSafetyService _modUpdateSafetyService = new();
     private readonly ModInstallationStateService _modInstallationStateService = new();
     private readonly SemaphoreSlim _updateCheckLock = new(1, 1);
@@ -106,6 +109,9 @@ public partial class MainWindow : Window
     private bool _isLoadingGameBanana;
     private CancellationTokenSource? _gameBananaSearchCts;
     private long _downloadBaselineBytes = -1;
+    private long _lastDownloadSampleBytes;
+    private TimeSpan _lastDownloadSampleTime;
+    private double _smoothedDownloadBytesPerSecond;
     private int _releaseChannelRevision;
 
     public MainWindow()
@@ -857,7 +863,8 @@ public partial class MainWindow : Window
     private void RefreshLicenseView()
     {
         var settings = BuildSettingsFromUi();
-        var profiles = _saveManagerService.GetSaveProfiles(settings);
+        var activeModDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+        var profiles = _saveManagerService.GetSaveProfiles(settings, activeModDirectoryName);
         var activeMii = _saveManagerService.LoadMiiProfile();
         var miiDb = _saveManagerService.GetMiiDatabasePath(settings);
 
@@ -875,7 +882,7 @@ public partial class MainWindow : Window
 
         if (_allLicenseCards.Count == 0)
         {
-            LicenseSummaryTextBlock.Text = "No VanzaKart modpack license save was detected in the selected Dolphin user folder.";
+            LicenseSummaryTextBlock.Text = $"No {activeModDirectoryName} license save was detected in the selected Dolphin user folder.";
             PrimaryLicenseTextBlock.Text = "No local license detected yet.";
             PrimaryLicensePathTextBlock.Text = string.Empty;
             QueueLicenseAvatarRender(settings);
@@ -886,7 +893,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        LicenseSummaryTextBlock.Text = $"{profiles.Count} Dolphin license card(s) detected.";
+        LicenseSummaryTextBlock.Text = $"{profiles.Count} {activeModDirectoryName} license card(s) detected.";
 
         var previousActiveSlot = _friendsViewModel?.ActiveLicense?.SlotIndex;
         var previousActivePath = _friendsViewModel?.ActiveLicense?.FilePath;
@@ -1440,9 +1447,21 @@ public partial class MainWindow : Window
         var modDirectoryName = GetModDirectoryName(targetChannel);
         var modSubFolder = Path.Combine(modFolder, modDirectoryName);
         var isUpdate = IsModInstalled(settings, targetChannel);
+        var operationId = $"{DateTime.Now:yyyyMMdd-HHmmss}-{Guid.NewGuid():N}"[..24];
+        var operationStopwatch = Stopwatch.StartNew();
+
+        Task LogOperationAsync(string message)
+            => WriteUpdateLogAsync($"[operation {operationId}] {message}");
 
         SetStatus($"Connecting to {GetChannelDisplayName(targetChannel)} channel", (WpfBrush)FindResource("TextSecondary"));
         SetUpdateState("Connecting", $"Preparing {GetChannelDisplayName(targetChannel)} download...", 0);
+
+        await LogOperationAsync(
+            $"Started: channel={targetChannel}, mode={(isUpdate ? "update" : "install")}, " +
+            $"installedVersion={GetInstalledModVersion(targetChannel)}, targetVersion={_latestModVersion}, " +
+            $"launcherVersion={LauncherConfig.CurrentLauncherVersion}, runtime={Environment.Version}, " +
+            $"os={Environment.OSVersion.VersionString}, process64Bit={Environment.Is64BitProcess}, " +
+            $"modFolder={modSubFolder}, manifest={_latestModManifestUrl}, filesBase={_latestModFilesUrl}");
 
         ModUpdateBackup? backup = null;
 
@@ -1450,7 +1469,7 @@ public partial class MainWindow : Window
         {
             if (!string.IsNullOrWhiteSpace(fallbackReason))
             {
-                await WriteUpdateLogAsync($"Differential update failed, falling back to full ZIP: {fallbackReason}");
+                await LogOperationAsync($"Differential update failed, falling back to full ZIP: {fallbackReason}");
                 SetUpdateState("Recovery", "Differential update failed. Downloading full modpack...", 5);
                 SetStatus("Repairing installation with full package", (WpfBrush)FindResource("WarningBrush"));
             }
@@ -1459,11 +1478,13 @@ public partial class MainWindow : Window
                 SetUpdateState("Download", "Downloading modpack...", 5);
             }
 
+            ResetDownloadMetrics();
             var downloadProgress = new Progress<(long current, long total)>(
                 p => UpdateDownloadProgress(p.current, p.total));
 
-            await _networkService.DownloadFileWithResumeAsync(
+            var fullDownloadResult = await _networkService.DownloadFileWithResumeDetailedAsync(
                 BuildModMirrorList(), _tempZipPath, downloadProgress);
+            await LogOperationAsync(FormatDownloadResult("Full ZIP downloaded", fullDownloadResult));
 
             SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
             SetUpdateState("Verifying", "Checking archive integrity...", 96);
@@ -1517,8 +1538,9 @@ public partial class MainWindow : Window
 
                 if (backup.Files.Count > 0)
                 {
-                    await WriteUpdateLogAsync(
-                        $"Backup creato: {backup.BackupId} ({backup.Files.Count} file protetti)");
+                    await LogOperationAsync(
+                        $"Backup created: id={backup.BackupId}, protectedFiles={backup.Files.Count}, " +
+                        $"folder={backup.BackupFolder}");
                 }
             }
 
@@ -1540,10 +1562,16 @@ public partial class MainWindow : Window
                     {
                         _latestModSha256 = manifest.ArchiveSha256;
                     }
+
+                    await LogOperationAsync(
+                        $"Manifest loaded: version={manifest.ModVersion}, files={manifest.Files.Count}, " +
+                        $"archiveSha256={manifest.ArchiveSha256}");
                 }
                 catch (Exception ex)
                 {
-                    await WriteUpdateLogAsync($"Manifest download failed: {ex.Message}. Falling back to full ZIP.");
+                    manifest = null;
+                    await LogOperationAsync(
+                        $"Manifest download failed; full ZIP will be used. Error={ex}");
                 }
             }
 
@@ -1564,7 +1592,7 @@ public partial class MainWindow : Window
                     foreach (var serverFile in manifest.Files)
                     {
                         var local = localFiles.FirstOrDefault(f => f.Path.Equals(serverFile.Path, StringComparison.OrdinalIgnoreCase));
-                        if (local == null || local.Sha256 != serverFile.Sha256)
+                        if (local == null || !local.Sha256.Equals(serverFile.Sha256, StringComparison.OrdinalIgnoreCase))
                         {
                             filesToDownload.Add(serverFile);
                         }
@@ -1579,75 +1607,170 @@ public partial class MainWindow : Window
                         }
                     }
 
-                    long totalBytesToDownload = Math.Max(1, filesToDownload.Sum(f => f.Size));
-                    long downloadedBytes = 0;
-
-                    await WriteUpdateLogAsync($"Incremental update started: {filesToDownload.Count} files to download ({FormatBytes(totalBytesToDownload)}), {filesToDelete.Count} files to delete.");
+                    long downloadPayloadBytes = filesToDownload.Sum(file => file.Size);
+                    long totalBytesToDownload = Math.Max(1, downloadPayloadBytes);
+                    await LogOperationAsync(
+                        $"Differential plan: manifestFiles={manifest.Files.Count}, localFiles={localFiles.Count}, " +
+                        $"downloadFiles={filesToDownload.Count}, downloadBytes={downloadPayloadBytes}, " +
+                        $"deleteFiles={filesToDelete.Count}, concurrency={DifferentialDownloadConcurrency}");
 
                     var stagingRoot = Path.Combine(Path.GetTempPath(), $"vanzakart_mod_update_{Guid.NewGuid():N}");
                     Directory.CreateDirectory(stagingRoot);
 
                     try
                     {
-                        int fileIndex = 0;
                         var fullModSubFolder = Path.GetFullPath(modSubFolder)
                             .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                        var progressSync = new object();
+                        var activeFileBytes = new Dictionary<string, long>(StringComparer.OrdinalIgnoreCase);
+                        var completedProgressPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        var downloadResults = new ConcurrentBag<DownloadResult>();
+                        var differentialStopwatch = Stopwatch.StartNew();
+                        long completedBytes = 0;
+                        var completedFiles = 0;
+                        Exception? firstDownloadFailure = null;
 
-                        foreach (var file in filesToDownload)
+                        IProgress<(string path, long current)> aggregateProgress = new Progress<(string path, long current)>(update =>
                         {
-                            fileIndex++;
-
-                            var relativePath = file.Path.Replace('/', Path.DirectorySeparatorChar);
-                            var localPath = Path.GetFullPath(Path.Combine(modSubFolder, relativePath));
-                            if (!localPath.StartsWith(fullModSubFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
-                                !localPath.Equals(fullModSubFolder, StringComparison.OrdinalIgnoreCase))
+                            long aggregateBytes;
+                            lock (progressSync)
                             {
-                                throw new InvalidDataException($"Invalid update manifest path: {file.Path}");
+                                if (completedProgressPaths.Contains(update.path))
+                                {
+                                    return;
+                                }
+
+                                activeFileBytes[update.path] = Math.Max(0, update.current);
+                                aggregateBytes = completedBytes + activeFileBytes.Values.Sum();
                             }
 
-                            SetStatus($"Downloading {fileIndex}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}", (WpfBrush)FindResource("TextSecondary"));
+                            UpdateDownloadProgress(Math.Min(aggregateBytes, totalBytesToDownload), totalBytesToDownload);
+                        });
 
-                            var fileProgress = new Progress<(long current, long total)>(p =>
-                            {
-                                long currentTotalDownloaded = downloadedBytes + p.current;
-                                UpdateDownloadProgress(currentTotalDownloaded, totalBytesToDownload);
-                            });
+                        using var downloadGate = new SemaphoreSlim(DifferentialDownloadConcurrency);
+                        using var downloadCancellation = new CancellationTokenSource();
 
-                            var tempFile = Path.Combine(stagingRoot, relativePath);
-                            Directory.CreateDirectory(Path.GetDirectoryName(tempFile)!);
+                        async Task DownloadAndVerifyFileAsync(ModManifestFile file, int fileNumber)
+                        {
+                            var fileProgress = new Progress<(long current, long total)>(progress =>
+                                aggregateProgress.Report((file.Path, Math.Min(progress.current, file.Size))));
 
-                            if (File.Exists(tempFile))
-                                File.Delete(tempFile);
-
+                            await downloadGate.WaitAsync(downloadCancellation.Token);
                             try
                             {
-                                var mirrors = BuildModFileMirrorList(file);
-                                await _networkService.DownloadFileWithResumeAsync(mirrors, tempFile, fileProgress);
-
-                                var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(tempFile, default);
-                                if (downloadedHash != file.Sha256)
+                                var relativePath = file.Path.Replace('/', Path.DirectorySeparatorChar);
+                                var localPath = Path.GetFullPath(Path.Combine(modSubFolder, relativePath));
+                                if (!localPath.StartsWith(fullModSubFolder + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase) &&
+                                    !localPath.Equals(fullModSubFolder, StringComparison.OrdinalIgnoreCase))
                                 {
-                                    throw new InvalidDataException($"Hash mismatch for downloaded file: {file.Path}. Expected {file.Sha256}, got {downloadedHash}");
+                                    throw new InvalidDataException($"Invalid update manifest path: {file.Path}");
                                 }
+
+                                SetStatus(
+                                    $"Downloading {Math.Min(fileNumber, filesToDownload.Count)}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}",
+                                    (WpfBrush)FindResource("TextSecondary"));
+
+                                var tempFile = Path.Combine(stagingRoot, relativePath);
+                                Directory.CreateDirectory(Path.GetDirectoryName(tempFile)!);
+                                if (File.Exists(tempFile))
+                                {
+                                    File.Delete(tempFile);
+                                }
+
+                                var mirrors = BuildModFileMirrorList(file).ToArray();
+                                var downloadResult = await _networkService.DownloadFileWithResumeDetailedAsync(
+                                    mirrors,
+                                    tempFile,
+                                    fileProgress,
+                                    downloadCancellation.Token);
+
+                                var downloadedHash = await ModUpdateSafetyService.ComputeSha256Async(
+                                    tempFile,
+                                    downloadCancellation.Token);
+                                if (!downloadedHash.Equals(file.Sha256, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    throw new InvalidDataException(
+                                        $"Hash mismatch for downloaded file: {file.Path}. Expected {file.Sha256}, got {downloadedHash}");
+                                }
+
+                                downloadResults.Add(downloadResult);
+                                long aggregateBytes;
+                                lock (progressSync)
+                                {
+                                    completedProgressPaths.Add(file.Path);
+                                    activeFileBytes.Remove(file.Path);
+                                    completedBytes += file.Size;
+                                    aggregateBytes = completedBytes + activeFileBytes.Values.Sum();
+                                }
+
+                                UpdateDownloadProgress(Math.Min(aggregateBytes, totalBytesToDownload), totalBytesToDownload);
+                                var completed = Interlocked.Increment(ref completedFiles);
+
+                                if (downloadResult.RetryCount > 0 || downloadResult.Duration >= TimeSpan.FromSeconds(3))
+                                {
+                                    await LogOperationAsync(FormatDownloadResult($"File '{file.Path}'", downloadResult));
+                                }
+
+                                if (completed % 25 == 0 || completed == filesToDownload.Count)
+                                {
+                                    var elapsedSeconds = Math.Max(0.001, differentialStopwatch.Elapsed.TotalSeconds);
+                                    await LogOperationAsync(
+                                        $"Differential progress: files={completed}/{filesToDownload.Count}, " +
+                                        $"bytes={completedBytes}/{totalBytesToDownload}, " +
+                                        $"effectiveAverage={FormatBytes((long)(completedBytes / elapsedSeconds))}/s");
+                                }
+                            }
+                            catch (OperationCanceledException) when (downloadCancellation.IsCancellationRequested && firstDownloadFailure != null)
+                            {
+                                throw;
                             }
                             catch (Exception ex)
                             {
-                                var primaryUrl = BuildModFileMirrorList(file).FirstOrDefault()
-                                    ?? $"{_latestModFilesUrl.TrimEnd('/')}/{EscapeRelativeUrlPath(file.Path)}";
-                                await WriteUpdateLogAsync($"Failed to download file '{file.Path}' from URL '{primaryUrl}'. Error: {ex.Message}");
-                                if (ex.Message.Contains("404", StringComparison.OrdinalIgnoreCase) ||
-                                    ex.Message.Contains("Not Found", StringComparison.OrdinalIgnoreCase))
+                                lock (progressSync)
                                 {
-                                    throw new FileNotFoundException(
-                                        $"The update manifest references '{file.Path}', but that file could not be downloaded from the differential release files.",
+                                    firstDownloadFailure ??= new FileNotFoundException(
+                                        $"The update manifest references '{file.Path}', but the file could not be downloaded or verified.",
                                         ex);
                                 }
 
+                                await LogOperationAsync(
+                                    $"Differential file failed: path={file.Path}, size={file.Size}.{Environment.NewLine}" +
+                                    FormatDownloadFailure(ex));
+                                downloadCancellation.Cancel();
                                 throw;
                             }
-
-                            downloadedBytes += file.Size;
+                            finally
+                            {
+                                downloadGate.Release();
+                            }
                         }
+
+                        var downloadTasks = filesToDownload
+                            .Select((file, index) => DownloadAndVerifyFileAsync(file, index + 1))
+                            .ToArray();
+
+                        try
+                        {
+                            await Task.WhenAll(downloadTasks);
+                        }
+                        catch
+                        {
+                            if (firstDownloadFailure != null)
+                            {
+                                throw firstDownloadFailure;
+                            }
+
+                            throw;
+                        }
+
+                        differentialStopwatch.Stop();
+                        var differentialSeconds = Math.Max(0.001, differentialStopwatch.Elapsed.TotalSeconds);
+                        await LogOperationAsync(
+                            $"Differential download completed: files={filesToDownload.Count}, payload={downloadPayloadBytes}, " +
+                            $"elapsed={differentialStopwatch.Elapsed.TotalSeconds:F2}s, " +
+                            $"effectiveAverage={FormatBytes((long)(downloadPayloadBytes / differentialSeconds))}/s, " +
+                            $"httpAttempts={downloadResults.Sum(item => item.Attempts.Count)}, " +
+                            $"retries={downloadResults.Sum(item => item.RetryCount)}");
 
                         // Apply downloaded files only after every required file was downloaded
                         // and verified. This prevents half-updated installs when the server
@@ -1670,7 +1793,7 @@ public partial class MainWindow : Window
                             {
                                 File.Delete(localPath);
                                 deletedCount++;
-                                await WriteUpdateLogAsync($"pruned (obsolete): {fileToDelete}");
+                                await LogOperationAsync($"Pruned obsolete file: {fileToDelete}");
                             }
                         }
 
@@ -1709,6 +1832,11 @@ public partial class MainWindow : Window
                 result = await ApplyFullZipUpdateAsync(string.Empty);
             }
 
+            // The release intentionally contains an empty My Stuff directory.
+            // Ensure it also exists after extraction and differential updates,
+            // since ZIP readers and web servers may omit empty directories.
+            Directory.CreateDirectory(Path.Combine(modSubFolder, modDirectoryName, "My Stuff"));
+
             // ── STEP 6: write version ────────────────────────────────────────────────────
             if (!string.IsNullOrWhiteSpace(_latestModVersion))
             {
@@ -1742,9 +1870,10 @@ public partial class MainWindow : Window
                 isUpdate ? "Update completed" : "Installation completed",
                 summary);
 
-            // Log del riepilogo
-            await WriteUpdateLogAsync(
-                $"Operation completed – {result}");
+            operationStopwatch.Stop();
+            await LogOperationAsync(
+                $"Completed: elapsed={operationStopwatch.Elapsed.TotalSeconds:F2}s, result={result}, " +
+                $"backup={(backup?.BackupId ?? "none")}");
 
             RefreshAllState();
         }
@@ -1760,14 +1889,14 @@ public partial class MainWindow : Window
 
                     await _modUpdateSafetyService.RestoreBackupAsync(backup);
 
-                    await WriteUpdateLogAsync(
+                    await LogOperationAsync(
                         $"Rollback completed (backup {backup.BackupId}): " +
                         $"{backup.Files.Count} user file(s) restored.");
                 }
                 catch (Exception rollbackEx)
                 {
                     // Rollback itself failed: warn prominently
-                    await WriteUpdateLogAsync(
+                    await LogOperationAsync(
                         $"WARNING – rollback failed: {rollbackEx.Message}. " +
                         $"Manual restore from Backups/{backup.BackupId}");
 
@@ -1792,7 +1921,10 @@ public partial class MainWindow : Window
             SetUpdateState("Error", ex.Message, 0);
             ShowCustomDialog("Installation error", ex.Message, MessageBoxButton.OK);
 
-            await WriteUpdateLogAsync($"Error: {ex.Message}");
+            operationStopwatch.Stop();
+            await LogOperationAsync(
+                $"Failed: elapsed={operationStopwatch.Elapsed.TotalSeconds:F2}s.{Environment.NewLine}" +
+                FormatDownloadFailure(ex));
 
         Cleanup:
             if (!isUpdate && Directory.Exists(modSubFolder))
@@ -1846,19 +1978,60 @@ public partial class MainWindow : Window
 
         return sb.ToString();
     }
-    private static Task WriteUpdateLogAsync(string message)
+
+    private static string FormatDownloadResult(string label, DownloadResult result)
     {
+        var seconds = Math.Max(0.001, result.Duration.TotalSeconds);
+        var averageBytesPerSecond = result.BytesReceived / seconds;
+        var successfulAttempt = result.Attempts.LastOrDefault(attempt => attempt.Success);
+        return $"{label}: source={result.SourceUrl}, received={FormatBytes(result.BytesReceived)}, " +
+               $"total={FormatBytes(result.TotalBytes)}, elapsed={result.Duration.TotalSeconds:F2}s, " +
+               $"average={FormatBytes((long)averageBytesPerSecond)}/s, attempts={result.Attempts.Count}, " +
+               $"retries={result.RetryCount}, http={successfulAttempt?.StatusCode?.ToString() ?? "unknown"}/" +
+               $"{successfulAttempt?.HttpVersion ?? "unknown"}";
+    }
+
+    private static string FormatDownloadFailure(Exception exception)
+    {
+        if (exception is not DownloadFailedException downloadFailure || downloadFailure.Attempts.Count == 0)
+        {
+            return exception.ToString();
+        }
+
+        var attempts = downloadFailure.Attempts.Select(attempt =>
+        {
+            var status = attempt.StatusCode?.ToString() ?? "network";
+            var error = attempt.Error.Replace('\r', ' ').Replace('\n', ' ');
+            return $"url={attempt.Url}, attempt={attempt.Attempt}, status={status}, " +
+                   $"elapsed={attempt.Duration.TotalSeconds:F2}s, existing={attempt.ExistingBytes}, " +
+                   $"received={attempt.BytesReceived}, error={error}";
+        });
+
+        return $"{downloadFailure.Message}{Environment.NewLine}" + string.Join(Environment.NewLine, attempts);
+    }
+
+    private static async Task WriteUpdateLogAsync(string message)
+    {
+        var lockTaken = false;
         try
         {
             var path = Path.Combine(AppContext.BaseDirectory, "Logs", "mod-update.log");
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-            return File.AppendAllTextAsync(
+            await UpdateLogSemaphore.WaitAsync();
+            lockTaken = true;
+            await File.AppendAllTextAsync(
                 path,
                 $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [Launcher] {message}{Environment.NewLine}");
         }
         catch
         {
-            return Task.CompletedTask;
+        }
+        finally
+        {
+            if (lockTaken)
+            {
+                UpdateLogSemaphore.Release();
+            }
         }
     }
 
@@ -2431,6 +2604,9 @@ public partial class MainWindow : Window
     {
         _downloadStopwatch.Reset();
         _downloadBaselineBytes = -1;
+        _lastDownloadSampleBytes = 0;
+        _lastDownloadSampleTime = TimeSpan.Zero;
+        _smoothedDownloadBytesPerSecond = 0;
         UpdateSpeedTextBlock.Text = string.Empty;
         UpdatePercentTextBlock.Text = "0%";
     }
@@ -2440,17 +2616,28 @@ public partial class MainWindow : Window
         if (_downloadBaselineBytes < 0)
         {
             _downloadBaselineBytes = current;
+            _lastDownloadSampleBytes = current;
+            _lastDownloadSampleTime = TimeSpan.Zero;
             _downloadStopwatch.Restart();
         }
 
         var percent = total <= 0 ? 0 : (double)current / total * 100;
-        var sessionBytes = Math.Max(0, current - _downloadBaselineBytes);
-        var speed = _downloadStopwatch.Elapsed.TotalSeconds <= 0
-            ? 0
-            : sessionBytes / _downloadStopwatch.Elapsed.TotalSeconds;
+        var elapsed = _downloadStopwatch.Elapsed;
+        var sampleSeconds = (elapsed - _lastDownloadSampleTime).TotalSeconds;
+        if (sampleSeconds >= 0.25)
+        {
+            var instantSpeed = Math.Max(0, current - _lastDownloadSampleBytes) / sampleSeconds;
+            _smoothedDownloadBytesPerSecond = _smoothedDownloadBytesPerSecond <= 0
+                ? instantSpeed
+                : (_smoothedDownloadBytesPerSecond * 0.65) + (instantSpeed * 0.35);
+            _lastDownloadSampleBytes = current;
+            _lastDownloadSampleTime = elapsed;
+        }
 
         SetUpdateState("Downloading", $"{FormatBytes(current)} / {FormatBytes(total)}", percent);
-        UpdateSpeedTextBlock.Text = speed <= 0 ? "Measuring speed..." : $"{FormatBytes((long)speed)}/s";
+        UpdateSpeedTextBlock.Text = _smoothedDownloadBytesPerSecond <= 0
+            ? "Measuring speed..."
+            : $"{FormatBytes((long)_smoothedDownloadBytesPerSecond)}/s";
         SetStatus($"Downloading {percent:F0}%", (WpfBrush)FindResource("TextSecondary"));
     }
 
@@ -2592,7 +2779,9 @@ public partial class MainWindow : Window
     {
         try
         {
-            var backup = await _saveManagerService.BackupPrimarySaveAsync(BuildSettingsFromUi());
+            var backup = await _saveManagerService.BackupPrimarySaveAsync(
+                BuildSettingsFromUi(),
+                GetModDirectoryName(SelectedModReleaseChannel));
             ShowToast("Backup created", backup);
             RefreshLicenseView();
         }
@@ -2612,7 +2801,10 @@ public partial class MainWindow : Window
 
         try
         {
-            await _saveManagerService.ImportSaveFileAsync(BuildSettingsFromUi(), dialog.FileName);
+            await _saveManagerService.ImportSaveFileAsync(
+                BuildSettingsFromUi(),
+                dialog.FileName,
+                GetModDirectoryName(SelectedModReleaseChannel));
             ShowToast("Save imported", "A backup was created before replacing the current save.");
             RefreshLicenseView();
         }
@@ -2637,7 +2829,10 @@ public partial class MainWindow : Window
 
         try
         {
-            await _saveManagerService.ExportPrimarySaveAsync(BuildSettingsFromUi(), dialog.FileName);
+            await _saveManagerService.ExportPrimarySaveAsync(
+                BuildSettingsFromUi(),
+                dialog.FileName,
+                GetModDirectoryName(SelectedModReleaseChannel));
             ShowToast("Save exported", dialog.FileName);
         }
         catch (Exception ex)
@@ -2877,10 +3072,11 @@ public partial class MainWindow : Window
     private void OpenSavesFolderButton_OnClick(object sender, RoutedEventArgs e)
     {
         var settings = BuildSettingsFromUi();
+        var activeModDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
         var activeLicensePath = _friendsViewModel?.ActiveLicense?.FilePath;
         var profile = !string.IsNullOrWhiteSpace(activeLicensePath)
-            ? _saveManagerService.GetSaveProfiles(settings).FirstOrDefault(item => string.Equals(item.FilePath, activeLicensePath, StringComparison.OrdinalIgnoreCase))
-            : _saveManagerService.GetSaveProfiles(settings).FirstOrDefault(item => !item.IsEmpty);
+            ? _saveManagerService.GetSaveProfiles(settings, activeModDirectoryName).FirstOrDefault(item => string.Equals(item.FilePath, activeLicensePath, StringComparison.OrdinalIgnoreCase))
+            : _saveManagerService.GetSaveProfiles(settings, activeModDirectoryName).FirstOrDefault(item => !item.IsEmpty);
 
         var folder = !string.IsNullOrWhiteSpace(profile?.FilePath)
             ? Path.GetDirectoryName(profile.FilePath)

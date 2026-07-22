@@ -47,6 +47,13 @@ public sealed class ModUpdateSafetyService
         ".vk-mii"
     ];
 
+    private static readonly string[] AlwaysManagedDirectoryNames =
+    [
+        "CTBRSTM",
+        "MiiOutfitC",
+        "Race"
+    ];
+
 
     public string GetBackupRoot()
         => Path.Combine(AppContext.BaseDirectory, "Backups", "ModUpdates");
@@ -454,6 +461,12 @@ public sealed class ModUpdateSafetyService
         if (segments.Any(s => ProtectedDirectoryNames.Contains(s, StringComparer.OrdinalIgnoreCase)))
             return true;
 
+        // These are official modpack assets. Their filenames can legitimately
+        // contain words such as "mii", so generic user-data filters must not
+        // classify them as protected.
+        if (IsAlwaysManagedRelativePath(segments))
+            return false;
+
         var fileName = Path.GetFileName(relative);
         if (ProtectedFileNames.Contains(fileName, StringComparer.OrdinalIgnoreCase))
             return true;
@@ -467,6 +480,26 @@ public sealed class ModUpdateSafetyService
             || relative.Contains("patent", StringComparison.OrdinalIgnoreCase)
             || relative.Contains("mii", StringComparison.OrdinalIgnoreCase)
             || relative.Contains("profile", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool IsAlwaysManagedRelativePath(IReadOnlyList<string> segments)
+    {
+        if (segments.Any(segment =>
+                AlwaysManagedDirectoryNames.Contains(segment, StringComparer.OrdinalIgnoreCase)))
+        {
+            return true;
+        }
+
+        for (var index = 0; index < segments.Count - 1; index++)
+        {
+            if (segments[index].Equals("Scene", StringComparison.OrdinalIgnoreCase) &&
+                segments[index + 1].Equals("Model", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static bool IsIgnoredSystemFile(string relative)

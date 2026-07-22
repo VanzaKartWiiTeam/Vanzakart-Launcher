@@ -1101,7 +1101,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.0" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.2" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1664,10 +1664,40 @@
                                                          </Grid>
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
-                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <Border Background="#AA1B263D" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="9,5" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                                         <TextBlock Text="{Binding PodiumStatsLine}" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" TextAlignment="Center"/>
-                                                     </Border>
+                                                      <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,7,0,0">
+                                                          <Grid Width="38" Height="38" Margin="0,0,7,0">
+                                                              <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
+                                                                  <Image.Style>
+                                                                      <Style TargetType="Image">
+                                                                          <Setter Property="Visibility" Value="Collapsed"/>
+                                                                          <Style.Triggers>
+                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                  <Setter Property="Visibility" Value="Visible"/>
+                                                                              </DataTrigger>
+                                                                          </Style.Triggers>
+                                                                      </Style>
+                                                                  </Image.Style>
+                                                              </Image>
+                                                              <Border Background="#1B263D" BorderBrush="#62728B" BorderThickness="1" CornerRadius="8">
+                                                                  <Border.Style>
+                                                                      <Style TargetType="Border">
+                                                                          <Setter Property="Visibility" Value="Visible"/>
+                                                                          <Style.Triggers>
+                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                                                              </DataTrigger>
+                                                                          </Style.Triggers>
+                                                                      </Style>
+                                                                  </Border.Style>
+                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="10" FontWeight="Black" Foreground="#D7E0EC" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                              </Border>
+                                                          </Grid>
+                                                          <StackPanel VerticalAlignment="Center">
+                                                              <TextBlock Text="{Binding GlobalRankLabel}" FontSize="11" FontWeight="Black" Foreground="#D7E0EC"/>
+                                                              <TextBlock Text="{Binding PrestigeLabel}" FontSize="9.5" Foreground="{StaticResource TextFaint}"/>
+                                                          </StackPanel>
+                                                      </StackPanel>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -1748,26 +1778,41 @@
                                                              <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
                                                          </TextBlock.Effect>
                                                      </TextBlock>
-                                                     <UniformGrid Columns="3" HorizontalAlignment="Center" Margin="0,10,0,0" Width="264">
-                                                         <Border Background="#332514" BorderBrush="#AAFFD166" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="0,0,5,0">
-                                                             <StackPanel HorizontalAlignment="Center">
-                                                                 <TextBlock Text="{Binding Wins}" FontSize="13" FontWeight="Black" Foreground="#FFD166" HorizontalAlignment="Center"/>
-                                                                 <TextBlock Text="WINS" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
-                                                             </StackPanel>
-                                                         </Border>
-                                                         <Border Background="#15283A" BorderBrush="#6639E7FF" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="3,0">
-                                                             <StackPanel HorizontalAlignment="Center">
-                                                                 <TextBlock Text="{Binding WinRatePercent}" FontSize="13" FontWeight="Black" Foreground="#39E7FF" HorizontalAlignment="Center"/>
-                                                                 <TextBlock Text="WIN RATE" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
-                                                             </StackPanel>
-                                                         </Border>
-                                                         <Border Background="#202B44" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="8,5" Margin="5,0,0,0">
-                                                             <StackPanel HorizontalAlignment="Center">
-                                                                 <TextBlock Text="{Binding Races}" FontSize="13" FontWeight="Black" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center"/>
-                                                                 <TextBlock Text="RACES" FontSize="8.5" FontWeight="Bold" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center"/>
-                                                             </StackPanel>
-                                                         </Border>
-                                                     </UniformGrid>
+                                                      <Border Background="#332514" BorderBrush="#AAFFD166" BorderThickness="1" CornerRadius="8" Padding="10,5" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                          <StackPanel Orientation="Horizontal">
+                                                              <Grid Width="48" Height="48" Margin="0,0,8,0">
+                                                                  <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
+                                                                      <Image.Style>
+                                                                          <Style TargetType="Image">
+                                                                              <Setter Property="Visibility" Value="Collapsed"/>
+                                                                              <Style.Triggers>
+                                                                                  <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                      <Setter Property="Visibility" Value="Visible"/>
+                                                                                  </DataTrigger>
+                                                                              </Style.Triggers>
+                                                                          </Style>
+                                                                      </Image.Style>
+                                                                  </Image>
+                                                                  <Border Background="#302817" BorderBrush="#FFD166" BorderThickness="1" CornerRadius="8">
+                                                                      <Border.Style>
+                                                                          <Style TargetType="Border">
+                                                                              <Setter Property="Visibility" Value="Visible"/>
+                                                                              <Style.Triggers>
+                                                                                  <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                      <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                  </DataTrigger>
+                                                                              </Style.Triggers>
+                                                                          </Style>
+                                                                      </Border.Style>
+                                                                      <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12" FontWeight="Black" Foreground="#FFD166" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                                  </Border>
+                                                              </Grid>
+                                                              <StackPanel VerticalAlignment="Center">
+                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12.5" FontWeight="Black" Foreground="#FFD166"/>
+                                                                  <TextBlock Text="{Binding PrestigeLabel}" FontSize="10" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}"/>
+                                                              </StackPanel>
+                                                          </StackPanel>
+                                                     </Border>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,7,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -1839,10 +1884,40 @@
                                                          </Grid>
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
-                                                     <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
-                                                     <Border Background="#AA1B263D" BorderBrush="#445D86" BorderThickness="1" CornerRadius="10" Padding="9,5" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                                         <TextBlock Text="{Binding PodiumStatsLine}" FontSize="10.5" FontWeight="SemiBold" Foreground="{StaticResource TextSecondary}" TextAlignment="Center"/>
-                                                     </Border>
+                                                      <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                      <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,7,0,0">
+                                                          <Grid Width="38" Height="38" Margin="0,0,7,0">
+                                                              <Image Source="{Binding RankImageUrl}" Stretch="Uniform">
+                                                                  <Image.Style>
+                                                                      <Style TargetType="Image">
+                                                                          <Setter Property="Visibility" Value="Collapsed"/>
+                                                                          <Style.Triggers>
+                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                  <Setter Property="Visibility" Value="Visible"/>
+                                                                              </DataTrigger>
+                                                                          </Style.Triggers>
+                                                                      </Style>
+                                                                  </Image.Style>
+                                                              </Image>
+                                                              <Border Background="#2A1D26" BorderBrush="#B87356" BorderThickness="1" CornerRadius="8">
+                                                                  <Border.Style>
+                                                                      <Style TargetType="Border">
+                                                                          <Setter Property="Visibility" Value="Visible"/>
+                                                                          <Style.Triggers>
+                                                                              <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                  <Setter Property="Visibility" Value="Collapsed"/>
+                                                                              </DataTrigger>
+                                                                          </Style.Triggers>
+                                                                      </Style>
+                                                                  </Border.Style>
+                                                                  <TextBlock Text="{Binding GlobalRankLabel}" FontSize="10" FontWeight="Black" Foreground="#E3A07A" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                                              </Border>
+                                                          </Grid>
+                                                          <StackPanel VerticalAlignment="Center">
+                                                              <TextBlock Text="{Binding GlobalRankLabel}" FontSize="11" FontWeight="Black" Foreground="#E3A07A"/>
+                                                              <TextBlock Text="{Binding PrestigeLabel}" FontSize="9.5" Foreground="{StaticResource TextFaint}"/>
+                                                          </StackPanel>
+                                                      </StackPanel>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="10.5" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,5,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -1930,22 +2005,22 @@
                                                  <!-- Column Headers -->
                                                  <Grid DockPanel.Dock="Top" Margin="14,0,14,8">
                                                      <Grid.ColumnDefinitions>
-                                                         <ColumnDefinition Width="45"/>  <!-- POS -->
-                                                         <ColumnDefinition Width="72"/>  <!-- Avatar -->
+                                                         <ColumnDefinition Width="48"/>  <!-- POS -->
+                                                         <ColumnDefinition Width="64"/>  <!-- Avatar -->
                                                          <ColumnDefinition Width="*"/>   <!-- Player Name -->
-                                                         <ColumnDefinition Width="110"/> <!-- VR -->
-                                                         <ColumnDefinition Width="90"/>  <!-- WINS -->
-                                                         <ColumnDefinition Width="90"/>  <!-- RACES -->
-                                                         <ColumnDefinition Width="90"/>  <!-- WINRATE -->
+                                                         <ColumnDefinition Width="100"/> <!-- VR -->
+                                                         <ColumnDefinition Width="150"/> <!-- Rank -->
+                                                         <ColumnDefinition Width="85"/>  <!-- 24h -->
+                                                         <ColumnDefinition Width="120"/> <!-- Last seen -->
  
                                                      </Grid.ColumnDefinitions>
                                                      
-                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
+                                                     <TextBlock Text="POS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
                                                      <TextBlock Text="PLAYER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left"/>
                                                      <TextBlock Text="VR" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="3"/>
-                                                     <TextBlock Text="WINS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
-                                                     <TextBlock Text="RACES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
-                                                     <TextBlock Text="WINRATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
+                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
+                                                     <TextBlock Text="24H" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
+                                                     <TextBlock Text="LAST SEEN" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
  
                                                  </Grid>
                                                  
@@ -1961,13 +2036,13 @@
                                                          <Border Style="{StaticResource LeaderboardRowBorder}">
                                                              <Grid>
                                                                  <Grid.ColumnDefinitions>
-                                                                     <ColumnDefinition Width="45"/>  <!-- Position -->
-                                                                     <ColumnDefinition Width="72"/>  <!-- Avatar -->
+                                                                     <ColumnDefinition Width="48"/>  <!-- Position -->
+                                                                     <ColumnDefinition Width="64"/>  <!-- Avatar -->
                                                                      <ColumnDefinition Width="*"/>   <!-- Player Name -->
-                                                                     <ColumnDefinition Width="110"/> <!-- Points -->
-                                                                     <ColumnDefinition Width="90"/>  <!-- Wins -->
-                                                                     <ColumnDefinition Width="90"/>  <!-- Races -->
-                                                                     <ColumnDefinition Width="90"/>  <!-- Winrate -->
+                                                                     <ColumnDefinition Width="100"/> <!-- Points -->
+                                                                     <ColumnDefinition Width="150"/> <!-- Rank -->
+                                                                     <ColumnDefinition Width="85"/>  <!-- 24h -->
+                                                                     <ColumnDefinition Width="120"/> <!-- Last seen -->
  
                                                                  </Grid.ColumnDefinitions>
 
@@ -2032,6 +2107,7 @@
                                                                          <Border Background="{StaticResource RainbowGradient}" CornerRadius="4" Padding="5,2" Margin="10,0,0,0" VerticalAlignment="Center" Visibility="{Binding IsSelf, Converter={StaticResource BooleanToVisibilityConverter}}">
                                                                              <TextBlock Text="YOU" FontSize="9.5" FontWeight="Black" Foreground="White"/>
                                                                          </Border>
+                                                                         <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="12" Foreground="{StaticResource DangerBrush}" Margin="8,0,0,0" VerticalAlignment="Center" ToolTip="Flagged by leaderboard checks" Visibility="{Binding IsSuspicious, Converter={StaticResource BooleanToVisibilityConverter}}"/>
                                                                      </StackPanel>
                                                                      <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextSecondary}" Margin="0,2,0,0"/>
                                                                  </StackPanel>
@@ -2039,14 +2115,31 @@
                                                                  <!-- Points -->
                                                                  <TextBlock Text="{Binding DisplayPoints}" FontSize="13.5" FontWeight="Bold" Foreground="#00F2FF" VerticalAlignment="Center" Grid.Column="3"/>
 
-                                                                 <!-- Wins -->
-                                                                 <TextBlock Text="{Binding Wins}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="4"/>
+                                                                 <!-- API rank and official server icon -->
+                                                                 <StackPanel Grid.Column="4" Orientation="Horizontal" VerticalAlignment="Center">
+                                                                     <Image Source="{Binding RankImageUrl}" Width="34" Height="34" Stretch="Uniform" Margin="0,0,8,0">
+                                                                         <Image.Style>
+                                                                             <Style TargetType="Image">
+                                                                                 <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                 <Style.Triggers>
+                                                                                     <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                                                     </DataTrigger>
+                                                                                 </Style.Triggers>
+                                                                             </Style>
+                                                                         </Image.Style>
+                                                                     </Image>
+                                                                     <StackPanel VerticalAlignment="Center">
+                                                                         <TextBlock Text="{Binding GlobalRankLabel}" FontSize="12.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}"/>
+                                                                         <TextBlock Text="{Binding PrestigeLabel}" FontSize="10" Foreground="{StaticResource TextFaint}"/>
+                                                                     </StackPanel>
+                                                                 </StackPanel>
 
-                                                                 <!-- Races -->
-                                                                 <TextBlock Text="{Binding Races}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="5"/>
+                                                                 <!-- VR movement from the extended API -->
+                                                                 <TextBlock Text="{Binding VrLast24HoursLabel}" FontSize="12.5" FontWeight="SemiBold" Foreground="{Binding VrTrendColor}" VerticalAlignment="Center" Grid.Column="5" ToolTip="{Binding VrTrendToolTip}"/>
 
-                                                                 <!-- Winrate -->
-                                                                 <TextBlock Text="{Binding WinRatePercent}" FontSize="13.5" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="6"/>
+                                                                 <!-- Last online activity -->
+                                                                 <TextBlock Text="{Binding LastSeenLabel}" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="6" TextTrimming="CharacterEllipsis"/>
                                                              </Grid>
                                                          </Border>
                                                      </DataTemplate>

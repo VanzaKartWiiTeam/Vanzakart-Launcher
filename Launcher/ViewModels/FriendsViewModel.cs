@@ -330,8 +330,6 @@ public sealed class FriendsViewModel : BaseViewModel
                     {
                         friend.DisplayName = onlineInfo.Name;
                         friend.Vr = onlineInfo.Points;
-                        friend.Wins = onlineInfo.Wins;
-                        friend.Losses = onlineInfo.Races - onlineInfo.Wins;
                     }
                 }
             }

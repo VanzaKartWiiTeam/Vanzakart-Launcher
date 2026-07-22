@@ -13,14 +13,15 @@
     La directory in cui generare i file da caricare sul server (default: .\dist).
 .PARAMETER Channel
     Il canale da pubblicare: Stable usa /Modpack, Beta usa /VanzakartBeta.
+.PARAMETER CreateFilesZip
+    Crea files.zip come archivio di trasferimento della cartella files da caricare sul server.
+    E' attivo per impostazione predefinita; il launcher non usa direttamente questo archivio.
 #>
 
 param (
-    [Parameter(Mandatory=$true)]
-    [string]$ModPath,
+    [string]$ModPath = "",
 
-    [Parameter(Mandatory=$true)]
-    [string]$Version,
+    [string]$Version = "",
 
     [Parameter(Mandatory=$false)]
     [string]$OutputDir = ".\dist",
@@ -29,10 +30,72 @@ param (
     [ValidateSet("Stable", "Beta")]
     [string]$Channel = "Stable",
     [string]$ServerBaseUrl = "https://sitodaking.it:8443",
-    [string[]]$Changelog = @()
+    [string[]]$Changelog = @(),
+    [switch]$CreateFilesZip = $true
 )
 
+$interactiveInvocation = -not $PSBoundParameters.ContainsKey("ModPath") -or
+                         -not $PSBoundParameters.ContainsKey("Version")
+
+# "Esegui con PowerShell" usa una console che Windows chiude appena lo script
+# termina. Rilancia quindi l'uso interattivo in una console persistente: in
+# questo modo anche gli errori di configurazione restano sempre leggibili.
+if ($interactiveInvocation -and $env:VANZAKART_RELEASE_CONSOLE -ne "1") {
+    $env:VANZAKART_RELEASE_CONSOLE = "1"
+    $powerShellExe = Join-Path $PSHOME "powershell.exe"
+    if (-not (Test-Path -LiteralPath $powerShellExe -PathType Leaf)) {
+        $powerShellExe = "powershell.exe"
+    }
+
+    $quotedScriptPath = '"' + $PSCommandPath.Replace('"', '\"') + '"'
+    Start-Process -FilePath $powerShellExe -ArgumentList @(
+        "-NoExit",
+        "-NoProfile",
+        "-ExecutionPolicy", "Bypass",
+        "-File", $quotedScriptPath)
+    return
+}
+
+if ($env:VANZAKART_RELEASE_CONSOLE -eq "1") {
+    Remove-Item Env:VANZAKART_RELEASE_CONSOLE -ErrorAction SilentlyContinue
+}
+
 $ErrorActionPreference = "Stop"
+$interactiveLaunch = $interactiveInvocation
+
+trap {
+    Write-Host "`nMOD RELEASE FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    if ($interactiveLaunch) {
+        [void](Read-Host "Premi INVIO; la console resterà aperta per leggere l'errore")
+    }
+    break
+}
+
+if ([string]::IsNullOrWhiteSpace($ModPath)) {
+    $ModPath = Read-Host "Cartella della modpack (VanzaKart o VKBeta)"
+}
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $Version = Read-Host "Versione della modpack (es. 1.2.0-beta.1)"
+}
+if (-not $PSBoundParameters.ContainsKey("Channel")) {
+    $channelChoice = (Read-Host "Canale Stable o Beta? [Stable]").Trim()
+    if ($channelChoice.Equals("B", [System.StringComparison]::OrdinalIgnoreCase) -or
+        $channelChoice.Equals("Beta", [System.StringComparison]::OrdinalIgnoreCase)) {
+        $Channel = "Beta"
+    }
+    else {
+        $Channel = "Stable"
+    }
+}
+
+$ModPath = $ModPath.Trim().Trim('"')
+$Version = $Version.Trim().Trim('"')
+if ([string]::IsNullOrWhiteSpace($ModPath)) { throw "La cartella della modpack non può essere vuota." }
+if ([string]::IsNullOrWhiteSpace($Version)) { throw "La versione non può essere vuota." }
+if (-not $PSBoundParameters.ContainsKey("OutputDir")) {
+    $OutputDir = if ($Channel -eq "Beta") { ".\dist-beta" } else { ".\dist" }
+}
+
 $modDirectoryName = if ($Channel -eq "Beta") { "VKBeta" } else { "VanzaKart" }
 $archiveName = "$modDirectoryName.zip"
 
@@ -41,7 +104,37 @@ $ProtectedDirs = @("My Stuff", "UserData", "userdata", "Saves", "Save", "License
 $ProtectedFiles = @("rksys.dat", "RFL_DB.dat", "active_mii.txt", "mii_profile.json")
 $ProtectedExts = @(".mii", ".miigx", ".mae", ".vk-mii")
 $ProtectedSubstrings = @("save", "license", "patent", "mii", "profile")
-$AlwaysIncludedDirs = @("CTBRSTM")
+$AlwaysIncludedDirs = @("CTBRSTM", "MiiOutfitC", "Race")
+$AlwaysIncludedRelativeDirSuffixes = @("Scene/Model")
+
+function Has-ProtectedDirectorySegment {
+    param ([string]$RelativePath)
+
+    $segments = $RelativePath.Split(
+        [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar),
+        [System.StringSplitOptions]::RemoveEmptyEntries)
+
+    foreach ($seg in $segments) {
+        if ($ProtectedDirs -contains $seg) { return $true }
+    }
+
+    return $false
+}
+
+function Is-AlwaysIncludedRelativePath {
+    param ([string]$RelativePath)
+
+    $normalizedPath = $RelativePath.Replace('\', '/').Trim('/')
+    foreach ($relativeDirSuffix in $AlwaysIncludedRelativeDirSuffixes) {
+        $normalizedSuffix = $relativeDirSuffix.Replace('\', '/').Trim('/')
+        if ($normalizedPath.EndsWith("/$normalizedSuffix", [System.StringComparison]::OrdinalIgnoreCase) -or
+            $normalizedPath.IndexOf("/$normalizedSuffix/", [System.StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            return $true
+        }
+    }
+
+    return $false
+}
 
 # Funzione helper per calcolare il percorso relativo (compatibile anche con PowerShell 5.1 su .NET Framework)
 function Get-RelativePath {
@@ -63,14 +156,16 @@ function Is-FileProtected {
     # 1. Verifica segmenti cartella
     $segments = $RelativePath.Split([System.IO.Path]::DirectorySeparatorChar)
 
+    # Le cartelle personali hanno sempre la precedenza: My Stuff deve essere
+    # presente nello ZIP, ma nessun suo contenuto deve mai essere pubblicato.
+    if (Has-ProtectedDirectorySegment -RelativePath $RelativePath) { return $true }
+
     # Le directory strutturali devono essere incluse integralmente nella release,
     # anche se un nome file al loro interno coincide con un filtro generico.
+    if (Is-AlwaysIncludedRelativePath -RelativePath $RelativePath) { return $false }
+
     foreach ($requiredDir in $AlwaysIncludedDirs) {
         if ($segments -contains $requiredDir) { return $false }
-    }
-
-    foreach ($seg in $segments) {
-        if ($ProtectedDirs -contains $seg) { return $true }
     }
     
     # 2. Verifica nome file
@@ -104,11 +199,6 @@ function Get-FileSha256 {
         $stream.Close()
         $sha256.Dispose()
     }
-}
-
-function Needs-HashAddressedFallback {
-    param([string]$WebPath)
-    return $WebPath -match '[^A-Za-z0-9._~/-]'
 }
 
 function Test-ModPayloadRoot {
@@ -206,11 +296,38 @@ foreach ($requiredDir in $AlwaysIncludedDirs) {
         Where-Object { $_.Name.Equals($requiredDir, [System.StringComparison]::OrdinalIgnoreCase) }
     foreach ($directory in $matchingDirs) {
         $relativeDir = Get-RelativePath -BasePath $payloadRoot -Path $directory.FullName
+        if (Has-ProtectedDirectorySegment -RelativePath $relativeDir) { continue }
+
         $alwaysIncludedRelativeDirs += $relativeDir
         [System.IO.Directory]::CreateDirectory((Join-Path $tempZipFolder (Join-Path $modDirectoryName $relativeDir))) | Out-Null
         [System.IO.Directory]::CreateDirectory((Join-Path $filesOutputDir $relativeDir)) | Out-Null
         Write-Host " - Directory obbligatoria preservata: $relativeDir" -ForegroundColor DarkCyan
     }
+}
+
+foreach ($relativeDirSuffix in $AlwaysIncludedRelativeDirSuffixes) {
+    $requiredPath = Join-Path $payloadRoot (Join-Path $modDirectoryName ($relativeDirSuffix.Replace('/', [System.IO.Path]::DirectorySeparatorChar)))
+    if (-not (Test-Path -LiteralPath $requiredPath -PathType Container)) { continue }
+
+    $relativeDir = Get-RelativePath -BasePath $payloadRoot -Path $requiredPath
+    if (Has-ProtectedDirectorySegment -RelativePath $relativeDir) { continue }
+    if ($alwaysIncludedRelativeDirs -contains $relativeDir) { continue }
+
+    $alwaysIncludedRelativeDirs += $relativeDir
+    [System.IO.Directory]::CreateDirectory((Join-Path $tempZipFolder (Join-Path $modDirectoryName $relativeDir))) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $filesOutputDir $relativeDir)) | Out-Null
+    Write-Host " - Directory obbligatoria preservata: $relativeDir" -ForegroundColor DarkCyan
+}
+
+# My Stuff deve esistere nella release, ma deve essere sempre vuota: i file
+# personali al suo interno restano esclusi da Is-FileProtected.
+$myStuffRelativeDir = Join-Path $modDirectoryName "My Stuff"
+if ($alwaysIncludedRelativeDirs -notcontains $myStuffRelativeDir) {
+    $alwaysIncludedRelativeDirs += $myStuffRelativeDir
+    [System.IO.Directory]::CreateDirectory(
+        (Join-Path $tempZipFolder (Join-Path $modDirectoryName $myStuffRelativeDir))) | Out-Null
+    [System.IO.Directory]::CreateDirectory((Join-Path $filesOutputDir $myStuffRelativeDir)) | Out-Null
+    Write-Host " - Directory vuota preservata: $myStuffRelativeDir" -ForegroundColor DarkCyan
 }
 
 Write-Host "Scansione dei file e calcolo degli hash..."
@@ -261,15 +378,12 @@ foreach ($file in $files) {
     }
     Copy-Item -LiteralPath $file.FullName -Destination $destFile -Force
 
-    # Copia anche in una posizione URL-safe basata sull'hash solo quando il
-    # path contiene caratteri che alcuni web server/CDN possono rifiutare o
-    # interpretare male, ad esempio parentesi quadre.
-    if (Needs-HashAddressedFallback -WebPath $webPath) {
-        $hashDestFile = Join-Path $hashFilesOutputDir $sha256
-        Copy-Item -LiteralPath $file.FullName -Destination $hashDestFile -Force
-        $hashFallbackFilesCount++
-        [void]$hashFallbackUniqueHashes.Add($sha256)
-    }
+    # Copia sempre anche in una posizione URL-safe basata sull'hash. Il launcher
+    # la usa come fallback quando il path originale manca o viene servito male.
+    $hashDestFile = Join-Path $hashFilesOutputDir $sha256
+    Copy-Item -LiteralPath $file.FullName -Destination $hashDestFile -Force
+    $hashFallbackFilesCount++
+    [void]$hashFallbackUniqueHashes.Add($sha256)
     
     # Copia nella cartella temporanea per lo ZIP
     $tempZipFile = Join-Path $tempZipFolder (Join-Path $modDirectoryName $relativePath)
@@ -283,7 +397,7 @@ foreach ($file in $files) {
 Write-Host "Scansione completata." -ForegroundColor Green
 Write-Host " - File inclusi: $allowedFilesCount"
 Write-Host " - File privati esclusi (es. saves, My Stuff): $skippedFilesCount"
-Write-Host " - Path sensibili coperti da fallback _by_sha256: $hashFallbackFilesCount"
+Write-Host " - File coperti da fallback _by_sha256: $hashFallbackFilesCount"
 Write-Host " - File hash unici creati in _by_sha256: $($hashFallbackUniqueHashes.Count)"
 
 Write-Host "Verifica coerenza manifest/cartella files..." -ForegroundColor Yellow
@@ -295,8 +409,7 @@ foreach ($entry in $manifestFiles) {
     if (-not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
         $missingDifferentialFiles += [string]$entry.path
     }
-    if ((Needs-HashAddressedFallback -WebPath ([string]$entry.path)) -and
-        -not (Test-Path -LiteralPath $expectedHashPath -PathType Leaf)) {
+    if (-not (Test-Path -LiteralPath $expectedHashPath -PathType Leaf)) {
         $missingDifferentialFiles += "_by_sha256/$([string]$entry.sha256) ($([string]$entry.path))"
     }
 }
@@ -305,7 +418,7 @@ if ($missingDifferentialFiles.Count -gt 0) {
     $preview = ($missingDifferentialFiles | Select-Object -First 20) -join "`n - "
     throw "Release differenziale non valida: $($missingDifferentialFiles.Count) file sono nel manifest ma non esistono in dist/files.`n - $preview"
 }
-Write-Host " - OK: tutti i file del manifest esistono nella cartella files; i path sensibili hanno fallback _by_sha256." -ForegroundColor Green
+Write-Host " - OK: tutti i file del manifest esistono nella cartella files e hanno fallback _by_sha256." -ForegroundColor Green
 
 # 1. Scrittura del file manifest_files.json
 $manifestObject = @{
@@ -342,11 +455,15 @@ if ($alwaysIncludedRelativeDirs.Count -gt 0) {
 }
 Write-Host "Creato archivio ZIP completo: $archiveName" -ForegroundColor Green
 
-# 3. Compressione della cartella dei file differenziali
-$filesZipPath = Join-Path $absoluteOutputDir "files.zip"
-Write-Host "Compressione dei file differenziali in files.zip..." -ForegroundColor Yellow
-Compress-Archive -Path "$filesOutputDir\*" -DestinationPath $filesZipPath -Force
-Write-Host "Creato archivio dei file differenziali: files.zip" -ForegroundColor Green
+# 3. Compressione della cartella dei file differenziali per il caricamento sul server.
+# Il launcher scarica i file singoli da files/ e _by_sha256/; creare files.zip
+# serve per trasferire e poi estrarre l'intera struttura sul server.
+if ($CreateFilesZip) {
+    $filesZipPath = Join-Path $absoluteOutputDir "files.zip"
+    Write-Host "Compressione dei file differenziali in files.zip..." -ForegroundColor Yellow
+    Compress-Archive -Path "$filesOutputDir\*" -DestinationPath $filesZipPath -Force
+    Write-Host "Creato archivio dei file differenziali: files.zip" -ForegroundColor Green
+}
 
 # Pulisci cartella temporanea
 Remove-Item -LiteralPath $tempZipFolder -Recurse -Force -ErrorAction SilentlyContinue
@@ -430,5 +547,10 @@ Write-Host "1. Carica il contenuto di '$OutputDir' nella cartella /$serverDirect
 Write-Host "   - Carica 'versions.json' in /Launcher/ per ultimo: contiene insieme i dati Stable, Beta, Launcher e Music Pack."
 Write-Host "   - Il file 'manifest_files.json' e '$archiveName' devono risiedere in $modReleaseBaseUrl/"
 Write-Host "   - La cartella 'files' deve risiedere in $modReleaseBaseUrl/files/"
-Write-Host "   - Il file 'files.zip' contiene una copia compressa della cartella 'files', inclusa la fallback _by_sha256 per i download differenziali."
+if ($CreateFilesZip) {
+    Write-Host "   - 'files.zip' e' solo un archivio di trasferimento della cartella files; il launcher non lo usa per gli update."
+}
 Write-Host "2. Assicurati che i permessi di lettura sui file sul server siano corretti."
+if ($interactiveLaunch) {
+    [void](Read-Host "`nPremi INVIO; la console resterà aperta")
+}

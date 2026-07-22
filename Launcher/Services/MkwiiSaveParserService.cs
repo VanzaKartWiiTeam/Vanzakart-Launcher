@@ -106,20 +106,21 @@ public sealed class MkwiiSaveParserService
         return files.OrderBy(path => path).ToArray();
     }
 
-    public IReadOnlyList<string> FindVanzaKartSaveFiles(LauncherSettings settings)
+    public IReadOnlyList<string> FindVanzaKartSaveFiles(
+        LauncherSettings settings,
+        string modDirectoryName = "VanzaKart")
     {
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
             return Array.Empty<string>();
         }
 
-        var modRoots = new[]
-        {
-            Path.Combine(settings.GetModFolder(), "VanzaKart"),
-            Path.Combine(settings.GetModFolder(), "VKBeta")
-        };
+        modDirectoryName = modDirectoryName.Equals("VKBeta", StringComparison.OrdinalIgnoreCase)
+            ? "VKBeta"
+            : "VanzaKart";
+        var modRoot = Path.Combine(settings.GetModFolder(), modDirectoryName);
         return FindMarioKartSaveFiles(settings.UserFolderPath)
-            .Where(path => modRoots.Any(modRoot => IsVanzaKartSavePath(path, modRoot)))
+            .Where(path => IsModpackSavePath(path, modRoot, modDirectoryName))
             .Select(path => new FileInfo(path))
             .Where(info => info.Exists)
             .OrderByDescending(info => info.LastWriteTimeUtc)
@@ -445,7 +446,7 @@ public sealed class MkwiiSaveParserService
         }
     }
 
-    private static bool IsVanzaKartSavePath(string path, string modRoot)
+    private static bool IsModpackSavePath(string path, string modRoot, string modDirectoryName)
     {
         if (!string.IsNullOrWhiteSpace(modRoot))
         {
@@ -462,10 +463,8 @@ public sealed class MkwiiSaveParserService
             }
         }
 
-        return path.Contains($"{Path.DirectorySeparatorChar}VanzaKart{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-               || path.Contains($"{Path.AltDirectorySeparatorChar}VanzaKart{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-               || path.Contains($"{Path.DirectorySeparatorChar}VKBeta{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
-               || path.Contains($"{Path.AltDirectorySeparatorChar}VKBeta{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
+        return path.Contains($"{Path.DirectorySeparatorChar}{modDirectoryName}{Path.DirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase)
+               || path.Contains($"{Path.AltDirectorySeparatorChar}{modDirectoryName}{Path.AltDirectorySeparatorChar}", StringComparison.OrdinalIgnoreCase);
     }
 
     private static int FindMiiSlotOffset(byte[] db, uint miiId)

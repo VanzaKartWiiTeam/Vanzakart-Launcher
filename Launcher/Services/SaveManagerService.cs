@@ -69,7 +69,9 @@ public sealed class SaveManagerService
         return Path.Combine(GetLauncherProfilesFolder(), "mii_profile.json");
     }
 
-    public IReadOnlyList<SaveProfileInfo> GetSaveProfiles(LauncherSettings settings)
+    public IReadOnlyList<SaveProfileInfo> GetSaveProfiles(
+        LauncherSettings settings,
+        string modDirectoryName = "VanzaKart")
     {
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath) || !Directory.Exists(settings.UserFolderPath))
         {
@@ -80,7 +82,7 @@ public sealed class SaveManagerService
         {
             var miiDatabase = _mkwiiSaveParserService.ReadMiiDatabase(settings.UserFolderPath);
             var cards = new List<SaveProfileInfo>();
-            foreach (var saveFile in _mkwiiSaveParserService.FindVanzaKartSaveFiles(settings))
+            foreach (var saveFile in _mkwiiSaveParserService.FindVanzaKartSaveFiles(settings, modDirectoryName))
             {
                 var parsedCards = _mkwiiSaveParserService.ReadLicenseCards(saveFile, miiDatabase);
                 if (parsedCards.Count > 0)
@@ -115,9 +117,11 @@ public sealed class SaveManagerService
         }
     }
 
-    public SaveProfileInfo? GetPrimarySaveProfile(LauncherSettings settings)
+    public SaveProfileInfo? GetPrimarySaveProfile(
+        LauncherSettings settings,
+        string modDirectoryName = "VanzaKart")
     {
-        return GetSaveProfiles(settings).FirstOrDefault();
+        return GetSaveProfiles(settings, modDirectoryName).FirstOrDefault();
     }
 
     public LauncherMiiProfile LoadMiiProfile()
@@ -860,9 +864,12 @@ public sealed class SaveManagerService
             .ToArray();
     }
 
-    public async Task<string> BackupPrimarySaveAsync(LauncherSettings settings, CancellationToken cancellationToken = default)
+    public async Task<string> BackupPrimarySaveAsync(
+        LauncherSettings settings,
+        string modDirectoryName = "VanzaKart",
+        CancellationToken cancellationToken = default)
     {
-        var profile = GetPrimarySaveProfile(settings)
+        var profile = GetPrimarySaveProfile(settings, modDirectoryName)
             ?? throw new InvalidOperationException("No Mario Kart Wii save was found in the selected Dolphin user folder.");
 
         return await BackupSaveFileAsync(profile.FilePath, cancellationToken);
@@ -885,37 +892,49 @@ public sealed class SaveManagerService
         return destination;
     }
 
-    public async Task ImportSaveFileAsync(LauncherSettings settings, string sourceFile, CancellationToken cancellationToken = default)
+    public async Task ImportSaveFileAsync(
+        LauncherSettings settings,
+        string sourceFile,
+        string modDirectoryName = "VanzaKart",
+        CancellationToken cancellationToken = default)
     {
         if (!File.Exists(sourceFile))
         {
             throw new FileNotFoundException("The selected save file does not exist.", sourceFile);
         }
 
-        var profile = GetPrimarySaveProfile(settings)
+        var profile = GetPrimarySaveProfile(settings, modDirectoryName)
             ?? throw new InvalidOperationException("Create or launch a Mario Kart Wii save in Dolphin before importing over it.");
 
-        await BackupPrimarySaveAsync(settings, cancellationToken);
+        await BackupPrimarySaveAsync(settings, modDirectoryName, cancellationToken);
         await CopyFileAsync(sourceFile, profile.FilePath, cancellationToken);
     }
 
-    public async Task RestoreBackupAsync(LauncherSettings settings, string backupFile, CancellationToken cancellationToken = default)
+    public async Task RestoreBackupAsync(
+        LauncherSettings settings,
+        string backupFile,
+        string modDirectoryName = "VanzaKart",
+        CancellationToken cancellationToken = default)
     {
         if (!File.Exists(backupFile))
         {
             throw new FileNotFoundException("The selected backup does not exist.", backupFile);
         }
 
-        var profile = GetPrimarySaveProfile(settings)
+        var profile = GetPrimarySaveProfile(settings, modDirectoryName)
             ?? throw new InvalidOperationException("Create or launch a Mario Kart Wii save in Dolphin before restoring a backup.");
 
-        await BackupPrimarySaveAsync(settings, cancellationToken);
+        await BackupPrimarySaveAsync(settings, modDirectoryName, cancellationToken);
         await CopyFileAsync(backupFile, profile.FilePath, cancellationToken);
     }
 
-    public async Task ExportPrimarySaveAsync(LauncherSettings settings, string destinationFile, CancellationToken cancellationToken = default)
+    public async Task ExportPrimarySaveAsync(
+        LauncherSettings settings,
+        string destinationFile,
+        string modDirectoryName = "VanzaKart",
+        CancellationToken cancellationToken = default)
     {
-        var profile = GetPrimarySaveProfile(settings)
+        var profile = GetPrimarySaveProfile(settings, modDirectoryName)
             ?? throw new InvalidOperationException("No Mario Kart Wii save was found to export.");
 
         await CopyFileAsync(profile.FilePath, destinationFile, cancellationToken);

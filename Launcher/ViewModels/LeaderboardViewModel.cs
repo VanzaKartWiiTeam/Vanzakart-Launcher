@@ -20,7 +20,8 @@ public sealed class LeaderboardViewModel : BaseViewModel
     private bool _hasError;
     private string _errorMessage = string.Empty;
     private string _searchText = string.Empty;
-    private string _selectedSort = "Points";
+    private string _selectedSort = "Global Rank";
+    private string _summaryText = "Waiting for rankings";
     private LeaderboardPlayerInfo? _top1;
     private LeaderboardPlayerInfo? _top2;
     private LeaderboardPlayerInfo? _top3;
@@ -31,7 +32,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
         _networkService = networkService;
         Players = new ObservableCollection<LeaderboardPlayerInfo>();
         
-        Sorts = new ObservableCollection<string> { "Points", "Wins", "Win Rate" };
+        Sorts = new ObservableCollection<string> { "Global Rank", "Points", "Prestige" };
     }
 
     public ObservableCollection<LeaderboardPlayerInfo> Players { get; }
@@ -65,6 +66,12 @@ public sealed class LeaderboardViewModel : BaseViewModel
                 ApplyFiltersAndSorting();
             }
         }
+    }
+
+    public string SummaryText
+    {
+        get => _summaryText;
+        private set => SetProperty(ref _summaryText, value);
     }
 
     public string SelectedSort
@@ -116,9 +123,10 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
         try
         {
-            // Note: In a production scenario, we query the endpoint defined in LauncherConfig
-            string url = $"{LauncherConfig.LeaderboardApiUrl}?limit=100";
-            string json = await _networkService.DownloadStringAsync(url);
+            string url = $"{LauncherConfig.LeaderboardApiUrl}?limit=200&offset=0";
+            Task<string> rankingRequest = _networkService.DownloadStringAsync(url);
+            Task<LeaderboardDetailsResponse?> detailsRequest = TryDownloadDetailsAsync();
+            string json = await rankingRequest;
             
             var options = new JsonSerializerOptions
             {
@@ -129,11 +137,24 @@ public sealed class LeaderboardViewModel : BaseViewModel
             
             if (response != null && response.Success)
             {
+                var details = await detailsRequest;
+                var detailsByFriendCode = details?.Players?
+                    .Where(player => !string.IsNullOrWhiteSpace(player.FriendCode))
+                    .GroupBy(player => CleanFriendCode(player.FriendCode), StringComparer.OrdinalIgnoreCase)
+                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase)
+                    ?? new Dictionary<string, LeaderboardDetailsPlayer>(StringComparer.OrdinalIgnoreCase);
+
                 _allPlayersRaw.Clear();
                 if (response.Players != null)
                 {
-                    _allPlayersRaw.AddRange(response.Players);
+                    foreach (var rankedPlayer in response.Players)
+                    {
+                        detailsByFriendCode.TryGetValue(CleanFriendCode(rankedPlayer.FriendCode), out var detail);
+                        _allPlayersRaw.Add(CreatePlayer(rankedPlayer, detail));
+                    }
                 }
+
+                SummaryText = $"{_allPlayersRaw.Count:N0} ranked players | Updated {DateTime.Now:HH:mm}";
                 
                 UpdateSelfFlags();
                 ApplyFiltersAndSorting();
@@ -154,6 +175,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
             Top1 = null;
             Top2 = null;
             Top3 = null;
+            SummaryText = "Rankings unavailable";
         }
         finally
         {
@@ -176,9 +198,8 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
     private void ApplyFiltersAndSorting()
     {
-        // 1. Ordina la classifica globale e assegna il rank visualizzato in base
-        // al criterio attivo (VR, Wins o Win Rate). La Position dell'API resta
-        // disponibile, ma la UI usa DisplayPosition.
+        // The API position is authoritative for the global ranking. Alternative
+        // views can still assign a temporary display order without changing it.
         var globalSorted = SortPlayers(_allPlayersRaw).ToList();
         for (var i = 0; i < globalSorted.Count; i++)
         {
@@ -199,10 +220,12 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
         var list = filtered.ToList();
 
-        // 3. Estrai il podio usando lo stesso ordinamento selezionato.
-        // La ricerca filtra solo la tabella sotto: il podio resta la top 3 globale
-        // del criterio attivo (VR, Wins o Win Rate).
-        var podiumList = globalSorted.Take(3).ToList();
+        // The podium always represents the authoritative global top three.
+        var podiumList = _allPlayersRaw
+            .OrderBy(player => player.Position)
+            .ThenByDescending(player => player.Points)
+            .Take(3)
+            .ToList();
         var podiumPlayers = podiumList.ToHashSet();
         
         Top1 = podiumList.Count > 0 ? podiumList[0] : null;
@@ -229,19 +252,76 @@ public sealed class LeaderboardViewModel : BaseViewModel
     {
         return SelectedSort switch
         {
-            "Wins" => players
-                .OrderByDescending(p => p.Wins)
-                .ThenByDescending(p => p.WinRate)
-                .ThenByDescending(p => p.Points),
-            "Win Rate" => players
-                .OrderByDescending(p => p.WinRate)
-                .ThenByDescending(p => p.Wins)
-                .ThenByDescending(p => p.Points),
-            _ => players
+            "Points" => players
                 .OrderByDescending(p => p.Points)
-                .ThenByDescending(p => p.Wins)
-                .ThenByDescending(p => p.WinRate)
+                .ThenBy(p => p.Position),
+            "Prestige" => players
+                .OrderByDescending(p => p.PrestigeRank)
+                .ThenByDescending(p => p.Points)
+                .ThenBy(p => p.Position),
+            _ => players
+                .OrderBy(p => p.Position)
+                .ThenByDescending(p => p.Points)
         };
+    }
+
+    private async Task<LeaderboardDetailsResponse?> TryDownloadDetailsAsync()
+    {
+        try
+        {
+            string json = await _networkService.DownloadStringAsync(LauncherConfig.LeaderboardDetailsApiUrl);
+            return JsonSerializer.Deserialize<LeaderboardDetailsResponse>(json, new JsonSerializerOptions
+            {
+                PropertyNameCaseInsensitive = true
+            });
+        }
+        catch
+        {
+            // The PHP ranking remains usable if the optional details endpoint is unavailable.
+            return null;
+        }
+    }
+
+    private static LeaderboardPlayerInfo CreatePlayer(
+        LeaderboardApiPlayer rankedPlayer,
+        LeaderboardDetailsPlayer? detail)
+    {
+        return new LeaderboardPlayerInfo
+        {
+            Position = rankedPlayer.Position > 0 ? rankedPlayer.Position : detail?.Rank ?? 0,
+            Name = string.IsNullOrWhiteSpace(rankedPlayer.Name) ? detail?.Name ?? string.Empty : rankedPlayer.Name,
+            Points = rankedPlayer.Points > 0 ? rankedPlayer.Points : detail?.Vr ?? 0,
+            FriendCode = string.IsNullOrWhiteSpace(rankedPlayer.FriendCode)
+                ? detail?.FriendCode ?? string.Empty
+                : rankedPlayer.FriendCode,
+            PrestigeRank = detail?.PrestigeRank ?? rankedPlayer.PrestigeRank,
+            LastSeen = detail?.LastSeen,
+            IsSuspicious = detail?.IsSuspicious ?? false,
+            VrLast24Hours = detail?.VrStats?.Last24Hours ?? 0,
+            VrLastWeek = detail?.VrStats?.LastWeek ?? 0,
+            VrLastMonth = detail?.VrStats?.LastMonth ?? 0,
+            MiiData = detail?.MiiData ?? rankedPlayer.MiiData,
+            MiiImage = detail?.MiiImageBase64 ?? rankedPlayer.MiiImage,
+            RankImageUrl = NormalizeServerAssetUrl(
+                rankedPlayer.GetRankImageUrl() ?? detail?.GetRankImageUrl())
+        };
+    }
+
+    private static string? NormalizeServerAssetUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return null;
+        }
+
+        if (Uri.TryCreate(value, UriKind.Absolute, out var absoluteUri))
+        {
+            return absoluteUri.ToString();
+        }
+
+        return Uri.TryCreate(new Uri("https://sitodaking.it:8443/"), value, out var serverUri)
+            ? serverUri.ToString()
+            : null;
     }
 
     private void StartAvatarRenderingBackground()
@@ -330,7 +410,107 @@ public sealed class LeaderboardViewModel : BaseViewModel
     private sealed class LeaderboardApiResponse
     {
         public bool Success { get; set; }
-        public List<LeaderboardPlayerInfo>? Players { get; set; }
+        public LeaderboardApiMeta? Meta { get; set; }
+        public List<LeaderboardApiPlayer>? Players { get; set; }
+    }
+
+    private sealed class LeaderboardApiMeta
+    {
+        public int Limit { get; set; }
+        public int Offset { get; set; }
+        public int Count { get; set; }
+    }
+
+    private sealed class LeaderboardApiPlayer : RankImageApiModel
+    {
+        public int Position { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public int Points { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("fc")]
+        public string FriendCode { get; set; } = string.Empty;
+
+        public int PrestigeRank { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mii_data")]
+        public string? MiiData { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("mii_image")]
+        public string? MiiImage { get; set; }
+    }
+
+    private sealed class LeaderboardDetailsResponse
+    {
+        public List<LeaderboardDetailsPlayer>? Players { get; set; }
+        public int TotalCount { get; set; }
+    }
+
+    private sealed class LeaderboardDetailsPlayer : RankImageApiModel
+    {
+        public string Name { get; set; } = string.Empty;
+        public string FriendCode { get; set; } = string.Empty;
+        public int Vr { get; set; }
+        public int Rank { get; set; }
+        public int PrestigeRank { get; set; }
+        public DateTimeOffset? LastSeen { get; set; }
+        public bool IsSuspicious { get; set; }
+        public LeaderboardVrStats? VrStats { get; set; }
+        public string? MiiImageBase64 { get; set; }
+        public string? MiiData { get; set; }
+    }
+
+    private sealed class LeaderboardVrStats
+    {
+        public int Last24Hours { get; set; }
+        public int LastWeek { get; set; }
+        public int LastMonth { get; set; }
+    }
+
+    private abstract class RankImageApiModel
+    {
+        public string? RankImageUrl { get; set; }
+        public string? RankIconUrl { get; set; }
+        public string? RankImage { get; set; }
+        public string? RankIcon { get; set; }
+        public string? BadgeImageUrl { get; set; }
+
+        [System.Text.Json.Serialization.JsonExtensionData]
+        public Dictionary<string, JsonElement>? AdditionalFields { get; set; }
+
+        public string? GetRankImageUrl()
+        {
+            string? direct = FirstNotEmpty(RankImageUrl, RankIconUrl, RankImage, RankIcon, BadgeImageUrl);
+            if (!string.IsNullOrWhiteSpace(direct) || AdditionalFields == null)
+            {
+                return direct;
+            }
+
+            string[] aliases =
+            {
+                "rank_image_url", "rank_icon_url", "rank_image", "rank_icon",
+                "rankBadgeUrl", "rank_badge_url", "badge_url", "prestigeIconUrl",
+                "prestige_icon_url"
+            };
+
+            foreach (string alias in aliases)
+            {
+                var entry = AdditionalFields.FirstOrDefault(pair =>
+                    string.Equals(pair.Key, alias, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrEmpty(entry.Key) && entry.Value.ValueKind == JsonValueKind.String)
+                {
+                    string? candidate = entry.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(candidate))
+                    {
+                        return candidate;
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string? FirstNotEmpty(params string?[] values) =>
+            values.FirstOrDefault(value => !string.IsNullOrWhiteSpace(value));
     }
 
 }

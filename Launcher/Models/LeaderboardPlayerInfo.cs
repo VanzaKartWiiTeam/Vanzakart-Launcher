@@ -1,4 +1,3 @@
-using System.ComponentModel;
 using System.Text.Json.Serialization;
 using VanzaKartLauncher.ViewModels;
 
@@ -14,9 +13,17 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
 
     [JsonPropertyName("fc")]
     public string FriendCode { get; init; } = string.Empty;
-    public int Wins { get; init; }
-    public int Races { get; init; }
-    public double WinRate { get; init; }
+
+    [JsonPropertyName("prestigeRank")]
+    public int PrestigeRank { get; init; }
+
+    public DateTimeOffset? LastSeen { get; init; }
+    public bool IsSuspicious { get; init; }
+    public int VrLast24Hours { get; init; }
+    public int VrLastWeek { get; init; }
+    public int VrLastMonth { get; init; }
+    public string? RankImageUrl { get; init; }
+
     public bool IsSelf { get; set; }
 
     [JsonPropertyName("mii_data")]
@@ -39,6 +46,7 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
     }
 
     public bool HasAvatarImage => !string.IsNullOrWhiteSpace(AvatarImagePath);
+    public bool HasRankImage => !string.IsNullOrWhiteSpace(RankImageUrl);
 
     public int DisplayPosition
     {
@@ -51,22 +59,19 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
         }
     }
 
-    public string WinRatePercent => $"{WinRate:F1}%";
     public string DisplayPoints => $"{Points:N0} VR";
-    public string PodiumStatsLine => $"{Wins:N0} wins  •  {WinRate:F1}% win  •  {Races:N0} races";
-
-    public string Rank
-    {
-        get
-        {
-            if (Points >= 9000) return "Master";
-            if (Points >= 7500) return "Diamond";
-            if (Points >= 6000) return "Platinum";
-            if (Points >= 4500) return "Gold";
-            if (Points >= 3000) return "Silver";
-            return "Bronze";
-        }
-    }
+    public string GlobalRankLabel => $"#{Position:N0}";
+    public string PrestigeLabel => PrestigeRank > 0 ? $"Prestige {PrestigeRank}" : "No prestige";
+    public string CompactPrestigeLabel => $"P{PrestigeRank}";
+    public string PodiumStatsLine => $"{GlobalRankLabel} | {PrestigeLabel}";
+    public string VrLast24HoursLabel => FormatVrChange(VrLast24Hours);
+    public string VrLastWeekLabel => FormatVrChange(VrLastWeek);
+    public string VrLastMonthLabel => FormatVrChange(VrLastMonth);
+    public string VrTrendToolTip => $"24 hours: {VrLast24HoursLabel} VR\n7 days: {VrLastWeekLabel} VR\n30 days: {VrLastMonthLabel} VR";
+    public string VrTrendColor => VrLast24Hours > 0 ? "#5CE1A3" : VrLast24Hours < 0 ? "#FF6B7A" : "#8290A8";
+    public string LastSeenLabel => LastSeen.HasValue
+        ? LastSeen.Value.ToLocalTime().ToString("dd MMM, HH:mm")
+        : "Unknown";
 
     public string AvatarInitial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Substring(0, 1).ToUpperInvariant();
 
@@ -110,4 +115,11 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
         int index = Math.Abs(hash) % gradientPairs.Length;
         return gradientPairs[index];
     }
+
+    private static string FormatVrChange(int value) => value switch
+    {
+        > 0 => $"+{value:N0}",
+        < 0 => $"{value:N0}",
+        _ => "-"
+    };
 }
