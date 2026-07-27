@@ -42,6 +42,65 @@
         <SolidColorBrush x:Key="ActiveTabBackgroundBrush" Color="#1E2A42"/>
         <SolidColorBrush x:Key="TransparentBrush" Color="Transparent"/>
 
+        <!-- GLOBAL DARK TOOLTIP STYLE -->
+        <Style TargetType="ToolTip">
+            <Setter Property="Background" Value="#151D2A"/>
+            <Setter Property="Foreground" Value="#F8FAFC"/>
+            <Setter Property="BorderBrush" Value="#00F2FF"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,6"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ToolTip">
+                        <Border Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="8"
+                                Padding="{TemplateBinding Padding}">
+                            <Border.Effect>
+                                <DropShadowEffect BlurRadius="12" ShadowDepth="3" Opacity="0.5" Color="#000000"/>
+                            </Border.Effect>
+                            <ContentPresenter HorizontalAlignment="Left" VerticalAlignment="Center"/>
+                        </Border>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- COMPACT NUMBER TEXTBOX STYLE FOR SLIDERS -->
+        <Style x:Key="CompactNumberTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="{StaticResource InputBrush}"/>
+            <Setter Property="Foreground" Value="#00F2FF"/>
+            <Setter Property="BorderBrush" Value="{StaticResource StrokeBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="2,1"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" Margin="0" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#00F2FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <LinearGradientBrush x:Key="WindowGradient" StartPoint="0,0" EndPoint="1,1">
             <GradientStop Offset="0.00" Color="#070A13"/>
             <GradientStop Offset="0.35" Color="#0F1426"/>
@@ -756,6 +815,40 @@
             </Setter>
         </Style>
 
+        <Style x:Key="BindingTextBox" TargetType="TextBox">
+            <Setter Property="Background" Value="#141C2B"/>
+            <Setter Property="Foreground" Value="#00F2FF"/>
+            <Setter Property="BorderBrush" Value="#397FB9"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="6,2"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="CaretBrush" Value="White"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="TextBox">
+                        <Border x:Name="Root"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6">
+                            <ScrollViewer x:Name="PART_ContentHost" VerticalAlignment="Center" HorizontalAlignment="Center" Margin="2,0"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#00F2FF"/>
+                            </Trigger>
+                            <Trigger Property="IsKeyboardFocused" Value="True">
+                                <Setter TargetName="Root" Property="BorderBrush" Value="#00F2FF"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
         <ControlTemplate x:Key="ComboBoxToggleButton" TargetType="ToggleButton">
             <Border x:Name="Root" Background="{TemplateBinding Background}" BorderBrush="{TemplateBinding BorderBrush}" BorderThickness="1" CornerRadius="8">
                 <Path HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,12,0" Fill="{StaticResource TextSecondary}" Data="M0,0 L8,0 L4,5 Z"/>
@@ -1005,6 +1098,77 @@
                 </Setter.Value>
             </Setter>
         </Style>
+
+        <!-- Modern Smooth Custom Slider Style -->
+        <Style x:Key="ModernSliderThumb" TargetType="Thumb">
+            <Setter Property="OverridesDefaultStyle" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Thumb">
+                        <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <Ellipse x:Name="Glow" Width="20" Height="20" Fill="#00F2FF" Opacity="0.3">
+                                <Ellipse.Effect>
+                                    <DropShadowEffect BlurRadius="10" ShadowDepth="0" Color="#00F2FF" Opacity="0.8"/>
+                                </Ellipse.Effect>
+                            </Ellipse>
+                            <Ellipse x:Name="OuterRing" Width="16" Height="16" Fill="#0F172A" Stroke="#00F2FF" StrokeThickness="2"/>
+                            <Ellipse x:Name="InnerDot" Width="6" Height="6" Fill="#00F2FF"/>
+                        </Grid>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="Glow" Property="Opacity" Value="0.65"/>
+                                <Setter TargetName="OuterRing" Property="Stroke" Value="#4DFFB0"/>
+                                <Setter TargetName="InnerDot" Property="Fill" Value="#4DFFB0"/>
+                            </Trigger>
+                            <Trigger Property="IsDragging" Value="True">
+                                <Setter TargetName="Glow" Property="Opacity" Value="0.9"/>
+                                <Setter TargetName="Glow" Property="Width" Value="24"/>
+                                <Setter TargetName="Glow" Property="Height" Value="24"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <Style x:Key="ModernSlider" TargetType="Slider">
+            <Setter Property="Stylus.IsPressAndHoldEnabled" Value="False"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Focusable" Value="True"/>
+            <Setter Property="Height" Value="28"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Slider">
+                        <Grid x:Name="GridRoot" Background="Transparent" VerticalAlignment="Center">
+                            <Border x:Name="TrackBackground" Height="8" CornerRadius="4" Background="#111827" BorderBrush="#2A3857" BorderThickness="1" VerticalAlignment="Center"/>
+                            <Track x:Name="PART_Track">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton Command="Slider.DecreaseLarge">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Height="8" CornerRadius="4" Background="{StaticResource PlayGradient}" VerticalAlignment="Center"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton Command="Slider.IncreaseLarge">
+                                        <RepeatButton.Template>
+                                            <ControlTemplate TargetType="RepeatButton">
+                                                <Border Background="Transparent"/>
+                                            </ControlTemplate>
+                                        </RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb Style="{StaticResource ModernSliderThumb}"/>
+                                </Track.Thumb>
+                            </Track>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
     </Window.Resources>
 
     <Border CornerRadius="18"
@@ -1101,7 +1265,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.5" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.4.0-rc.1" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -3187,20 +3351,131 @@
 
                                 <Grid x:Name="SettingsView" Visibility="Collapsed">
                                     <StackPanel>
-                                        <Border x:Name="GamePathsSettingsCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18">
-                                            <StackPanel>
-                                                <TextBlock Text="GAME PATHS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                <TextBlock Text="Dolphin Emulator" FontWeight="Bold" Margin="0,14,0,7"/>
-                                                <Grid Margin="0,0,0,14">
+                                        <!-- Top Toolbar & Global Actions Bar -->
+                                        <Border Style="{StaticResource GlassCard}" Margin="0,0,0,16">
+                                            <Grid>
+                                                <Grid.RowDefinitions>
+                                                    <RowDefinition Height="Auto"/>
+                                                    <RowDefinition Height="Auto"/>
+                                                </Grid.RowDefinitions>
+
+                                                <!-- Title & Mode Selector -->
+                                                <Grid Grid.Row="0" Margin="0,0,0,14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel VerticalAlignment="Center">
+                                                        <TextBlock Text="⚙️ DOLPHIN &amp; LAUNCHER CONFIGURATION" FontSize="18" FontWeight="Black" Foreground="#FFFFFF"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center">
+                                                        <Border Background="#1A243B" CornerRadius="12" Padding="12,6" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1">
+                                                            <StackPanel Orientation="Horizontal">
+                                                                <TextBlock Text="⚙️ Advanced Mode" VerticalAlignment="Center" FontSize="13" FontWeight="SemiBold" Margin="0,0,10,0"/>
+                                                                <CheckBox x:Name="AdvancedModeCheckBox" VerticalAlignment="Center" Checked="AdvancedModeCheckBox_OnChanged" Unchecked="AdvancedModeCheckBox_OnChanged" ToolTip="Toggle advanced emulator and launcher settings"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Search & Quick Action Buttons -->
+                                                <Grid Grid.Row="1">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="300"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+
+                                                    <!-- Enhanced Search Box -->
+                                                    <Grid>
+                                                        <TextBox x:Name="SettingsSearchTextBox" Style="{StaticResource PathTextBox}"
+                                                                 Height="38" Padding="32,8,10,8" TextChanged="SettingsSearchTextBox_OnTextChanged"
+                                                                 ToolTip="Type here to search any setting (e.g. Vulkan, Resolution, Audio, Language, FPS, Controller)..."/>
+                                                        <TextBlock Text="🔍" FontSize="13" VerticalAlignment="Center" HorizontalAlignment="Left" Margin="10,0,0,0" IsHitTestVisible="False"/>
+                                                        <TextBlock x:Name="SearchPlaceholderText" Text="Search settings..." FontSize="13" Foreground="#64748B"
+                                                                   VerticalAlignment="Center" HorizontalAlignment="Left" Margin="32,0,0,0" IsHitTestVisible="False"/>
+                                                    </Grid>
+
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center">
+                                                        <Button x:Name="SaveGlobalSettingsButton" Content="💾 Save Configuration"
+                                                                Style="{StaticResource PrimaryButton}" Margin="4,0" Height="36" Padding="14,0"
+                                                                Click="SaveGlobalSettingsButton_OnClick"
+                                                                ToolTip="Save and apply all modified settings to Dolphin configuration files."/>
+
+                                                        <Button x:Name="OptimizeVanzaKartButton" Content="✨ Optimize for VanzaKart"
+                                                                Style="{StaticResource CompactButton}" Margin="4,0" Height="36" Padding="14,0"
+                                                                Click="OptimizeVanzaKartButton_OnClick"
+                                                                ToolTip="Automatically apply recommended configuration (Fullscreen, 2K/Auto, Vulkan, Hybrid Ubershaders, Texture packs, 16:9)"/>
+
+                                                        <Button x:Name="ResetAllSettingsButton" Content="🔄 Reset Defaults"
+                                                                Style="{StaticResource CompactButton}" Foreground="{StaticResource DangerBrush}" Margin="4,0" Height="36" Padding="12,0"
+                                                                Click="ResetAllSettingsButton_OnClick"
+                                                                ToolTip="Reset all Dolphin and launcher settings to default values"/>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- BETA FEATURE DISCLAIMER BANNER -->
+                                        <Border Background="#2B1D0C" BorderBrush="#EAB308" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,16">
+                                            <Grid>
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="Auto"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="⚠️" FontSize="20" VerticalAlignment="Center" Margin="0,0,12,0"/>
+                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                    <TextBlock Text="BETA FEATURE WARNING" FontSize="11" FontWeight="Black" Foreground="#FDE047"/>
+                                                    <TextBlock Text="Dolphin emulator configuration via Launcher is in BETA. Settings are synchronized with Dolphin INI files, but some features may not apply immediately or might behave unexpectedly." FontSize="12" Foreground="#FEF08A" TextWrapping="Wrap"/>
+                                                </StackPanel>
+                                            </Grid>
+                                        </Border>
+
+                                        <!-- Category Sub-Navigation Buttons (Pills) -->
+                                        <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,16">
+                                            <StackPanel Orientation="Horizontal" x:Name="CategoryTabsStackPanel">
+                                                <Button x:Name="PathsCategoryBtn" Content="📁 Paths" Tag="Paths" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="VideoCategoryBtn" Content="📹 Video" Tag="Video" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="AudioCategoryBtn" Content="🔊 Audio" Tag="Audio" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="ControllerCategoryBtn" Content="🎮 Controller" Tag="Controller" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="WiiCategoryBtn" Content="🌀 Wii" Tag="Wii" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="PerformanceCategoryBtn" Content="⚡ Performance" Tag="Performance" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="EnhancementsCategoryBtn" Content="🎨 Enhancements" Tag="Enhancements" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="AdvancedCategoryBtn" Content="🛠️ Advanced" Tag="Advanced" Style="{StaticResource CompactButton}" Margin="0,0,8,0" Click="CategoryTab_Click"/>
+                                                <Button x:Name="LauncherCategoryBtn" Content="🚀 Launcher &amp; Mod" Tag="Launcher" Style="{StaticResource CompactButton}" Margin="0,0,0,0" Click="CategoryTab_Click"/>
+                                            </StackPanel>
+                                        </ScrollViewer>
+
+                                        <!-- STATUS NOTIFICATION BANNER -->
+                                        <Border x:Name="SettingsStatusNotification" Background="#1B2E4B" BorderBrush="#00F2FF" BorderThickness="1" CornerRadius="8" Padding="12,8" Margin="0,0,0,16" Visibility="Collapsed">
+                                            <TextBlock x:Name="SettingsStatusText" Text="Changes saved automatically." Foreground="#00F2FF" FontWeight="Bold" FontSize="13"/>
+                                        </Border>
+
+                                        <!-- 1. PATHS SECTION (FIRST TAB) -->
+                                        <Border x:Name="PathsSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Visible">
+                                            <StackPanel x:Name="PathsSectionStackPanel">
+                                                <TextBlock Text="📁 GAME &amp; EMULATOR PATHS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Margin="0,0,0,14"/>
+
+                                                <!-- Locked Banner Alert if Dolphin Path Invalid -->
+                                                <Border x:Name="PathsLockAlertBanner" Background="#3D2912" BorderBrush="#FFD166" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,14" Visibility="Collapsed">
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <TextBlock Text="⚠️ " FontSize="16" VerticalAlignment="Center"/>
+                                                        <TextBlock Text="Please select a valid Dolphin Executable (dolphin.exe) path below to unlock all emulator settings and sync live Dolphin configurations." Foreground="#FFD166" FontWeight="SemiBold" TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                                    </StackPanel>
+                                                </Border>
+
+                                                <TextBlock Text="Dolphin Executable (dolphin.exe)" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                <Grid Margin="0,0,0,14" x:Name="Card_DolphinPath">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="94"/>
                                                     </Grid.ColumnDefinitions>
-                                                    <TextBox x:Name="DolphinPathTextBox" Style="{StaticResource PathTextBox}"/>
+                                                    <TextBox x:Name="DolphinPathTextBox" Style="{StaticResource PathTextBox}" TextChanged="DolphinPathTextBox_OnTextChanged"/>
                                                     <Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Style="{StaticResource ActionButton}" Click="BrowseDolphinButton_OnClick"/>
                                                 </Grid>
-                                                <TextBlock Text="Dolphin User Folder" FontWeight="Bold" Margin="0,0,0,7"/>
-                                                <Grid Margin="0,0,0,14">
+
+                                                <TextBlock Text="Dolphin User Folder" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                <Grid Margin="0,0,0,14" x:Name="Card_UserFolderPath">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="94"/>
@@ -3208,8 +3483,9 @@
                                                     <TextBox x:Name="UserFolderTextBox" Style="{StaticResource PathTextBox}"/>
                                                     <Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Style="{StaticResource ActionButton}" Click="BrowseUserFolderButton_OnClick"/>
                                                 </Grid>
-                                                <TextBlock Text="Mario Kart Wii ROM" FontWeight="Bold" Margin="0,0,0,7"/>
-                                                <Grid>
+
+                                                <TextBlock Text="Mario Kart Wii ISO / ROM Path" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                <Grid Margin="0,0,0,14" x:Name="Card_RomPath">
                                                     <Grid.ColumnDefinitions>
                                                         <ColumnDefinition Width="*"/>
                                                         <ColumnDefinition Width="94"/>
@@ -3217,105 +3493,664 @@
                                                     <TextBox x:Name="RomPathTextBox" Style="{StaticResource PathTextBox}"/>
                                                     <Button Grid.Column="1" Content="Browse" Margin="8,0,0,0" Style="{StaticResource ActionButton}" Click="BrowseRomButton_OnClick"/>
                                                 </Grid>
-                                            </StackPanel>
-                                        </Border>
 
-                                        <Border x:Name="ReleaseChannelSettingsCard" Style="{StaticResource GlassCard}" BorderBrush="#397FB9" Margin="0,0,0,18">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="250"/>
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Margin="0,0,28,0">
-                                                    <TextBlock Text="MODPACK RELEASE CHANNEL" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                    <TextBlock x:Name="ReleaseChannelTitleTextBlock" Text="Stable channel" FontSize="18" FontWeight="Black" Margin="0,10,0,4"/>
-                                                    <TextBlock x:Name="ReleaseChannelDescriptionTextBlock" Text="Recommended builds tested for regular play." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
-                                                    <TextBlock x:Name="InstalledReleaseChannelTextBlock" Text="Installed channel: Stable" Foreground="{StaticResource TextFaint}" FontSize="12" Margin="0,9,0,0"/>
-                                                </StackPanel>
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock Text="Use channel" FontWeight="Bold" Margin="0,0,0,7"/>
-                                                    <ComboBox x:Name="ModReleaseChannelComboBox" Style="{StaticResource CustomComboBox}" Height="42" SelectionChanged="ModReleaseChannelComboBox_OnSelectionChanged">
-                                                        <ComboBoxItem Content="Stable (recommended)" Tag="Stable"/>
-                                                        <ComboBoxItem Content="Beta (experimental)" Tag="Beta"/>
-                                                    </ComboBox>
-                                                    <Button x:Name="ManageBetaTokenButton" Content="🔑 Beta Token" Style="{StaticResource CompactButton}" Margin="0,8,0,0" Visibility="Collapsed" Click="ManageBetaTokenButton_OnClick"/>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-
-                                        <Grid>
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="*"/>
-                                                <ColumnDefinition Width="*"/>
-                                            </Grid.ColumnDefinitions>
-                                            <StackPanel>
-                                                <Border x:Name="LauncherSettingsCard" Style="{StaticResource GlassCard}" Margin="0,0,10,18">
-                                                    <StackPanel>
-                                                        <TextBlock Text="LAUNCHER" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                        <CheckBox x:Name="AutoUpdateCheckBox" Content="Check updates on startup" Margin="0,14,0,12" Checked="AutoUpdateSetting_Changed" Unchecked="AutoUpdateSetting_Changed"/>
-                                                        <CheckBox x:Name="SeparateSaveDefaultCheckBox" Content="Separate savegame by default" Checked="SeparateSaveDefault_Changed" Unchecked="SeparateSaveDefault_Changed"/>
+                                                <UniformGrid Columns="2" Tag="advanced">
+                                                    <StackPanel Margin="0,0,8,0">
+                                                        <Button Content="📁 Open HD Textures Folder" Style="{StaticResource ActionButton}" Click="OpenTexturesFolder_OnClick" Margin="0,4"/>
                                                     </StackPanel>
-                                                </Border>
+                                                    <StackPanel Margin="8,0,0,0">
+                                                        <Button Content="📸 Open Screenshots Folder" Style="{StaticResource ActionButton}" Click="OpenScreenshotsFolder_OnClick" Margin="0,4"/>
+                                                    </StackPanel>
+                                                </UniformGrid>
                                             </StackPanel>
+                                        </Border>
 
-                                            <StackPanel Grid.Column="1">
-                                                <Border x:Name="GameSettingsCard" Style="{StaticResource GlassCard}" Margin="0,0,10,18">
-                                                    <StackPanel>
-                                                        <TextBlock Text="GAME" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                        <Grid Margin="0,14,0,0">
+                                        <!-- 2. VIDEO SECTION -->
+                                        <Border x:Name="VideoSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="VideoSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="📹 VIDEO &amp; GRAPHICS SETTINGS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetVideoSection_OnClick"/>
+                                                </Grid>
+
+                                                <UniformGrid Columns="2" Margin="0,0,0,8">
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_GfxBackend">
+                                                        <TextBlock Text="Graphics Backend" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="GfxBackendComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Select the graphics library used by Dolphin. Vulkan provides optimal stability and speed.">
+                                                            <ComboBoxItem Content="Vulkan (Recommended for VanzaKart) ⭐" Tag="Vulkan"/>
+                                                            <ComboBoxItem Content="Direct3D 11" Tag="D3D11"/>
+                                                            <ComboBoxItem Content="Direct3D 12" Tag="D3D12"/>
+                                                            <ComboBoxItem Content="OpenGL" Tag="OpenGL"/>
+                                                            <ComboBoxItem Content="Software / Null" Tag="Null"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_InternalResolution">
+                                                        <TextBlock Text="Internal Resolution" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="InternalResolutionComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Multiplies internal rendering resolution (1x 720p/480p, 3x 1080p, 4x 1440p 2K, 6x 4K).">
+                                                            <ComboBoxItem Content="0: Native Wii (480p)" Tag="0"/>
+                                                            <ComboBoxItem Content="1: 1x Native (720p/480p)" Tag="1"/>
+                                                            <ComboBoxItem Content="2: 2x Native (720p HD)" Tag="2"/>
+                                                            <ComboBoxItem Content="3: 3x Native (1080p Full HD) ⭐" Tag="3"/>
+                                                            <ComboBoxItem Content="4: 4x Native (1440p 2K QHD) ⭐" Tag="4"/>
+                                                            <ComboBoxItem Content="5: 5x Native (1620p)" Tag="5"/>
+                                                            <ComboBoxItem Content="6: 6x Native (2160p 4K Ultra HD) ⭐" Tag="6"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_AspectRatio">
+                                                        <TextBlock Text="Aspect Ratio" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="AspectRatioComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Display aspect ratio. Force 16:9 is recommended for VanzaKart.">
+                                                            <ComboBoxItem Content="0: Auto-detect" Tag="0"/>
+                                                            <ComboBoxItem Content="1: Force 16:9 (Recommended for VanzaKart) ⭐" Tag="1"/>
+                                                            <ComboBoxItem Content="2: Force 4:3 (Original)" Tag="2"/>
+                                                            <ComboBoxItem Content="3: Stretch to Window" Tag="3"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_Fullscreen">
+                                                        <TextBlock Text="Fullscreen Mode" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="FullscreenCheckBox" Content="Enable Fullscreen on Startup ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Launches game directly in fullscreen mode."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_VSync">
+                                                        <TextBlock Text="Vertical Sync (V-Sync)" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="VSyncCheckBox" Content="Enable V-Sync" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Prevents screen tearing by synchronizing frame rate with display refresh rate."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_RemoveBlur">
+                                                        <TextBlock Text="Remove Blur (Disable Copy Filter)" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="RemoveBlurCheckBox" Content="Disable Copy Filter (Sharper Image) ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Removes the original Wii copy filter for an extremely sharp image."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_ShowFPS">
+                                                        <TextBlock Text="Show FPS" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="ShowFpsCheckBox" Content="Show On-Screen FPS Counter" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Displays real-time frames per second overlay."/>
+                                                    </StackPanel>
+
+                                                    <!-- ADVANCED VIDEO CARDS -->
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_ShaderCompilation" Tag="advanced">
+                                                        <TextBlock Text="Shader Compilation Mode" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="ShaderCompilationComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Hybrid Ubershaders prevents stuttering during first track or effect loads.">
+                                                            <ComboBoxItem Content="0: Synchronous (Standard)" Tag="0"/>
+                                                            <ComboBoxItem Content="1: Asynchronous (Skip Drawing)" Tag="1"/>
+                                                            <ComboBoxItem Content="2: Asynchronous (Hybrid Ubershaders) ⭐" Tag="2"/>
+                                                            <ComboBoxItem Content="3: Synchronous (Specialized Ubershaders)" Tag="3"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_AnisotropicFiltering" Tag="advanced">
+                                                        <TextBlock Text="Anisotropic Filtering (AF)" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="AnisotropicFilteringComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Enhances texture clarity on angled surfaces such as track asphalt.">
+                                                            <ComboBoxItem Content="1x (Disabled)" Tag="0"/>
+                                                            <ComboBoxItem Content="2x" Tag="1"/>
+                                                            <ComboBoxItem Content="4x" Tag="2"/>
+                                                            <ComboBoxItem Content="8x" Tag="3"/>
+                                                            <ComboBoxItem Content="16x (Maximum Quality) ⭐" Tag="4"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_AntiAliasing" Tag="advanced">
+                                                        <TextBlock Text="Anti-Aliasing (AA)" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="AntiAliasingComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Smooths jagged edges on 3D geometry models.">
+                                                            <ComboBoxItem Content="Disabled" Tag="0"/>
+                                                            <ComboBoxItem Content="2x MSAA" Tag="2"/>
+                                                            <ComboBoxItem Content="4x MSAA" Tag="4"/>
+                                                            <ComboBoxItem Content="8x MSAA" Tag="8"/>
+                                                            <ComboBoxItem Content="SSAA (Super Sampling)" Tag="16"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_WidescreenHack" Tag="advanced">
+                                                        <TextBlock Text="Widescreen Hack" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="WidescreenHackCheckBox" Content="Force Widescreen Rendering" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Forces Dolphin to render a wider 16:9 viewport."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_TextureCache" Tag="advanced">
+                                                        <TextBlock Text="Texture Cache Accuracy" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="TextureCacheComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Accuracy level for Dolphin texture cache.">
+                                                            <ComboBoxItem Content="Safe (Recommended for stability) ⭐" Tag="0"/>
+                                                            <ComboBoxItem Content="Medium" Tag="1"/>
+                                                            <ComboBoxItem Content="Fast (Maximum performance)" Tag="2"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 3. AUDIO SECTION -->
+                                        <Border x:Name="AudioSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="AudioSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="🔊 AUDIO SETTINGS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetAudioSection_OnClick"/>
+                                                </Grid>
+
+                                                <UniformGrid Columns="2">
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_AudioVolume">
+                                                        <Grid Margin="0,0,0,6">
+                                                            <TextBlock Text="Master Volume" FontWeight="Bold"/>
+                                                            <TextBox x:Name="AudioVolumeTextBox" Text="100" Width="60" Height="26" Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right" TextChanged="AudioVolumeTextBox_TextChanged"/>
+                                                        </Grid>
+                                                        <Slider x:Name="AudioVolumeSlider" Style="{StaticResource ModernSlider}" Minimum="0" Maximum="100" Value="100" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="AudioVolumeSlider_OnValueChanged" ToolTip="Adjust Dolphin master volume."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_AudioBackend">
+                                                        <TextBlock Text="Audio Backend" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="AudioBackendComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Audio output backend driver. Cubeb is recommended.">
+                                                            <ComboBoxItem Content="Cubeb (Recommended modern driver) ⭐" Tag="Cubeb"/>
+                                                            <ComboBoxItem Content="WASAPI (Windows Audio)" Tag="WASAPI"/>
+                                                            <ComboBoxItem Content="XAudio2" Tag="XAudio2"/>
+                                                            <ComboBoxItem Content="OpenAL" Tag="OpenAL"/>
+                                                            <ComboBoxItem Content="Null (No Audio)" Tag="Null"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_AudioStretching">
+                                                        <TextBlock Text="Audio Stretching" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="AudioStretchingCheckBox" Content="Enable Audio Stretching (Prevents crackling)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Stretches audio playback speed dynamically to prevent crackling during frame drops."/>
+                                                    </StackPanel>
+
+                                                    <!-- ADVANCED AUDIO CARDS -->
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_DspLle" Tag="advanced">
+                                                        <TextBlock Text="DSP Emulation Engine" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="DspLleCheckBox" Content="Enable DSP LLE (Low Level Emulation)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="DSP HLE (default) is fast and optimized. DSP LLE emulates exact hardware but uses more CPU."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_AudioLatency" Tag="advanced">
+                                                        <Grid Margin="0,0,0,6">
+                                                            <TextBlock Text="Audio Latency / Buffer Size" FontWeight="Bold"/>
+                                                            <TextBox x:Name="AudioLatencyTextBox" Text="20" Width="60" Height="26" Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right" TextChanged="AudioLatencyTextBox_TextChanged"/>
+                                                        </Grid>
+                                                        <Slider x:Name="AudioLatencySlider" Style="{StaticResource ModernSlider}" Minimum="10" Maximum="100" Value="20" TickFrequency="5" IsSnapToTickEnabled="True" ValueChanged="AudioLatencySlider_OnValueChanged" ToolTip="Sets audio output buffer latency in milliseconds."/>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 4. CONTROLLER SECTION (FULL DOLPHIN CONFIG & PROFILES) -->
+                                        <Border x:Name="ControllerSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="ControllerSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="🎮 DOLPHIN CONTROLLER MAPPING &amp; PROFILES" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                                        <Button Content="💾 Save Controller Config" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,0" Click="SaveControllerConfig_OnClick"/>
+                                                        <Button Content="Reset Section" Style="{StaticResource CompactButton}" Click="ResetControllerSection_OnClick"/>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Active Controller Status Indicator Banner -->
+                                                <Border Background="#111A2E" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12,10" Margin="0,0,0,14">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <TextBlock x:Name="ControllerStatusBannerText" Text="🟢 Connected Controller: Detecting..." FontWeight="SemiBold" VerticalAlignment="Center"/>
+                                                        <Button Grid.Column="1" Content="🔄 Refresh Devices" Style="{StaticResource ActionButton}" Height="30" Padding="10,0" Click="RefreshControllerDevices_Click"/>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- Controller Mode Switcher: Simple MKWii vs Advanced Dolphin -->
+                                                <Grid Margin="0,0,0,14">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="Auto"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Orientation="Horizontal">
+                                                        <Button x:Name="SimpleControllerModeBtn" Content="🎮 Simple Mode (Mario Kart Wii) ⭐" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,6,0" Click="ControllerModeBtn_Click"/>
+                                                        <Button x:Name="AdvancedControllerModeBtn" Content="⚙️ Advanced Dolphin Mode" Style="{StaticResource CompactButton}" Click="ControllerModeBtn_Click"/>
+                                                    </StackPanel>
+
+                                                    <!-- Extension Dropdown for Wiimote -->
+                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" x:Name="Card_WiimoteExtension">
+                                                        <TextBlock Text="Wiimote Extension:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                        <ComboBox x:Name="WiimoteExtensionComboBox" Style="{StaticResource CustomComboBox}" Width="160" Height="36" SelectionChanged="WiimoteExtension_SelectionChanged">
+                                                            <ComboBoxItem Content="Nunchuk ⭐" Tag="Nunchuk"/>
+                                                            <ComboBoxItem Content="Classic Controller" Tag="Classic"/>
+                                                            <ComboBoxItem Content="None (Wheel Horizontal)" Tag="None"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+                                                </Grid>
+
+                                                <!-- Port Type Selector (GameCube Port 1-4 & Wiimote 1-2) -->
+                                                <ScrollViewer HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled" Margin="0,0,0,14">
+                                                    <StackPanel Orientation="Horizontal" x:Name="ControllerPortTabsStackPanel">
+                                                        <Button x:Name="GcPort1TabBtn" Content="GameCube Port 1 ⭐" Tag="GC1" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                        <Button x:Name="GcPort2TabBtn" Content="GameCube Port 2" Tag="GC2" Style="{StaticResource CompactButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                        <Button x:Name="GcPort3TabBtn" Content="GameCube Port 3" Tag="GC3" Style="{StaticResource CompactButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                        <Button x:Name="GcPort4TabBtn" Content="GameCube Port 4" Tag="GC4" Style="{StaticResource CompactButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                        <Button x:Name="WiiPort1TabBtn" Content="Wiimote 1" Tag="WII1" Style="{StaticResource CompactButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                        <Button x:Name="WiiPort2TabBtn" Content="Wiimote 2" Tag="WII2" Style="{StaticResource CompactButton}" Margin="0,0,6,0" Click="ControllerPortTab_Click"/>
+                                                    </StackPanel>
+                                                </ScrollViewer>
+
+                                                <!-- Device & Profile Toolbar -->
+                                                <Border Background="#141C2B" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,14">
+                                                    <Grid>
+                                                        <Grid.RowDefinitions>
+                                                            <RowDefinition Height="Auto"/>
+                                                            <RowDefinition Height="Auto"/>
+                                                        </Grid.RowDefinitions>
+                                                        <!-- Device Dropdown -->
+                                                        <StackPanel Grid.Row="0" Margin="0,0,0,12">
+                                                            <TextBlock Text="Input Device (Keyboard or Gamepad)" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                            <ComboBox x:Name="ControllerDeviceComboBox" Style="{StaticResource CustomComboBox}" Height="38" SelectionChanged="ControllerControl_Changed">
+                                                                <ComboBoxItem Content="Keyboard / Mouse" Tag="Keyboard/0/Keyboard Mouse"/>
+                                                                <ComboBoxItem Content="XInput Gamepad" Tag="SDL/0/XInput Controller"/>
+                                                                <ComboBoxItem Content="DualSense PlayStation Controller" Tag="SDL/0/DualSense Wireless Controller"/>
+                                                            </ComboBox>
+                                                        </StackPanel>
+
+                                                        <!-- Profile Management Bar -->
+                                                        <Grid Grid.Row="1" Grid.ColumnSpan="2" Margin="0,4,0,0">
                                                             <Grid.ColumnDefinitions>
                                                                 <ColumnDefinition Width="*"/>
-                                                                <ColumnDefinition Width="*"/>
+                                                                <ColumnDefinition Width="Auto"/>
                                                             </Grid.ColumnDefinitions>
-                                                            <StackPanel Margin="0,0,10,0">
-                                                                <TextBlock Text="Textures (my stuff)" FontWeight="Bold" Margin="0,0,0,12"/>
-                                                                <CheckBox x:Name="GraphicsTexturesCheckBox" Content="Enabled" Checked="GraphicsTextures_Changed" Unchecked="GraphicsTextures_Changed"/>
+                                                            <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                                                <TextBlock Text="Dolphin Profile:" FontWeight="Bold" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                                <ComboBox x:Name="ControllerProfileComboBox" Style="{StaticResource CustomComboBox}" Width="180" Height="36"/>
                                                             </StackPanel>
-                                                            <StackPanel Grid.Column="1" Margin="10,0,0,0">
-                                                                <TextBlock Text="Launch save" FontWeight="Bold" Margin="0,0,0,12"/>
-                                                                <CheckBox x:Name="SeparateSaveCheckBox" Content="Separate savegame" Checked="SeparateSave_Changed" Unchecked="SeparateSave_Changed"/>
+
+                                                            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                                                                <Button Content="Load Profile" Style="{StaticResource CompactPrimaryButton}" Margin="4,0" Height="36" Click="LoadProfileButton_Click"/>
+                                                                <Button Content="Save Profile" Style="{StaticResource CompactButton}" Margin="4,0" Height="36" Click="SaveProfileButton_Click"/>
+                                                                <Button Content="Delete Profile" Style="{StaticResource CompactButton}" Foreground="{StaticResource DangerBrush}" Margin="4,0" Height="36" Click="DeleteProfileButton_Click"/>
                                                             </StackPanel>
                                                         </Grid>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- SIMPLE MARIO KART WII CONTROLS GRID -->
+                                                <Border x:Name="SimpleControllerGrid" Background="#101726" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,14" Visibility="Visible">
+                                                    <StackPanel>
+                                                        <TextBlock Text="🏎️ MARIO KART WII ESSENTIAL CONTROLS (Click any field to rebind!)" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,12"/>
+
+                                                        <!-- Action Buttons -->
+                                                        <TextBlock Text="🎯 ACTION BUTTONS" FontWeight="Bold" Foreground="#7DF9FF" FontSize="12" Margin="0,0,0,6"/>
+                                                        <UniformGrid Columns="2" Margin="0,0,0,12">
+                                                            <Grid Margin="6,4"><TextBlock Text="🏎️ Accelerate" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Accelerate" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="🛑 Brake / Reverse" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Brake" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="💨 Drift / Hop" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Drift" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="🍌 Use Item" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Item" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="👀 Rear View" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_LookBack" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="🚀 Trick / Wheelie" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Trick" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="6,4"><TextBlock Text="⏸️ Pause Game" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_Pause" Style="{StaticResource BindingTextBox}" Width="140" Height="32" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </UniformGrid>
+
+                                                        <!-- Analog Stick -->
+                                                        <TextBlock Text="🕹️ ANALOG STICK — Steering &amp; Menu Navigation" FontWeight="Bold" Foreground="#7DF9FF" FontSize="12" Margin="0,0,0,6"/>
+                                                        <UniformGrid Columns="4" Margin="0,0,0,12">
+                                                            <Grid Margin="4,3"><TextBlock Text="⬆️ Up" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_StickUp" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="⬇️ Down" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_StickDown" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="⬅️ Left" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_StickLeft" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="➡️ Right" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_StickRight" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </UniformGrid>
+
+                                                        <!-- D-Pad -->
+                                                        <TextBlock Text="✛ D-PAD — Tricks (GC), Wheelie Up/Down, Menu Select" FontWeight="Bold" Foreground="#7DF9FF" FontSize="12" Margin="0,0,0,6"/>
+                                                        <UniformGrid Columns="4" Margin="0,0,0,4">
+                                                            <Grid Margin="4,3"><TextBlock Text="⬆️ Up" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_DPadUp" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="⬇️ Down" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_DPadDown" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="⬅️ Left" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_DPadLeft" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="4,3"><TextBlock Text="➡️ Right" VerticalAlignment="Center" FontWeight="SemiBold"/><TextBox x:Name="SimpleBind_DPadRight" Style="{StaticResource BindingTextBox}" Width="100" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </UniformGrid>
                                                     </StackPanel>
                                                 </Border>
-                                            </StackPanel>
-                                        </Grid>
 
-                                        <Border x:Name="AdvancedDeveloperSettingsCard"
-                                                Style="{StaticResource GlassCard}"
-                                                BorderBrush="#6EFF6B82"
-                                                Margin="0,0,0,18">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="*"/>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                </Grid.ColumnDefinitions>
-                                                <StackPanel Margin="0,0,28,0">
-                                                    <StackPanel Orientation="Horizontal">
-                                                        <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="15"
-                                                                   Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" Margin="0,0,9,0"/>
-                                                        <TextBlock Text="ADVANCED / DEVELOPER"
-                                                                   FontSize="12" FontWeight="Bold"
-                                                                   Foreground="{StaticResource DangerBrush}"/>
+                                                <!-- ADVANCED KEYBINDING REMAPPING MATRIX GRID -->
+                                                <UniformGrid Columns="3" Margin="0,0,0,14" x:Name="KeybindingGrid" Visibility="Collapsed">
+                                                    <!-- Buttons Group -->
+                                                    <Border Background="#101726" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                        <StackPanel x:Name="Group_Buttons">
+                                                            <TextBlock Text="BUTTONS" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                            <Grid Margin="0,3"><TextBlock Text="Button A" VerticalAlignment="Center"/><TextBox x:Name="Bind_A" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Button B" VerticalAlignment="Center"/><TextBox x:Name="Bind_B" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Button X" VerticalAlignment="Center"/><TextBox x:Name="Bind_X" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Button Y" VerticalAlignment="Center"/><TextBox x:Name="Bind_Y" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Button Z" VerticalAlignment="Center"/><TextBox x:Name="Bind_Z" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Start / Pause" VerticalAlignment="Center"/><TextBox x:Name="Bind_Start" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </StackPanel>
+                                                    </Border>
+
+                                                    <!-- Main Stick Group -->
+                                                    <Border Background="#101726" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                        <StackPanel x:Name="Group_MainStick">
+                                                            <TextBlock Text="MAIN STICK" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                            <Grid Margin="0,3"><TextBlock Text="Up" VerticalAlignment="Center"/><TextBox x:Name="Bind_MainUp" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Down" VerticalAlignment="Center"/><TextBox x:Name="Bind_MainDown" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Left" VerticalAlignment="Center"/><TextBox x:Name="Bind_MainLeft" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Right" VerticalAlignment="Center"/><TextBox x:Name="Bind_MainRight" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </StackPanel>
+                                                    </Border>
+
+                                                    <!-- C-Stick / Triggers Group -->
+                                                    <Border Background="#101726" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                        <StackPanel x:Name="Group_Secondary">
+                                                            <TextBlock Text="C-STICK &amp; TRIGGERS" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                            <Grid Margin="0,3"><TextBlock Text="C-Stick Up" VerticalAlignment="Center"/><TextBox x:Name="Bind_CUp" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="C-Stick Down" VerticalAlignment="Center"/><TextBox x:Name="Bind_CDown" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Trigger L" VerticalAlignment="Center"/><TextBox x:Name="Bind_L" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                            <Grid Margin="0,3"><TextBlock Text="Trigger R" VerticalAlignment="Center"/><TextBox x:Name="Bind_R" Style="{StaticResource BindingTextBox}" Width="120" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                        </StackPanel>
+                                                    </Border>
+                                                </UniformGrid>
+
+                                                <!-- NUNCHUK & MOTION CONTROLS GRID (For Wiimotes) -->
+                                                <Border x:Name="NunchukMotionGrid" Background="#101726" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="10" Padding="14" Margin="0,0,0,14" Visibility="Collapsed">
+                                                    <StackPanel>
+                                                        <TextBlock Text="🌀 NUNCHUK, MOTION SHAKE &amp; TILT CONTROLS" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,12"/>
+                                                        <UniformGrid Columns="3">
+                                                            <!-- Nunchuk Stick & Buttons -->
+                                                            <Border Background="#141C2B" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="🕹️ NUNCHUK STICK &amp; BUTTONS" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Stick Up" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukUp" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Stick Down" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukDown" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Stick Left" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukLeft" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Stick Right" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukRight" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Button C" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukC" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Button Z" VerticalAlignment="Center"/><TextBox x:Name="Bind_NunchukZ" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <!-- Motion Shake -->
+                                                            <Border Background="#141C2B" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="👋 MOTION SHAKE (Tricks &amp; Wheelies)" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Shake X (Horizontal)" VerticalAlignment="Center"/><TextBox x:Name="Bind_ShakeX" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Shake Y (Vertical)" VerticalAlignment="Center"/><TextBox x:Name="Bind_ShakeY" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Shake Z (Forward)" VerticalAlignment="Center"/><TextBox x:Name="Bind_ShakeZ" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                </StackPanel>
+                                                            </Border>
+
+                                                            <!-- Tilt Controls -->
+                                                            <Border Background="#141C2B" BorderBrush="{StaticResource StrokeBrush}" BorderThickness="1" CornerRadius="8" Padding="12" Margin="4">
+                                                                <StackPanel>
+                                                                    <TextBlock Text="📐 TILT CONTROLS (Wii Wheel Steering)" FontWeight="Bold" Foreground="#00F2FF" Margin="0,0,0,8"/>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Tilt Left" VerticalAlignment="Center"/><TextBox x:Name="Bind_TiltLeft" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Tilt Right" VerticalAlignment="Center"/><TextBox x:Name="Bind_TiltRight" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Tilt Forward" VerticalAlignment="Center"/><TextBox x:Name="Bind_TiltForward" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                    <Grid Margin="0,3"><TextBlock Text="Tilt Backward" VerticalAlignment="Center"/><TextBox x:Name="Bind_TiltBackward" Style="{StaticResource BindingTextBox}" Width="130" Height="30" HorizontalAlignment="Right" PreviewMouseDown="BindingField_PreviewMouseDown" IsReadOnly="True" Cursor="Hand" ToolTip="Click to rebind" TextChanged="ControllerControl_Changed"/></Grid>
+                                                                </StackPanel>
+                                                            </Border>
+                                                        </UniformGrid>
                                                     </StackPanel>
-                                                    <TextBlock Text="Reset the VanzaKart in-game configuration"
-                                                               FontSize="15" FontWeight="Bold" Margin="0,13,0,5"/>
-                                                    <TextBlock Text="Advanced troubleshooting only. This can help when the game crashes during startup, but it permanently removes all saved in-game settings."
-                                                               Foreground="{StaticResource TextSecondary}" FontSize="12.5"
-                                                               TextWrapping="Wrap" MaxWidth="720" HorizontalAlignment="Left"/>
-                                                    <TextBlock Text="Wii\shared2\Pulsar\VanzaKart\Settings.pul"
-                                                               Foreground="{StaticResource TextFaint}" FontFamily="Consolas"
-                                                               FontSize="11.5" Margin="0,9,0,0"/>
+                                                </Border>
+
+                                                <UniformGrid Columns="3">
+                                                    <StackPanel Margin="0,0,8,0" x:Name="Card_AnalogSensitivity" Tag="advanced">
+                                                        <Grid Margin="0,0,0,6">
+                                                            <TextBlock Text="Analog Sensitivity" FontWeight="Bold"/>
+                                                            <TextBox x:Name="AnalogSensitivityTextBox" Text="100" Width="60" Height="26" Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right" TextChanged="AnalogSensitivityTextBox_TextChanged"/>
+                                                        </Grid>
+                                                        <Slider x:Name="AnalogSensitivitySlider" Style="{StaticResource ModernSlider}" Minimum="50" Maximum="150" Value="100" ValueChanged="AnalogSensitivitySlider_OnValueChanged"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="4,0" x:Name="Card_AnalogDeadzone" Tag="advanced">
+                                                        <Grid Margin="0,0,0,6">
+                                                            <TextBlock Text="Analog Deadzone" FontWeight="Bold"/>
+                                                            <TextBox x:Name="AnalogDeadzoneTextBox" Text="10" Width="60" Height="26" Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right" TextChanged="AnalogDeadzoneTextBox_TextChanged"/>
+                                                        </Grid>
+                                                        <Slider x:Name="AnalogDeadzoneSlider" Style="{StaticResource ModernSlider}" Minimum="0" Maximum="50" Value="10" ValueChanged="AnalogDeadzoneSlider_OnValueChanged"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="8,0,0,0" x:Name="Card_Vibration">
+                                                        <TextBlock Text="Vibration Motor" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="VibrationCheckBox" Content="Enable Controller Vibration (Rumble)" Checked="ControllerControl_Changed" Unchecked="ControllerControl_Changed"/>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 5. WII SECTION -->
+                                        <Border x:Name="WiiSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="WiiSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="🌀 WII &amp; SYSTEM SETTINGS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetWiiSection_OnClick"/>
+                                                </Grid>
+
+                                                <UniformGrid Columns="2">
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_WiiLanguage">
+                                                        <TextBlock Text="Wii Console Language" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="WiiLanguageComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Sets internal Wii console system language.">
+                                                            <ComboBoxItem Content="English (Recommended for Mario Kart Wii) ⭐" Tag="1"/>
+                                                            <ComboBoxItem Content="Italian" Tag="5"/>
+                                                            <ComboBoxItem Content="German" Tag="2"/>
+                                                            <ComboBoxItem Content="French" Tag="3"/>
+                                                            <ComboBoxItem Content="Spanish" Tag="4"/>
+                                                            <ComboBoxItem Content="Dutch" Tag="6"/>
+                                                            <ComboBoxItem Content="Traditional Chinese" Tag="7"/>
+                                                            <ComboBoxItem Content="Simplified Chinese" Tag="8"/>
+                                                            <ComboBoxItem Content="Korean" Tag="9"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_WiiRegion">
+                                                        <TextBlock Text="Wii Console Region" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="WiiRegionComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Wii console hardware region. PAL/EUR is standard for European discs/ISOs.">
+                                                            <ComboBoxItem Content="PAL / Europe ⭐" Tag="2"/>
+                                                            <ComboBoxItem Content="NTSC-U / USA" Tag="1"/>
+                                                            <ComboBoxItem Content="NTSC-J / Japan" Tag="0"/>
+                                                            <ComboBoxItem Content="NTSC-K / Korea" Tag="3"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_EnableSdCard">
+                                                        <TextBlock Text="Virtual SD Card (1GB)" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="EnableSdCardCheckBox" Content="Enable Virtual SD Card (Required for CTGP &amp; Mods)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Enables emulated SD card needed for custom track pack saving."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_ForceDisableWiimote">
+                                                        <TextBlock Text="Disable Wiimote Speaker" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="ForceDisableWiimoteCheckBox" Content="Disable Wiimote Speaker Audio" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Disables real/emulated Wiimote speaker sound to prevent stuttering."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_RetroRewind">
+                                                        <TextBlock Text="Retro Rewind Support" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="RetroRewindCheckBox" Content="Enable Retro Rewind Compatibility" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Configures Dolphin settings for Retro Rewind custom pack."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_EnableCheats" Tag="advanced">
+                                                        <TextBlock Text="Cheats &amp; Gecko Codes" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="EnableCheatsCheckBox" Content="Enable Cheats / Gecko Codes" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Allows Gecko codes and cheat engines to execute."/>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 6. PERFORMANCE SECTION -->
+                                        <Border x:Name="PerformanceSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="PerformanceSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="⚡ PERFORMANCE &amp; CPU EMULATION" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetPerformanceSection_OnClick"/>
+                                                </Grid>
+
+                                                <UniformGrid Columns="2">
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_PerformancePreset">
+                                                        <TextBlock Text="Quick Performance Preset" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="PerformancePresetComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="PerformancePreset_OnSelectionChanged">
+                                                            <ComboBoxItem Content="VanzaKart Optimized ⭐" Tag="VanzaKart Recommended"/>
+                                                            <ComboBoxItem Content="Balanced" Tag="Balanced"/>
+                                                            <ComboBoxItem Content="High Performance" Tag="High-Performance"/>
+                                                            <ComboBoxItem Content="Low-End PC" Tag="Low-End"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_DualCore">
+                                                        <TextBlock Text="Dual Core (CPU Threading)" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="DualCoreCheckBox" Content="Enable Dual Core (Recommended)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Separates CPU and GPU emulation across dedicated processor cores."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_SkipIdle">
+                                                        <TextBlock Text="Skip Idle CPU Loops" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="SkipIdleCheckBox" Content="Skip Idle CPU Loops" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Boosts performance by skipping emulated CPU idle loops."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_FastDiscSpeed">
+                                                        <TextBlock Text="Fast Disc Speed Loading" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="FastDiscSpeedCheckBox" Content="Fast Disc Speed Loading ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Dramatically speeds up track and menu loading times."/>
+                                                    </StackPanel>
+
+                                                    <!-- ADVANCED PERFORMANCE CARDS -->
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_CpuOverride" Tag="advanced">
+                                                        <TextBlock Text="CPU Clock Override" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="CpuOverrideCheckBox" Content="Enable CPU Overclock / Underclock" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed"/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_CpuClockRatio" Tag="advanced">
+                                                        <Grid Margin="0,0,0,6">
+                                                            <TextBlock Text="CPU Clock Multiplier Ratio" FontWeight="Bold"/>
+                                                            <TextBox x:Name="CpuClockRatioTextBox" Text="100%" Width="60" Height="26" Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right" TextChanged="CpuClockRatioTextBox_TextChanged"/>
+                                                        </Grid>
+                                                        <Slider x:Name="CpuClockRatioSlider" Style="{StaticResource ModernSlider}" Minimum="0.5" Maximum="3.0" Value="1.0" TickFrequency="0.1" IsSnapToTickEnabled="True" ValueChanged="CpuClockRatioSlider_OnValueChanged"/>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <Border x:Name="EnhancementsSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="EnhancementsSectionStackPanel">
+                                                <Grid Margin="0,0,0,14">
+                                                    <TextBlock Text="🎨 GRAPHICS ENHANCEMENTS &amp; TEXTURE PACKS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetEnhancementsSection_OnClick"/>
+                                                </Grid>
+
+                                                <UniformGrid Columns="2">
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_LoadCustomTextures">
+                                                        <TextBlock Text="Custom Texture Packs" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="LoadCustomTexturesCheckBox" Content="Load Custom HD Textures ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Enables loading high-definition custom texture packs for VanzaKart."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_PrefetchCustomTextures" Tag="advanced">
+                                                        <TextBlock Text="RAM Texture Prefetch" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="PrefetchCustomTexturesCheckBox" Content="Prefetch All Textures into System RAM" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Eliminates in-game micro-stutters by loading entire texture pack into RAM."/>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_PostProcessingShader" Tag="advanced">
+                                                        <TextBlock Text="Post-Processing Shader" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="PostProcessingShaderComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed">
+                                                            <ComboBoxItem Content="Disabled" Tag="Off"/>
+                                                            <ComboBoxItem Content="FXAA (Fast Anti-Aliasing)" Tag="fxaa"/>
+                                                            <ComboBoxItem Content="Bloom Shader" Tag="bloom"/>
+                                                            <ComboBoxItem Content="CRT Scanlines" Tag="crt"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+                                                </UniformGrid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 8. LAUNCHER & MODPACK SECTION -->
+                                        <Border x:Name="LauncherSectionCard" Visibility="Collapsed">
+                                            <StackPanel>
+                                                <!-- RELEASE CHANNEL CARD -->
+                                                <Border x:Name="ReleaseChannelSettingsCard" Style="{StaticResource GlassCard}" BorderBrush="#397FB9" Margin="0,0,0,18">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="250"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel Margin="0,0,28,0">
+                                                            <TextBlock Text="MODPACK RELEASE CHANNEL" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                            <TextBlock x:Name="ReleaseChannelTitleTextBlock" Text="Stable channel" FontSize="18" FontWeight="Black" Margin="0,10,0,4"/>
+                                                            <TextBlock x:Name="ReleaseChannelDescriptionTextBlock" Text="Recommended builds tested for regular play." Foreground="{StaticResource TextSecondary}" TextWrapping="Wrap"/>
+                                                            <TextBlock x:Name="InstalledReleaseChannelTextBlock" Text="Installed channel: Stable" Foreground="{StaticResource TextFaint}" FontSize="12" Margin="0,9,0,0"/>
+                                                        </StackPanel>
+                                                        <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                                            <TextBlock Text="Use channel" FontWeight="Bold" Margin="0,0,0,7"/>
+                                                            <ComboBox x:Name="ModReleaseChannelComboBox" Style="{StaticResource CustomComboBox}" Height="42" SelectionChanged="ModReleaseChannelComboBox_OnSelectionChanged">
+                                                                <ComboBoxItem Content="Stable (recommended)" Tag="Stable"/>
+                                                                <ComboBoxItem Content="Beta (experimental)" Tag="Beta"/>
+                                                            </ComboBox>
+                                                            <Button x:Name="ManageBetaTokenButton" Content="🔑 Beta Token" Style="{StaticResource CompactButton}" Margin="0,8,0,0" Visibility="Collapsed" Click="ManageBetaTokenButton_OnClick"/>
+                                                        </StackPanel>
+                                                    </Grid>
+                                                </Border>
+
+                                                <!-- LAUNCHER & GAME PREFERENCES CARDS -->
+                                                <Grid Margin="0,0,0,18">
+                                                    <Grid.ColumnDefinitions>
+                                                        <ColumnDefinition Width="*"/>
+                                                        <ColumnDefinition Width="*"/>
+                                                    </Grid.ColumnDefinitions>
+                                                    <StackPanel Margin="0,0,9,0">
+                                                        <Border x:Name="LauncherSettingsCard" Style="{StaticResource GlassCard}">
+                                                            <StackPanel>
+                                                                <TextBlock Text="LAUNCHER OPTIONS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                                <CheckBox x:Name="AutoUpdateCheckBox" Content="Check updates on startup" Margin="0,14,0,12" Checked="AutoUpdateSetting_Changed" Unchecked="AutoUpdateSetting_Changed"/>
+                                                                <CheckBox x:Name="SeparateSaveDefaultCheckBox" Content="Separate savegame by default" Checked="SeparateSaveDefault_Changed" Unchecked="SeparateSaveDefault_Changed"/>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+
+                                                    <StackPanel Grid.Column="1" Margin="9,0,0,0">
+                                                        <Border x:Name="GameSettingsCard" Style="{StaticResource GlassCard}">
+                                                            <StackPanel>
+                                                                <TextBlock Text="GAME OPTIONS" FontSize="12" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                                <Grid Margin="0,14,0,0">
+                                                                    <Grid.ColumnDefinitions>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                        <ColumnDefinition Width="*"/>
+                                                                    </Grid.ColumnDefinitions>
+                                                                    <StackPanel Margin="0,0,10,0">
+                                                                        <TextBlock Text="Textures (my stuff)" FontWeight="Bold" Margin="0,0,0,12"/>
+                                                                        <CheckBox x:Name="GraphicsTexturesCheckBox" Content="Enabled" Checked="GraphicsTextures_Changed" Unchecked="GraphicsTextures_Changed"/>
+                                                                    </StackPanel>
+                                                                    <StackPanel Grid.Column="1" Margin="10,0,0,0">
+                                                                        <TextBlock Text="Launch save" FontWeight="Bold" Margin="0,0,0,12"/>
+                                                                        <CheckBox x:Name="SeparateSaveCheckBox" Content="Separate savegame" Checked="SeparateSave_Changed" Unchecked="SeparateSave_Changed"/>
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </StackPanel>
+                                                        </Border>
+                                                    </StackPanel>
+                                                </Grid>
+                                            </StackPanel>
+                                        </Border>
+
+                                        <!-- 9. ADVANCED / DEVELOPER SECTION -->
+                                        <Border x:Name="AdvancedSectionCard" Style="{StaticResource GlassCard}" BorderBrush="#6EFF6B82" Margin="0,0,0,18" Visibility="Collapsed">
+                                            <StackPanel x:Name="AdvancedSectionStackPanel">
+                                                <StackPanel Orientation="Horizontal" Margin="0,0,0,14">
+                                                    <TextBlock Text="&#xE7BA;" FontFamily="Segoe MDL2 Assets" FontSize="16" Foreground="{StaticResource DangerBrush}" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                                                    <TextBlock Text="🛠️ ADVANCED / DEVELOPER TOOLS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource DangerBrush}"/>
                                                 </StackPanel>
-                                                <Button Grid.Column="1"
-                                                        Content="Delete Settings.pul"
-                                                        Style="{StaticResource ActionButton}"
-                                                        Foreground="{StaticResource DangerBrush}"
-                                                        BorderBrush="#88FF6B82"
-                                                        VerticalAlignment="Center"
-                                                        Click="DeleteGameSettingsFileButton_OnClick"
-                                                        ToolTip="Permanently delete the VanzaKart in-game settings file"/>
-                                            </Grid>
+
+                                                <UniformGrid Columns="2" Margin="0,0,0,14">
+                                                    <StackPanel Margin="0,0,12,0" x:Name="Card_LogLevel">
+                                                        <TextBlock Text="Log Verbosity Level" FontWeight="Bold" Margin="0,0,0,6"/>
+                                                        <ComboBox x:Name="LogLevelComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed">
+                                                            <ComboBoxItem Content="Notice (Standard)" Tag="Notice"/>
+                                                            <ComboBoxItem Content="Error" Tag="Error"/>
+                                                            <ComboBoxItem Content="Warning" Tag="Warning"/>
+                                                            <ComboBoxItem Content="Info" Tag="Info"/>
+                                                            <ComboBoxItem Content="Debug" Tag="Debug"/>
+                                                        </ComboBox>
+                                                    </StackPanel>
+
+                                                    <StackPanel Margin="12,0,0,0" x:Name="Card_PortableMode">
+                                                        <TextBlock Text="Portable Mode (portable.txt)" FontWeight="Bold" Margin="0,0,0,8"/>
+                                                        <CheckBox x:Name="PortableModeCheckBox" Content="Force Portable Mode in Dolphin Directory" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Creates or removes portable.txt to store configurations inside executable directory."/>
+                                                    </StackPanel>
+                                                </UniformGrid>
+
+                                                <Border Background="#1A1826" CornerRadius="8" Padding="14" Margin="0,6,0,0">
+                                                    <Grid>
+                                                        <Grid.ColumnDefinitions>
+                                                            <ColumnDefinition Width="*"/>
+                                                            <ColumnDefinition Width="Auto"/>
+                                                        </Grid.ColumnDefinitions>
+                                                        <StackPanel>
+                                                            <TextBlock Text="Re-initialize In-Game VanzaKart Settings File (Settings.pul)" FontWeight="Bold" FontSize="13"/>
+                                                            <TextBlock Text="Use only if experiencing startup crashes. Permanently resets in-game saved configuration." Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,4,0,0"/>
+                                                        </StackPanel>
+                                                        <Button Grid.Column="1" Content="Delete Settings.pul" Style="{StaticResource ActionButton}" Foreground="{StaticResource DangerBrush}" BorderBrush="#88FF6B82" VerticalAlignment="Center" Click="DeleteGameSettingsFileButton_OnClick"/>
+                                                    </Grid>
+                                                </Border>
+                                            </StackPanel>
                                         </Border>
                                     </StackPanel>
                                 </Grid>

@@ -114,6 +114,7 @@ public partial class MainWindow : Window
     private TimeSpan _lastDownloadSampleTime;
     private double _smoothedDownloadBytesPerSecond;
     private int _releaseChannelRevision;
+    private readonly DolphinSettingsManager _dolphinSettingsManager = new();
 
     public MainWindow()
     {
@@ -418,29 +419,40 @@ public partial class MainWindow : Window
 
     private void LoadSettingsIntoUi()
     {
-        var settings = _settingsService.Load();
-        if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
+        _isUpdatingDolphinUi = true;
+        try
         {
-            var detectedUserFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
-            if (!string.IsNullOrWhiteSpace(detectedUserFolder))
+            var settings = _settingsService.Load();
+            if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
             {
-                settings.UserFolderPath = detectedUserFolder;
-                _settingsService.Save(settings);
+                var detectedUserFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+                if (!string.IsNullOrWhiteSpace(detectedUserFolder))
+                {
+                    settings.UserFolderPath = detectedUserFolder;
+                    _settingsService.Save(settings);
+                }
             }
+
+            DolphinPathTextBox.Text = settings.DolphinPath;
+            UserFolderTextBox.Text = settings.UserFolderPath;
+            RomPathTextBox.Text = settings.RomPath;
+
+            AutoUpdateCheckBox.IsChecked = _userPreferences.AutoCheckUpdates;
+            SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
+            SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
+            GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 2;
+            _isLoadingReleaseChannel = true;
+            ModReleaseChannelComboBox.SelectedIndex = SelectedModReleaseChannel == ModReleaseChannel.Beta ? 1 : 0;
+            _isLoadingReleaseChannel = false;
+            RefreshReleaseChannelUi();
+
+            LoadDolphinSettingsIntoUi();
         }
-
-        DolphinPathTextBox.Text = settings.DolphinPath;
-        UserFolderTextBox.Text = settings.UserFolderPath;
-        RomPathTextBox.Text = settings.RomPath;
-
-        AutoUpdateCheckBox.IsChecked = _userPreferences.AutoCheckUpdates;
-        SeparateSaveDefaultCheckBox.IsChecked = _userPreferences.SeparateSavegame;
-        SeparateSaveCheckBox.IsChecked = _userPreferences.SeparateSavegame;
-        GraphicsTexturesCheckBox.IsChecked = _userPreferences.ModOptionChoice == 2;
-        _isLoadingReleaseChannel = true;
-        ModReleaseChannelComboBox.SelectedIndex = SelectedModReleaseChannel == ModReleaseChannel.Beta ? 1 : 0;
-        _isLoadingReleaseChannel = false;
-        RefreshReleaseChannelUi();
+        finally
+        {
+            _isUpdatingDolphinUi = false;
+            _hasUnsavedChanges = false;
+        }
     }
 
     private ModReleaseChannel SelectedModReleaseChannel => _userPreferences.ModReleaseChannel;
@@ -1468,6 +1480,11 @@ public partial class MainWindow : Window
         if (buttons == MessageBoxButton.YesNo)
         {
             return result == MessageBoxResult.Yes ? MessageBoxResult.Yes : MessageBoxResult.No;
+        }
+
+        if (buttons == MessageBoxButton.YesNoCancel)
+        {
+            return dialog.Result;
         }
 
         return result ?? MessageBoxResult.OK;
@@ -4300,6 +4317,956 @@ public partial class MainWindow : Window
         return string.IsNullOrWhiteSpace(cleaned) ? "mii" : cleaned;
     }
 
+    private bool _hasUnsavedChanges = false;
+    private bool _isSimpleControllerMode = true;
+    private string _activeCategoryTab = "Paths";
+    private string _selectedControllerPort = "GC1";
+    private bool _isUpdatingDolphinUi = false;
+    private readonly DolphinControllerProfileManager _controllerProfileManager = new();
+
+    private void SettingControl_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingDolphinUi) return;
+        _hasUnsavedChanges = true;
+        ShowSettingsStatusNotification("⚠️ Unsaved changes in this tab (Click 'Save Configuration' to apply).");
+    }
+
+    private void ControllerControl_Changed(object sender, RoutedEventArgs e)
+    {
+        if (_isUpdatingDolphinUi) return;
+        _hasUnsavedChanges = true;
+        ShowSettingsStatusNotification("⚠️ Controller settings modified (Click 'Save Controller Config' to apply).");
+    }
+
+    private void SaveGlobalSettingsButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        SaveCurrentDolphinSettingsFromUi();
+        _hasUnsavedChanges = false;
+        ShowSettingsStatusNotification("💾 All settings saved successfully to Dolphin INI!");
+    }
+
+    private void SaveControllerConfig_OnClick(object sender, RoutedEventArgs e)
+    {
+        SaveControllerBindingsFromUi();
+        _hasUnsavedChanges = false;
+        ShowSettingsStatusNotification("💾 Controller configuration saved to Dolphin INI!");
+    }
+
+    private void CategoryTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton btn && btn.Tag is string category)
+        {
+            SwitchSettingsTab(category);
+        }
+    }
+
+    private void SwitchSettingsTab(string category)
+    {
+        if (_hasUnsavedChanges && !string.Equals(_activeCategoryTab, category, StringComparison.OrdinalIgnoreCase))
+        {
+            var dialogResult = ShowCustomDialog(
+                "Unsaved Changes",
+                $"⚠️ You have unsaved changes in the '{_activeCategoryTab}' section!\n\nDo you want to save your changes before leaving this tab?",
+                MessageBoxButton.YesNoCancel);
+
+            if (dialogResult == MessageBoxResult.Yes)
+            {
+                if ("Controller".Equals(_activeCategoryTab, StringComparison.OrdinalIgnoreCase))
+                {
+                    SaveControllerBindingsFromUi();
+                }
+                else
+                {
+                    SaveCurrentDolphinSettingsFromUi();
+                }
+                _hasUnsavedChanges = false;
+            }
+            else if (dialogResult == MessageBoxResult.No)
+            {
+                _hasUnsavedChanges = false;
+                LoadDolphinSettingsIntoUi();
+            }
+            else
+            {
+                return; // Cancel tab switch
+            }
+        }
+
+        _activeCategoryTab = category;
+
+        // Update active tab button styles with glow animation
+        if (CategoryTabsStackPanel != null)
+        {
+            foreach (WpfButton btn in CategoryTabsStackPanel.Children.OfType<WpfButton>())
+            {
+                bool isActive = string.Equals(btn.Tag?.ToString(), category, StringComparison.OrdinalIgnoreCase);
+                btn.Style = (Style)FindResource(isActive ? "CompactPrimaryButton" : "CompactButton");
+            }
+        }
+
+        // Toggle card visibilities
+        if (PathsSectionCard != null) PathsSectionCard.Visibility = "Paths".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (VideoSectionCard != null) VideoSectionCard.Visibility = "Video".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (AudioSectionCard != null) AudioSectionCard.Visibility = "Audio".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (ControllerSectionCard != null) ControllerSectionCard.Visibility = "Controller".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (WiiSectionCard != null) WiiSectionCard.Visibility = "Wii".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (PerformanceSectionCard != null) PerformanceSectionCard.Visibility = "Performance".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (EnhancementsSectionCard != null) EnhancementsSectionCard.Visibility = "Enhancements".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (AdvancedSectionCard != null) AdvancedSectionCard.Visibility = "Advanced".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (LauncherSectionCard != null) LauncherSectionCard.Visibility = "Launcher".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+
+        if ("Controller".Equals(category, StringComparison.OrdinalIgnoreCase))
+        {
+            LoadControllerBindingsForPort(_selectedControllerPort);
+        }
+    }
+
+    private void BindingField_PreviewMouseDown(object sender, System.Windows.Input.MouseButtonEventArgs e)
+    {
+        if (sender is System.Windows.Controls.TextBox tb)
+        {
+            e.Handled = true;
+            string actionName = tb.Name.Replace("SimpleBind_", "").Replace("Bind_", "");
+            var window = new KeyBindingWindow(actionName) { Owner = this };
+            if (window.ShowDialog() == true && !string.IsNullOrWhiteSpace(window.SelectedBinding))
+            {
+                tb.Text = window.SelectedBinding;
+                _hasUnsavedChanges = true;
+                ShowSettingsStatusNotification($"🎮 Mapped '{actionName}' to '{window.SelectedBinding}'");
+            }
+        }
+    }
+
+    private void ControllerModeBtn_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton btn)
+        {
+            _isSimpleControllerMode = btn == SimpleControllerModeBtn;
+            if (SimpleControllerGrid != null) SimpleControllerGrid.Visibility = _isSimpleControllerMode ? Visibility.Visible : Visibility.Collapsed;
+            if (KeybindingGrid != null) KeybindingGrid.Visibility = _isSimpleControllerMode ? Visibility.Collapsed : Visibility.Visible;
+            
+            bool isWiimote = _selectedControllerPort.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+            if (NunchukMotionGrid != null)
+            {
+                NunchukMotionGrid.Visibility = isWiimote ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            if (SimpleControllerModeBtn != null) SimpleControllerModeBtn.Style = (Style)FindResource(_isSimpleControllerMode ? "CompactPrimaryButton" : "CompactButton");
+            if (AdvancedControllerModeBtn != null) AdvancedControllerModeBtn.Style = (Style)FindResource(_isSimpleControllerMode ? "CompactButton" : "CompactPrimaryButton");
+        }
+    }
+
+    private void ControllerPortTab_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is WpfButton btn && btn.Tag is string portTag)
+        {
+            _selectedControllerPort = portTag;
+            
+            // Update active port button styles
+            if (ControllerPortTabsStackPanel != null)
+            {
+                foreach (WpfButton b in ControllerPortTabsStackPanel.Children.OfType<WpfButton>())
+                {
+                    bool isActive = string.Equals(b.Tag?.ToString(), portTag, StringComparison.OrdinalIgnoreCase);
+                    b.Style = (Style)FindResource(isActive ? "CompactPrimaryButton" : "CompactButton");
+                }
+            }
+
+            // Show/Hide Wiimote Extension dropdown based on port
+            bool isWiimote = portTag.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+            if (Card_WiimoteExtension != null)
+            {
+                Card_WiimoteExtension.Visibility = isWiimote ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            LoadControllerBindingsForPort(_selectedControllerPort);
+        }
+    }
+
+    private void RefreshControllerDevices_Click(object sender, RoutedEventArgs e)
+    {
+        RefreshControllerDevices();
+        ShowSettingsStatusNotification("🔄 Input devices refreshed.");
+    }
+
+    private void RefreshControllerDevices(string? activeDeviceInIni = null)
+    {
+        if (ControllerDeviceComboBox == null) return;
+        ControllerDeviceComboBox.Items.Clear();
+
+        var kbItem = new ComboBoxItem { Content = "⌨️ Keyboard / Mouse", Tag = "Keyboard/0/Keyboard Mouse" };
+        ControllerDeviceComboBox.Items.Add(kbItem);
+
+        bool gamepadFound = false;
+        try
+        {
+            if (KeyBindingWindow.XInputGetState14(0, out _) == 0 || KeyBindingWindow.XInputGetState13(0, out _) == 0)
+            {
+                gamepadFound = true;
+                var padItem = new ComboBoxItem { Content = "🎮 XInput Gamepad (Xbox / Generic Controller)", Tag = "SDL/0/XInput Controller" };
+                ControllerDeviceComboBox.Items.Add(padItem);
+            }
+        }
+        catch { }
+
+        var psItem = new ComboBoxItem { Content = "🎮 PlayStation DualSense / DualShock", Tag = "SDL/0/DualSense Wireless Controller" };
+        ControllerDeviceComboBox.Items.Add(psItem);
+
+        if (!string.IsNullOrWhiteSpace(activeDeviceInIni))
+        {
+            SetComboBoxByTag(ControllerDeviceComboBox, activeDeviceInIni);
+        }
+        
+        if (ControllerDeviceComboBox.SelectedItem == null)
+        {
+            ControllerDeviceComboBox.SelectedItem = gamepadFound ? ControllerDeviceComboBox.Items[1] : kbItem;
+        }
+
+        string deviceName = (ControllerDeviceComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Keyboard / Mouse";
+        if (ControllerStatusBannerText != null)
+        {
+            ControllerStatusBannerText.Text = $"🟢 Connected Device: {deviceName}";
+        }
+    }
+
+    private void LoadControllerBindingsForPort(string portTag)
+    {
+        _isUpdatingDolphinUi = true;
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            string userFolder = settings.UserFolderPath;
+            if (string.IsNullOrWhiteSpace(userFolder) || !Directory.Exists(userFolder))
+            {
+                userFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+            }
+
+            bool isWiimote = portTag.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+            int portIndex = 1;
+            if (int.TryParse(portTag.Replace("GC", "").Replace("WII", ""), out int pIdx))
+            {
+                portIndex = pIdx;
+            }
+
+            if (NunchukMotionGrid != null)
+            {
+                NunchukMotionGrid.Visibility = isWiimote ? Visibility.Visible : Visibility.Collapsed;
+            }
+
+            var bindings = _controllerProfileManager.ReadActiveBindings(userFolder, isWiimote, portIndex);
+
+            RefreshControllerDevices(bindings.GetValueOrDefault("Device"));
+
+            if (isWiimote && bindings.TryGetValue("Extension", out var ext))
+            {
+                SetComboBoxByTag(WiimoteExtensionComboBox, ext);
+            }
+
+            // Rumble / Vibration
+            if (VibrationCheckBox != null)
+            {
+                VibrationCheckBox.IsChecked = bindings.TryGetValue("Rumble/Motor", out var motor) && !string.IsNullOrWhiteSpace(motor);
+            }
+
+            if (isWiimote)
+            {
+                Bind_A.Text = bindings.GetValueOrDefault("Buttons/A", "`KEY_A`");
+                Bind_B.Text = bindings.GetValueOrDefault("Buttons/B", "`KEY_B`");
+                Bind_X.Text = bindings.GetValueOrDefault("Buttons/1", "`KEY_1`");
+                Bind_Y.Text = bindings.GetValueOrDefault("Buttons/2", "`KEY_2`");
+                Bind_Z.Text = bindings.GetValueOrDefault("Buttons/Minus", "`MINUS`");
+                Bind_Start.Text = bindings.GetValueOrDefault("Buttons/Plus", "`PLUS`");
+                Bind_MainUp.Text = bindings.GetValueOrDefault("D-Pad/Up", "`UP`");
+                Bind_MainDown.Text = bindings.GetValueOrDefault("D-Pad/Down", "`DOWN`");
+                Bind_MainLeft.Text = bindings.GetValueOrDefault("D-Pad/Left", "`LEFT`");
+                Bind_MainRight.Text = bindings.GetValueOrDefault("D-Pad/Right", "`RIGHT`");
+                Bind_CUp.Text = bindings.GetValueOrDefault("IR/Up", "`I`");
+                Bind_CDown.Text = bindings.GetValueOrDefault("IR/Down", "`K`");
+                Bind_L.Text = bindings.GetValueOrDefault("Shake/X", "`SPACE`");
+                Bind_R.Text = bindings.GetValueOrDefault("Shake/Y", "`SPACE`");
+
+                // Nunchuk & Motion
+                if (Bind_NunchukUp != null) Bind_NunchukUp.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Up", "`UP`");
+                if (Bind_NunchukDown != null) Bind_NunchukDown.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Down", "`DOWN`");
+                if (Bind_NunchukLeft != null) Bind_NunchukLeft.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Left", "`LEFT`");
+                if (Bind_NunchukRight != null) Bind_NunchukRight.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Right", "`RIGHT`");
+                if (Bind_NunchukC != null) Bind_NunchukC.Text = bindings.GetValueOrDefault("Nunchuk/Buttons/C", "`CONTROL`");
+                if (Bind_NunchukZ != null) Bind_NunchukZ.Text = bindings.GetValueOrDefault("Nunchuk/Buttons/Z", "`SHIFT`");
+
+                if (Bind_ShakeX != null) Bind_ShakeX.Text = bindings.GetValueOrDefault("Shake/X", "`SPACE`");
+                if (Bind_ShakeY != null) Bind_ShakeY.Text = bindings.GetValueOrDefault("Shake/Y", "`SPACE`");
+                if (Bind_ShakeZ != null) Bind_ShakeZ.Text = bindings.GetValueOrDefault("Shake/Z", "`SPACE`");
+
+                if (Bind_TiltLeft != null) Bind_TiltLeft.Text = bindings.GetValueOrDefault("Tilt/Left", "`LEFT`");
+                if (Bind_TiltRight != null) Bind_TiltRight.Text = bindings.GetValueOrDefault("Tilt/Right", "`RIGHT`");
+                if (Bind_TiltForward != null) Bind_TiltForward.Text = bindings.GetValueOrDefault("Tilt/Forward", "`UP`");
+                if (Bind_TiltBackward != null) Bind_TiltBackward.Text = bindings.GetValueOrDefault("Tilt/Backward", "`DOWN`");
+
+                // Simple Mode MKWii (Wiimote + Nunchuk) — Official controls:
+                // Accelerate = Button 2, Brake = Button 1
+                // Drift/Hop = Wiimote B, Use Item = Nunchuk Z
+                // Rear View = Nunchuk C, Trick = Shake (not D-Pad!)
+                // Analog = Nunchuk Stick (steering), D-Pad = menu/wheelie
+                SimpleBind_Accelerate.Text = bindings.GetValueOrDefault("Buttons/2", "`KEY_2`");
+                SimpleBind_Brake.Text = bindings.GetValueOrDefault("Buttons/1", "`KEY_1`");
+                SimpleBind_Drift.Text = bindings.GetValueOrDefault("Buttons/B", "`KEY_B`");
+                SimpleBind_Item.Text = bindings.GetValueOrDefault("Nunchuk/Buttons/Z", "`SHIFT`");
+                SimpleBind_LookBack.Text = bindings.GetValueOrDefault("Nunchuk/Buttons/C", "`CONTROL`");
+                SimpleBind_Trick.Text = bindings.GetValueOrDefault("Shake/X", "`SPACE`");
+                SimpleBind_Pause.Text = bindings.GetValueOrDefault("Buttons/Plus", "`RETURN`");
+
+                // Analog Stick (Nunchuk Stick for steering)
+                if (SimpleBind_StickUp != null) SimpleBind_StickUp.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Up", "`Left Y+`");
+                if (SimpleBind_StickDown != null) SimpleBind_StickDown.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Down", "`Left Y-`");
+                if (SimpleBind_StickLeft != null) SimpleBind_StickLeft.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Left", "`Left X-`");
+                if (SimpleBind_StickRight != null) SimpleBind_StickRight.Text = bindings.GetValueOrDefault("Nunchuk/Stick/Right", "`Left X+`");
+
+                // D-Pad (wheelie up/down, menu navigation)
+                if (SimpleBind_DPadUp != null) SimpleBind_DPadUp.Text = bindings.GetValueOrDefault("D-Pad/Up", "`UP`");
+                if (SimpleBind_DPadDown != null) SimpleBind_DPadDown.Text = bindings.GetValueOrDefault("D-Pad/Down", "`DOWN`");
+                if (SimpleBind_DPadLeft != null) SimpleBind_DPadLeft.Text = bindings.GetValueOrDefault("D-Pad/Left", "`LEFT`");
+                if (SimpleBind_DPadRight != null) SimpleBind_DPadRight.Text = bindings.GetValueOrDefault("D-Pad/Right", "`RIGHT`");
+            }
+            else
+            {
+                Bind_A.Text = bindings.GetValueOrDefault("Buttons/A", "`KEY_A`");
+                Bind_B.Text = bindings.GetValueOrDefault("Buttons/B", "`KEY_B`");
+                Bind_X.Text = bindings.GetValueOrDefault("Buttons/X", "`KEY_X`");
+                Bind_Y.Text = bindings.GetValueOrDefault("Buttons/Y", "`KEY_Y`");
+                Bind_Z.Text = bindings.GetValueOrDefault("Buttons/Z", "`KEY_Z`");
+                Bind_Start.Text = bindings.GetValueOrDefault("Buttons/Start", "`RETURN`");
+                Bind_MainUp.Text = bindings.GetValueOrDefault("Main Stick/Up", "`Left Y+`");
+                Bind_MainDown.Text = bindings.GetValueOrDefault("Main Stick/Down", "`Left Y-`");
+                Bind_MainLeft.Text = bindings.GetValueOrDefault("Main Stick/Left", "`Left X-`");
+                Bind_MainRight.Text = bindings.GetValueOrDefault("Main Stick/Right", "`Left X+`");
+                Bind_CUp.Text = bindings.GetValueOrDefault("C-Stick/Up", "`Right Y+`");
+                Bind_CDown.Text = bindings.GetValueOrDefault("C-Stick/Down", "`Right Y-`");
+                Bind_L.Text = bindings.GetValueOrDefault("Triggers/L", "`SHIFT`");
+                Bind_R.Text = bindings.GetValueOrDefault("Triggers/R", "`SPACE`");
+
+                // Simple Mode MKWii (GameCube) — Official controls:
+                // Accelerate = A, Brake = B, Drift = R, Item = L
+                // Rear View = X, Trick = D-Pad Up, Pause = Start
+                SimpleBind_Accelerate.Text = bindings.GetValueOrDefault("Buttons/A", "`KEY_A`");
+                SimpleBind_Brake.Text = bindings.GetValueOrDefault("Buttons/B", "`KEY_B`");
+                SimpleBind_Drift.Text = bindings.GetValueOrDefault("Triggers/R", "`SPACE`");
+                SimpleBind_Item.Text = bindings.GetValueOrDefault("Triggers/L", "`SHIFT`");
+                SimpleBind_LookBack.Text = bindings.GetValueOrDefault("Buttons/X", "`KEY_X`");
+                SimpleBind_Trick.Text = bindings.GetValueOrDefault("D-Pad/Up", "`UP`");
+                SimpleBind_Pause.Text = bindings.GetValueOrDefault("Buttons/Start", "`RETURN`");
+
+                // Analog Stick (Main Stick for steering)
+                if (SimpleBind_StickUp != null) SimpleBind_StickUp.Text = bindings.GetValueOrDefault("Main Stick/Up", "`Left Y+`");
+                if (SimpleBind_StickDown != null) SimpleBind_StickDown.Text = bindings.GetValueOrDefault("Main Stick/Down", "`Left Y-`");
+                if (SimpleBind_StickLeft != null) SimpleBind_StickLeft.Text = bindings.GetValueOrDefault("Main Stick/Left", "`Left X-`");
+                if (SimpleBind_StickRight != null) SimpleBind_StickRight.Text = bindings.GetValueOrDefault("Main Stick/Right", "`Left X+`");
+
+                // D-Pad (tricks in GC, menu navigation)
+                if (SimpleBind_DPadUp != null) SimpleBind_DPadUp.Text = bindings.GetValueOrDefault("D-Pad/Up", "`UP`");
+                if (SimpleBind_DPadDown != null) SimpleBind_DPadDown.Text = bindings.GetValueOrDefault("D-Pad/Down", "`DOWN`");
+                if (SimpleBind_DPadLeft != null) SimpleBind_DPadLeft.Text = bindings.GetValueOrDefault("D-Pad/Left", "`LEFT`");
+                if (SimpleBind_DPadRight != null) SimpleBind_DPadRight.Text = bindings.GetValueOrDefault("D-Pad/Right", "`RIGHT`");
+            }
+
+            if (ControllerProfileComboBox != null)
+            {
+                ControllerProfileComboBox.Items.Clear();
+                var profiles = _controllerProfileManager.GetAvailableProfiles(userFolder, isWiimote);
+                foreach (var profile in profiles)
+                {
+                    ControllerProfileComboBox.Items.Add(profile);
+                }
+                if (ControllerProfileComboBox.Items.Count > 0 && ControllerProfileComboBox.SelectedIndex < 0)
+                {
+                    ControllerProfileComboBox.SelectedIndex = 0;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed loading controller bindings: {ex.Message}");
+        }
+        finally
+        {
+            _isUpdatingDolphinUi = false;
+            _hasUnsavedChanges = false;
+        }
+    }
+
+    private void LoadProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? profileName = ControllerProfileComboBox?.SelectedItem?.ToString();
+        if (string.IsNullOrWhiteSpace(profileName)) return;
+
+        var settings = BuildSettingsFromUi();
+        bool isWiimote = _selectedControllerPort.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+        int portIndex = 1;
+        if (int.TryParse(_selectedControllerPort.Replace("GC", "").Replace("WII", ""), out int pIdx)) portIndex = pIdx;
+
+        if (_controllerProfileManager.LoadProfile(settings.UserFolderPath, isWiimote, portIndex, profileName))
+        {
+            LoadControllerBindingsForPort(_selectedControllerPort);
+            if (ControllerProfileComboBox != null) ControllerProfileComboBox.SelectedItem = profileName;
+            ShowSettingsStatusNotification($"📁 Loaded profile '{profileName}'");
+        }
+    }
+
+    private void SaveProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? profileName = ControllerProfileComboBox?.Text?.Trim();
+        if (string.IsNullOrWhiteSpace(profileName)) return;
+
+        SaveControllerBindingsFromUi();
+        var settings = BuildSettingsFromUi();
+        bool isWiimote = _selectedControllerPort.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+        int portIndex = 1;
+        if (int.TryParse(_selectedControllerPort.Replace("GC", "").Replace("WII", ""), out int pIdx)) portIndex = pIdx;
+
+        var bindings = _controllerProfileManager.ReadActiveBindings(settings.UserFolderPath, isWiimote, portIndex);
+        if (_controllerProfileManager.SaveProfile(settings.UserFolderPath, isWiimote, profileName, bindings))
+        {
+            LoadControllerBindingsForPort(_selectedControllerPort);
+            ShowSettingsStatusNotification($"💾 Profile '{profileName}' saved!");
+        }
+    }
+
+    private void DeleteProfileButton_Click(object sender, RoutedEventArgs e)
+    {
+        string? profileName = ControllerProfileComboBox?.SelectedItem?.ToString();
+        if (string.IsNullOrWhiteSpace(profileName)) return;
+
+        var settings = BuildSettingsFromUi();
+        bool isWiimote = _selectedControllerPort.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+        if (_controllerProfileManager.DeleteProfile(settings.UserFolderPath, isWiimote, profileName))
+        {
+            LoadControllerBindingsForPort(_selectedControllerPort);
+            ShowSettingsStatusNotification($"🗑️ Deleted profile '{profileName}'");
+        }
+    }
+
+    private void WiimoteExtension_SelectionChanged(object sender, SelectionChangedEventArgs e) => ControllerControl_Changed(sender, e);
+    private void ResetControllerSection_OnClick(object sender, RoutedEventArgs e) { LoadControllerBindingsForPort(_selectedControllerPort); ShowSettingsStatusNotification("🔄 Controller section reset."); }
+    private void ResetWiiSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Wii section reset.");
+    private void ResetPerformanceSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Performance section reset.");
+    private void ResetEnhancementsSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Enhancements section reset.");
+    private void PerformancePreset_OnSelectionChanged(object sender, SelectionChangedEventArgs e) => SettingControl_Changed(sender, e);
+
+    private void AudioVolumeTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AudioVolumeTextBox.Text, out double val) && AudioVolumeSlider != null) AudioVolumeSlider.Value = Math.Clamp(val, 0, 100); }
+    private void AudioVolumeSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AudioVolumeTextBox != null) AudioVolumeTextBox.Text = $"{e.NewValue:F0}"; }
+    private void AudioLatencyTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AudioLatencyTextBox.Text, out double val) && AudioLatencySlider != null) AudioLatencySlider.Value = Math.Clamp(val, 10, 100); }
+    private void AudioLatencySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AudioLatencyTextBox != null) AudioLatencyTextBox.Text = $"{e.NewValue:F0}"; }
+    private void AnalogSensitivityTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AnalogSensitivityTextBox.Text, out double val) && AnalogSensitivitySlider != null) AnalogSensitivitySlider.Value = Math.Clamp(val, 50, 150); }
+    private void AnalogSensitivitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AnalogSensitivityTextBox != null) AnalogSensitivityTextBox.Text = $"{e.NewValue:F0}"; }
+    private void AnalogDeadzoneTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AnalogDeadzoneTextBox.Text, out double val) && AnalogDeadzoneSlider != null) AnalogDeadzoneSlider.Value = Math.Clamp(val, 0, 50); }
+    private void AnalogDeadzoneSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AnalogDeadzoneTextBox != null) AnalogDeadzoneTextBox.Text = $"{e.NewValue:F0}"; }
+    private void CpuClockRatioTextBox_TextChanged(object sender, TextChangedEventArgs e) { string text = CpuClockRatioTextBox.Text.Replace("%", "").Trim(); if (double.TryParse(text, out double val) && CpuClockRatioSlider != null) CpuClockRatioSlider.Value = Math.Clamp(val / 100.0, 0.5, 3.0); }
+    private void CpuClockRatioSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (CpuClockRatioTextBox != null) CpuClockRatioTextBox.Text = $"{e.NewValue * 100:F0}%"; }
+
+    private void AdvancedModeCheckBox_OnChanged(object sender, RoutedEventArgs e)
+    {
+        UpdateAdvancedOptionsVisibility();
+    }
+
+    private void UpdateAdvancedOptionsVisibility()
+    {
+        if (AdvancedCategoryBtn != null)
+        {
+            AdvancedCategoryBtn.Visibility = Visibility.Visible;
+        }
+
+        bool isAdvanced = AdvancedModeCheckBox?.IsChecked == true;
+        Visibility vis = isAdvanced ? Visibility.Visible : Visibility.Collapsed;
+
+        if (Card_ShaderCompilation != null) Card_ShaderCompilation.Visibility = vis;
+        if (Card_AnisotropicFiltering != null) Card_AnisotropicFiltering.Visibility = vis;
+        if (Card_AntiAliasing != null) Card_AntiAliasing.Visibility = vis;
+        if (Card_WidescreenHack != null) Card_WidescreenHack.Visibility = vis;
+        if (Card_TextureCache != null) Card_TextureCache.Visibility = vis;
+        if (Card_DspLle != null) Card_DspLle.Visibility = vis;
+        if (Card_AudioLatency != null) Card_AudioLatency.Visibility = vis;
+        if (Card_AnalogSensitivity != null) Card_AnalogSensitivity.Visibility = vis;
+        if (Card_AnalogDeadzone != null) Card_AnalogDeadzone.Visibility = vis;
+        if (Card_EnableCheats != null) Card_EnableCheats.Visibility = vis;
+        if (Card_CpuOverride != null) Card_CpuOverride.Visibility = vis;
+        if (Card_CpuClockRatio != null) Card_CpuClockRatio.Visibility = vis;
+        if (Card_PrefetchCustomTextures != null) Card_PrefetchCustomTextures.Visibility = vis;
+        if (Card_PostProcessingShader != null) Card_PostProcessingShader.Visibility = vis;
+
+        if (SettingsView != null)
+        {
+            SetAdvancedTagVisibility(SettingsView, vis);
+        }
+    }
+
+    private static void SetAdvancedTagVisibility(DependencyObject parent, Visibility vis)
+    {
+        if (parent == null) return;
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is FrameworkElement fe && string.Equals(fe.Tag?.ToString(), "advanced", StringComparison.OrdinalIgnoreCase))
+            {
+                fe.Visibility = vis;
+            }
+            SetAdvancedTagVisibility(child, vis);
+        }
+    }
+    private void SettingsSearchTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (SearchPlaceholderText != null)
+        {
+            SearchPlaceholderText.Visibility = string.IsNullOrEmpty(SettingsSearchTextBox.Text) ? Visibility.Visible : Visibility.Collapsed;
+        }
+
+        string query = SettingsSearchTextBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            if (SettingsView != null)
+            {
+                RestoreAllSettingCards(SettingsView);
+            }
+            SwitchSettingsTab(_activeCategoryTab);
+            UpdateAdvancedOptionsVisibility();
+            return;
+        }
+
+        Border[] sectionCards = new[]
+        {
+            PathsSectionCard, VideoSectionCard, AudioSectionCard, ControllerSectionCard,
+            WiiSectionCard, PerformanceSectionCard, EnhancementsSectionCard, AdvancedSectionCard, LauncherSectionCard
+        };
+
+        string lowerQuery = query.ToLowerInvariant();
+
+        foreach (var sectionCard in sectionCards)
+        {
+            if (sectionCard == null) continue;
+
+            bool hasMatch = FilterSectionByQuery(sectionCard, lowerQuery);
+            sectionCard.Visibility = hasMatch ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private void RestoreAllSettingCards(DependencyObject parent)
+    {
+        if (parent == null) return;
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is FrameworkElement fe)
+            {
+                if (fe.Name != null && fe.Name.StartsWith("Card_"))
+                {
+                    fe.Visibility = Visibility.Visible;
+                }
+                RestoreAllSettingCards(child);
+            }
+        }
+    }
+
+    private static bool FilterSectionByQuery(DependencyObject parent, string query)
+    {
+        if (parent == null) return false;
+
+        bool childMatchedAny = false;
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+
+        for (int i = 0; i < count; i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+
+            if (child is FrameworkElement fe)
+            {
+                bool isCard = fe.Name != null && fe.Name.StartsWith("Card_");
+
+                if (isCard)
+                {
+                    string cardContent = GetAllTextFromElement(fe).ToLowerInvariant();
+                    bool isMatch = cardContent.Contains(query);
+                    fe.Visibility = isMatch ? Visibility.Visible : Visibility.Collapsed;
+                    if (isMatch) childMatchedAny = true;
+                }
+                else
+                {
+                    string directText = GetDirectTextFromElement(fe).ToLowerInvariant();
+                    if (!string.IsNullOrWhiteSpace(directText) && directText.Contains(query))
+                    {
+                        childMatchedAny = true;
+                    }
+
+                    bool childMatched = FilterSectionByQuery(child, query);
+                    if (childMatched) childMatchedAny = true;
+                }
+            }
+        }
+
+        return childMatchedAny;
+    }
+
+    private static string GetDirectTextFromElement(DependencyObject element)
+    {
+        if (element is TextBlock tb) return tb.Text ?? "";
+        if (element is CheckBox cb) return cb.Content?.ToString() ?? "";
+        if (element is Button b) return b.Content?.ToString() ?? "";
+        if (element is TextBox tbox) return tbox.Text ?? "";
+        return "";
+    }
+
+    private static string GetAllTextFromElement(DependencyObject element)
+    {
+        var sb = new System.Text.StringBuilder();
+        CollectTextRecursive(element, sb);
+        return sb.ToString();
+    }
+
+    private static void CollectTextRecursive(DependencyObject parent, System.Text.StringBuilder sb)
+    {
+        if (parent == null) return;
+        if (parent is TextBlock tb && !string.IsNullOrWhiteSpace(tb.Text))
+        {
+            sb.Append(' ').Append(tb.Text);
+        }
+        else if (parent is CheckBox cb && cb.Content != null)
+        {
+            sb.Append(' ').Append(cb.Content.ToString());
+        }
+        else if (parent is Button b && b.Content != null)
+        {
+            sb.Append(' ').Append(b.Content.ToString());
+        }
+        else if (parent is ComboBox combo)
+        {
+            foreach (ComboBoxItem item in combo.Items.OfType<ComboBoxItem>())
+            {
+                if (item.Content != null) sb.Append(' ').Append(item.Content.ToString());
+            }
+        }
+
+        int count = VisualTreeHelper.GetChildrenCount(parent);
+        for (int i = 0; i < count; i++)
+        {
+            CollectTextRecursive(VisualTreeHelper.GetChild(parent, i), sb);
+        }
+    }
+    private void OptimizeVanzaKartButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("⚡ VanzaKart preset applied!");
+    private void ResetAllSettingsButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Settings reset.");
+    private void BackupConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("💾 Config backed up.");
+    private void ExportImportConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("📦 Config exported.");
+    private void DolphinPathTextBox_OnTextChanged(object sender, TextChangedEventArgs e) => SettingControl_Changed(sender, e);
+    private void OpenTexturesFolder_OnClick(object sender, RoutedEventArgs e) { }
+    private void OpenScreenshotsFolder_OnClick(object sender, RoutedEventArgs e) { }
+    private void ResetVideoSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Video section reset.");
+    private void ResetAudioSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Audio section reset.");
+
+    private static void SetComboBoxByTag(ComboBox? comboBox, string tagValue)
+    {
+        if (comboBox == null || string.IsNullOrWhiteSpace(tagValue)) return;
+        foreach (ComboBoxItem item in comboBox.Items.OfType<ComboBoxItem>())
+        {
+            if (string.Equals(item.Tag?.ToString(), tagValue, StringComparison.OrdinalIgnoreCase))
+            {
+                comboBox.SelectedItem = item;
+                break;
+            }
+        }
+    }
+
+    private void LoadDolphinSettingsIntoUi()
+    {
+        _isUpdatingDolphinUi = true;
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            string userFolder = settings.UserFolderPath;
+            if (string.IsNullOrWhiteSpace(userFolder) || !Directory.Exists(userFolder))
+            {
+                userFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+            }
+
+            if (!string.IsNullOrWhiteSpace(userFolder) && Directory.Exists(userFolder))
+            {
+                var model = _dolphinSettingsManager.LoadSettings(userFolder, settings);
+
+                // Video / Graphics
+                SetComboBoxByTag(GfxBackendComboBox, model.GfxBackend);
+                SetComboBoxByTag(InternalResolutionComboBox, model.InternalResolution.ToString());
+                SetComboBoxByTag(AspectRatioComboBox, model.AspectRatio.ToString());
+                if (VSyncCheckBox != null) VSyncCheckBox.IsChecked = model.VSync;
+                if (FullscreenCheckBox != null) FullscreenCheckBox.IsChecked = model.Fullscreen;
+                SetComboBoxByTag(AntiAliasingComboBox, model.AntiAliasing.ToString());
+                SetComboBoxByTag(AnisotropicFilteringComboBox, model.AnisotropicFiltering.ToString());
+                SetComboBoxByTag(ShaderCompilationComboBox, model.ShaderCompilationMode.ToString());
+                if (RemoveBlurCheckBox != null) RemoveBlurCheckBox.IsChecked = model.RemoveBlur;
+                if (ShowFpsCheckBox != null) ShowFpsCheckBox.IsChecked = model.ShowFPS;
+                if (WidescreenHackCheckBox != null) WidescreenHackCheckBox.IsChecked = model.WidescreenHack;
+
+                // Audio
+                if (AudioVolumeSlider != null) AudioVolumeSlider.Value = model.AudioVolume;
+                if (AudioVolumeTextBox != null) AudioVolumeTextBox.Text = model.AudioVolume.ToString();
+                SetComboBoxByTag(AudioBackendComboBox, model.AudioBackend);
+                if (AudioStretchingCheckBox != null) AudioStretchingCheckBox.IsChecked = model.AudioStretching;
+                if (DspLleCheckBox != null) DspLleCheckBox.IsChecked = model.DspLle;
+                if (AudioLatencySlider != null) AudioLatencySlider.Value = model.AudioLatency;
+                if (AudioLatencyTextBox != null) AudioLatencyTextBox.Text = model.AudioLatency.ToString();
+
+                // Wii
+                SetComboBoxByTag(WiiLanguageComboBox, model.WiiLanguage.ToString());
+                if (EnableSdCardCheckBox != null) EnableSdCardCheckBox.IsChecked = model.EnableSdCard;
+                if (RetroRewindCheckBox != null) RetroRewindCheckBox.IsChecked = model.EnableRiivolution;
+                if (EnableCheatsCheckBox != null) EnableCheatsCheckBox.IsChecked = model.EnableCheats;
+
+                // Performance
+                if (DualCoreCheckBox != null) DualCoreCheckBox.IsChecked = model.DualCore;
+                if (SkipIdleCheckBox != null) SkipIdleCheckBox.IsChecked = model.SkipIdle;
+                if (FastDiscSpeedCheckBox != null) FastDiscSpeedCheckBox.IsChecked = model.FastDiscSpeed;
+                if (CpuOverrideCheckBox != null) CpuOverrideCheckBox.IsChecked = model.CpuOverride;
+                if (CpuClockRatioSlider != null) CpuClockRatioSlider.Value = model.CpuClockRatio;
+                if (CpuClockRatioTextBox != null) CpuClockRatioTextBox.Text = $"{model.CpuClockRatio * 100:F0}%";
+
+                // Textures & Shaders
+                if (LoadCustomTexturesCheckBox != null) LoadCustomTexturesCheckBox.IsChecked = model.LoadCustomTextures;
+                if (PrefetchCustomTexturesCheckBox != null) PrefetchCustomTexturesCheckBox.IsChecked = model.PrefetchCustomTextures;
+                SetComboBoxByTag(PostProcessingShaderComboBox, model.PostProcessingShader);
+            }
+
+            LoadControllerBindingsForPort(_selectedControllerPort);
+            UpdateAdvancedOptionsVisibility();
+        }
+        catch (Exception ex)
+        {
+            System.Diagnostics.Debug.WriteLine($"Failed loading Dolphin settings: {ex.Message}");
+        }
+        finally
+        {
+            _isUpdatingDolphinUi = false;
+            _hasUnsavedChanges = false;
+        }
+    }
+
+    private void SaveCurrentDolphinSettingsFromUi()
+    {
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            string userFolder = settings.UserFolderPath;
+            if (string.IsNullOrWhiteSpace(userFolder) || !Directory.Exists(userFolder))
+            {
+                userFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+            }
+
+            if (string.IsNullOrWhiteSpace(userFolder))
+            {
+                ShowSettingsStatusNotification("⚠️ Dolphin User folder path is not set.");
+                return;
+            }
+
+            var model = new DolphinSettingsModel
+            {
+                DolphinExecutablePath = settings.DolphinPath ?? "",
+                UserFolderPath = userFolder,
+                ModpackPath = settings.RomPath ?? "",
+
+                GfxBackend = (GfxBackendComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Vulkan",
+                InternalResolution = int.TryParse((InternalResolutionComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int res) ? res : 1,
+                AspectRatio = int.TryParse((AspectRatioComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int ar) ? ar : 0,
+                VSync = VSyncCheckBox?.IsChecked == true,
+                Fullscreen = FullscreenCheckBox?.IsChecked == true,
+                AntiAliasing = int.TryParse((AntiAliasingComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int aa) ? aa : 0,
+                AnisotropicFiltering = int.TryParse((AnisotropicFilteringComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int af) ? af : 0,
+                ShaderCompilationMode = int.TryParse((ShaderCompilationComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int scm) ? scm : 2,
+                RemoveBlur = RemoveBlurCheckBox?.IsChecked == true,
+                ShowFPS = ShowFpsCheckBox?.IsChecked == true,
+                WidescreenHack = WidescreenHackCheckBox?.IsChecked == true,
+
+                AudioVolume = (int)(AudioVolumeSlider?.Value ?? 100),
+                AudioBackend = (AudioBackendComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Cubeb",
+                AudioStretching = AudioStretchingCheckBox?.IsChecked == true,
+                DspLle = DspLleCheckBox?.IsChecked == true,
+                AudioLatency = (int)(AudioLatencySlider?.Value ?? 20),
+
+                WiiLanguage = int.TryParse((WiiLanguageComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int wl) ? wl : 1,
+                EnableSdCard = EnableSdCardCheckBox?.IsChecked == true,
+                EnableRiivolution = RetroRewindCheckBox?.IsChecked == true,
+                EnableCheats = EnableCheatsCheckBox?.IsChecked == true,
+
+                DualCore = DualCoreCheckBox?.IsChecked == true,
+                SkipIdle = SkipIdleCheckBox?.IsChecked == true,
+                FastDiscSpeed = FastDiscSpeedCheckBox?.IsChecked == true,
+                CpuOverride = CpuOverrideCheckBox?.IsChecked == true,
+                CpuClockRatio = (float)(CpuClockRatioSlider?.Value ?? 1.0),
+
+                LoadCustomTextures = LoadCustomTexturesCheckBox?.IsChecked == true,
+                PrefetchCustomTextures = PrefetchCustomTexturesCheckBox?.IsChecked == true,
+                PostProcessingShader = (PostProcessingShaderComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Off"
+            };
+
+            _dolphinSettingsManager.SaveSettings(userFolder, model);
+            SaveControllerBindingsFromUi();
+            _settingsService.Save(settings);
+            _hasUnsavedChanges = false;
+        }
+        catch (Exception ex)
+        {
+            ShowSettingsStatusNotification($"❌ Error saving settings: {ex.Message}");
+        }
+    }
+
+    private void SaveControllerBindingsFromUi()
+    {
+        try
+        {
+            var settings = BuildSettingsFromUi();
+            string userFolder = settings.UserFolderPath;
+            if (string.IsNullOrWhiteSpace(userFolder) || !Directory.Exists(userFolder))
+            {
+                userFolder = _saveManagerService.TryAutoDetectUserFolder(settings);
+            }
+
+            if (string.IsNullOrWhiteSpace(userFolder))
+            {
+                ShowSettingsStatusNotification("⚠️ Dolphin User folder path is not set.");
+                return;
+            }
+
+            bool isWiimote = _selectedControllerPort.StartsWith("WII", StringComparison.OrdinalIgnoreCase);
+            int portIndex = 1;
+            if (int.TryParse(_selectedControllerPort.Replace("GC", "").Replace("WII", ""), out int pIdx))
+            {
+                portIndex = pIdx;
+            }
+
+            string deviceTag = (ControllerDeviceComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Keyboard/0/Keyboard Mouse";
+
+            var bindings = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["Device"] = deviceTag
+            };
+
+            bindings["Rumble/Motor"] = VibrationCheckBox?.IsChecked == true ? "Motor" : "";
+
+            if (isWiimote)
+            {
+                string extTag = (WiimoteExtensionComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Nunchuk";
+                bindings["Extension"] = extTag;
+
+                // Wiimote buttons (from Advanced Mode textboxes)
+                bindings["Buttons/A"] = Bind_A.Text;
+                bindings["Buttons/B"] = Bind_B.Text;
+                bindings["Buttons/1"] = Bind_X.Text;
+                bindings["Buttons/2"] = Bind_Y.Text;
+                bindings["Buttons/Minus"] = Bind_Z.Text;
+                bindings["Buttons/Plus"] = Bind_Start.Text;
+                bindings["D-Pad/Up"] = Bind_MainUp.Text;
+                bindings["D-Pad/Down"] = Bind_MainDown.Text;
+                bindings["D-Pad/Left"] = Bind_MainLeft.Text;
+                bindings["D-Pad/Right"] = Bind_MainRight.Text;
+                bindings["IR/Up"] = Bind_CUp.Text;
+                bindings["IR/Down"] = Bind_CDown.Text;
+
+                // Nunchuk Stick & Buttons
+                if (Bind_NunchukUp != null) bindings["Nunchuk/Stick/Up"] = Bind_NunchukUp.Text;
+                if (Bind_NunchukDown != null) bindings["Nunchuk/Stick/Down"] = Bind_NunchukDown.Text;
+                if (Bind_NunchukLeft != null) bindings["Nunchuk/Stick/Left"] = Bind_NunchukLeft.Text;
+                if (Bind_NunchukRight != null) bindings["Nunchuk/Stick/Right"] = Bind_NunchukRight.Text;
+                if (Bind_NunchukC != null) bindings["Nunchuk/Buttons/C"] = Bind_NunchukC.Text;
+                if (Bind_NunchukZ != null) bindings["Nunchuk/Buttons/Z"] = Bind_NunchukZ.Text;
+
+                // Motion Shake & Tilt
+                if (Bind_ShakeX != null) bindings["Shake/X"] = Bind_ShakeX.Text;
+                if (Bind_ShakeY != null) bindings["Shake/Y"] = Bind_ShakeY.Text;
+                if (Bind_ShakeZ != null) bindings["Shake/Z"] = Bind_ShakeZ.Text;
+                if (Bind_TiltLeft != null) bindings["Tilt/Left"] = Bind_TiltLeft.Text;
+                if (Bind_TiltRight != null) bindings["Tilt/Right"] = Bind_TiltRight.Text;
+                if (Bind_TiltForward != null) bindings["Tilt/Forward"] = Bind_TiltForward.Text;
+                if (Bind_TiltBackward != null) bindings["Tilt/Backward"] = Bind_TiltBackward.Text;
+
+                // Override from Simple Mode if user was in Simple Mode
+                if (_isSimpleControllerMode)
+                {
+                    bindings["Buttons/2"] = SimpleBind_Accelerate.Text;
+                    bindings["Buttons/1"] = SimpleBind_Brake.Text;
+                    bindings["Buttons/B"] = SimpleBind_Drift.Text;
+                    bindings["Nunchuk/Buttons/Z"] = SimpleBind_Item.Text;
+                    bindings["Nunchuk/Buttons/C"] = SimpleBind_LookBack.Text;
+                    bindings["Shake/X"] = SimpleBind_Trick.Text;
+                    bindings["Shake/Y"] = SimpleBind_Trick.Text;
+                    bindings["Shake/Z"] = SimpleBind_Trick.Text;
+                    bindings["Buttons/Plus"] = SimpleBind_Pause.Text;
+
+                    // Analog Stick (Nunchuk)
+                    if (SimpleBind_StickUp != null) bindings["Nunchuk/Stick/Up"] = SimpleBind_StickUp.Text;
+                    if (SimpleBind_StickDown != null) bindings["Nunchuk/Stick/Down"] = SimpleBind_StickDown.Text;
+                    if (SimpleBind_StickLeft != null) bindings["Nunchuk/Stick/Left"] = SimpleBind_StickLeft.Text;
+                    if (SimpleBind_StickRight != null) bindings["Nunchuk/Stick/Right"] = SimpleBind_StickRight.Text;
+
+                    // D-Pad
+                    if (SimpleBind_DPadUp != null) bindings["D-Pad/Up"] = SimpleBind_DPadUp.Text;
+                    if (SimpleBind_DPadDown != null) bindings["D-Pad/Down"] = SimpleBind_DPadDown.Text;
+                    if (SimpleBind_DPadLeft != null) bindings["D-Pad/Left"] = SimpleBind_DPadLeft.Text;
+                    if (SimpleBind_DPadRight != null) bindings["D-Pad/Right"] = SimpleBind_DPadRight.Text;
+                }
+            }
+            else
+            {
+                // GameCube buttons
+                bindings["Buttons/A"] = Bind_A.Text;
+                bindings["Buttons/B"] = Bind_B.Text;
+                bindings["Buttons/X"] = Bind_X.Text;
+                bindings["Buttons/Y"] = Bind_Y.Text;
+                bindings["Buttons/Z"] = Bind_Z.Text;
+                bindings["Buttons/Start"] = Bind_Start.Text;
+                bindings["Main Stick/Up"] = Bind_MainUp.Text;
+                bindings["Main Stick/Down"] = Bind_MainDown.Text;
+                bindings["Main Stick/Left"] = Bind_MainLeft.Text;
+                bindings["Main Stick/Right"] = Bind_MainRight.Text;
+                bindings["C-Stick/Up"] = Bind_CUp.Text;
+                bindings["C-Stick/Down"] = Bind_CDown.Text;
+                bindings["Triggers/L"] = Bind_L.Text;
+                bindings["Triggers/R"] = Bind_R.Text;
+
+                // Override from Simple Mode if user was in Simple Mode
+                if (_isSimpleControllerMode)
+                {
+                    bindings["Buttons/A"] = SimpleBind_Accelerate.Text;
+                    bindings["Buttons/B"] = SimpleBind_Brake.Text;
+                    bindings["Triggers/R"] = SimpleBind_Drift.Text;
+                    bindings["Triggers/L"] = SimpleBind_Item.Text;
+                    bindings["Buttons/X"] = SimpleBind_LookBack.Text;
+                    bindings["D-Pad/Up"] = SimpleBind_Trick.Text;
+                    bindings["Buttons/Start"] = SimpleBind_Pause.Text;
+
+                    // Analog Stick (Main Stick)
+                    if (SimpleBind_StickUp != null) bindings["Main Stick/Up"] = SimpleBind_StickUp.Text;
+                    if (SimpleBind_StickDown != null) bindings["Main Stick/Down"] = SimpleBind_StickDown.Text;
+                    if (SimpleBind_StickLeft != null) bindings["Main Stick/Left"] = SimpleBind_StickLeft.Text;
+                    if (SimpleBind_StickRight != null) bindings["Main Stick/Right"] = SimpleBind_StickRight.Text;
+
+                    // D-Pad
+                    if (SimpleBind_DPadUp != null) bindings["D-Pad/Up"] = SimpleBind_DPadUp.Text;
+                    if (SimpleBind_DPadDown != null) bindings["D-Pad/Down"] = SimpleBind_DPadDown.Text;
+                    if (SimpleBind_DPadLeft != null) bindings["D-Pad/Left"] = SimpleBind_DPadLeft.Text;
+                    if (SimpleBind_DPadRight != null) bindings["D-Pad/Right"] = SimpleBind_DPadRight.Text;
+                }
+            }
+
+            _controllerProfileManager.SaveActiveBindings(userFolder, isWiimote, portIndex, bindings);
+            _hasUnsavedChanges = false;
+            ShowSettingsStatusNotification($"💾 Controller settings saved for {_selectedControllerPort}!");
+        }
+        catch (Exception ex)
+        {
+            ShowSettingsStatusNotification($"❌ Failed saving controller settings: {ex.Message}");
+        }
+    }
+
+    private void ShowSettingsStatusNotification(string msg)
+    {
+        SetStatus(msg, (WpfBrush)FindResource("AccentBrush"));
+    }
+
     protected override void OnClosing(System.ComponentModel.CancelEventArgs e)
     {
         SaveWindowBounds();
@@ -4312,6 +5279,8 @@ public sealed class CustomDialog : Window
     private MessageBoxResult _result = MessageBoxResult.None;
     private readonly MessageBoxButton _buttons;
     private readonly Border root;
+
+    public MessageBoxResult Result => _result;
 
     public CustomDialog(string title, string message, MessageBoxButton buttons)
     {
@@ -4414,24 +5383,43 @@ public sealed class CustomDialog : Window
             Margin = new Thickness(0, 4, 0, 6)
         };
 
-        var primaryButton = CreateDialogButton(buttons == MessageBoxButton.YesNo ? "Yes" : "OK", true);
-        primaryButton.Click += (_, _) =>
+        if (buttons == MessageBoxButton.YesNoCancel)
         {
-            _result = buttons == MessageBoxButton.YesNo ? MessageBoxResult.Yes : MessageBoxResult.OK;
-            Close();
-        };
-        buttonPanel.Children.Add(primaryButton);
+            var saveBtn = CreateDialogButton("Save & Switch", true);
+            saveBtn.Click += (_, _) => { _result = MessageBoxResult.Yes; Close(); };
+            buttonPanel.Children.Add(saveBtn);
 
-        if (buttons == MessageBoxButton.YesNo)
+            var discardBtn = CreateDialogButton("Discard", false);
+            discardBtn.Margin = new Thickness(8, 0, 0, 0);
+            discardBtn.Click += (_, _) => { _result = MessageBoxResult.No; Close(); };
+            buttonPanel.Children.Add(discardBtn);
+
+            var cancelBtn = CreateDialogButton("Cancel", false);
+            cancelBtn.Margin = new Thickness(8, 0, 0, 0);
+            cancelBtn.Click += (_, _) => { _result = MessageBoxResult.Cancel; Close(); };
+            buttonPanel.Children.Add(cancelBtn);
+        }
+        else
         {
-            var secondaryButton = CreateDialogButton("No", false);
-            secondaryButton.Margin = new Thickness(10, 0, 0, 0);
-            secondaryButton.Click += (_, _) =>
+            var primaryButton = CreateDialogButton(buttons == MessageBoxButton.YesNo ? "Yes" : "OK", true);
+            primaryButton.Click += (_, _) =>
             {
-                _result = MessageBoxResult.No;
+                _result = buttons == MessageBoxButton.YesNo ? MessageBoxResult.Yes : MessageBoxResult.OK;
                 Close();
             };
-            buttonPanel.Children.Add(secondaryButton);
+            buttonPanel.Children.Add(primaryButton);
+
+            if (buttons == MessageBoxButton.YesNo)
+            {
+                var secondaryButton = CreateDialogButton("No", false);
+                secondaryButton.Margin = new Thickness(10, 0, 0, 0);
+                secondaryButton.Click += (_, _) =>
+                {
+                    _result = MessageBoxResult.No;
+                    Close();
+                };
+                buttonPanel.Children.Add(secondaryButton);
+            }
         }
 
         Grid.SetRow(buttonPanel, 2);
@@ -4739,5 +5727,170 @@ public sealed class CustomDialog : Window
     {
         base.ShowDialog();
         return _result;
+    }
+}
+
+public sealed class KeyBindingWindow : Window
+{
+    public string SelectedBinding { get; private set; } = "";
+    private readonly System.Windows.Threading.DispatcherTimer _timer;
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct XINPUT_STATE
+    {
+        public uint dwPacketNumber;
+        public XINPUT_GAMEPAD Gamepad;
+    }
+
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    public struct XINPUT_GAMEPAD
+    {
+        public ushort wButtons;
+        public byte bLeftTrigger;
+        public byte bRightTrigger;
+        public short sThumbLX;
+        public short sThumbLY;
+        public short sThumbRX;
+        public short sThumbRY;
+    }
+
+    [System.Runtime.InteropServices.DllImport("xinput1_4.dll", EntryPoint = "XInputGetState")]
+    public static extern int XInputGetState14(int dwUserIndex, out XINPUT_STATE pState);
+
+    [System.Runtime.InteropServices.DllImport("xinput1_3.dll", EntryPoint = "XInputGetState")]
+    public static extern int XInputGetState13(int dwUserIndex, out XINPUT_STATE pState);
+
+    public KeyBindingWindow(string actionName)
+    {
+        WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        Width = 460;
+        Height = 260;
+        WindowStyle = WindowStyle.None;
+        AllowsTransparency = true;
+        Background = System.Windows.Media.Brushes.Transparent;
+        Topmost = true;
+
+        var rootBorder = new Border
+        {
+            CornerRadius = new CornerRadius(16),
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x11, 0x18, 0x27)),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0xF2, 0xFF)),
+            BorderThickness = new Thickness(2),
+            Padding = new Thickness(24),
+            Effect = new System.Windows.Media.Effects.DropShadowEffect { BlurRadius = 30, Opacity = 0.6, Color = System.Windows.Media.Color.FromRgb(0x00, 0xF2, 0xFF) }
+        };
+
+        var stack = new StackPanel();
+        stack.Children.Add(new TextBlock { Text = "🎮 REBIND CONTROLLER / KEYBOARD INPUT", FontSize = 16, FontWeight = FontWeights.Black, Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x00, 0xF2, 0xFF)), Margin = new Thickness(0, 0, 0, 10) });
+        stack.Children.Add(new TextBlock { Text = $"Press any key on Keyboard or button on Gamepad for:\n[{actionName}]", FontSize = 14, FontWeight = FontWeights.Bold, Foreground = System.Windows.Media.Brushes.White, Margin = new Thickness(0, 0, 0, 16), TextWrapping = TextWrapping.Wrap });
+        stack.Children.Add(new TextBlock { Text = "Listening for input... (Press ESC to cancel)", FontSize = 12, Foreground = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x94, 0xA3, 0xB8)), HorizontalAlignment = System.Windows.HorizontalAlignment.Center, Margin = new Thickness(0, 0, 0, 16) });
+
+        var cancelBtn = new WpfButton
+        {
+            Content = "Cancel",
+            Width = 110,
+            Height = 34,
+            FontWeight = FontWeights.Bold,
+            Foreground = System.Windows.Media.Brushes.White,
+            Background = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x21, 0x2B, 0x43)),
+            BorderBrush = new SolidColorBrush(System.Windows.Media.Color.FromRgb(0x43, 0x51, 0x70)),
+            BorderThickness = new Thickness(1),
+            Cursor = System.Windows.Input.Cursors.Hand,
+            HorizontalAlignment = System.Windows.HorizontalAlignment.Center
+        };
+        cancelBtn.Click += (_, _) => { DialogResult = false; Close(); };
+        stack.Children.Add(cancelBtn);
+
+        rootBorder.Child = stack;
+        Content = rootBorder;
+
+        KeyDown += KeyBindingWindow_KeyDown;
+
+        _timer = new System.Windows.Threading.DispatcherTimer { Interval = TimeSpan.FromMilliseconds(50) };
+        _timer.Tick += PollGamepadState;
+        _timer.Start();
+    }
+
+    private void KeyBindingWindow_KeyDown(object sender, System.Windows.Input.KeyEventArgs e)
+    {
+        if (e.Key == System.Windows.Input.Key.Escape)
+        {
+            DialogResult = false;
+            Close();
+            return;
+        }
+
+        string dolphinKey = e.Key switch
+        {
+            System.Windows.Input.Key.Space => "`SPACE`",
+            System.Windows.Input.Key.Return => "`RETURN`",
+            System.Windows.Input.Key.Back => "`BACK`",
+            System.Windows.Input.Key.Tab => "`TAB`",
+            System.Windows.Input.Key.Up => "`UP`",
+            System.Windows.Input.Key.Down => "`DOWN`",
+            System.Windows.Input.Key.Left => "`LEFT`",
+            System.Windows.Input.Key.Right => "`RIGHT`",
+            System.Windows.Input.Key.LeftShift or System.Windows.Input.Key.RightShift => "`SHIFT`",
+            System.Windows.Input.Key.LeftCtrl or System.Windows.Input.Key.RightCtrl => "`CONTROL`",
+            System.Windows.Input.Key.LeftAlt or System.Windows.Input.Key.RightAlt => "`MENU`",
+            _ => $"`{e.Key}`"
+        };
+
+        SelectedBinding = dolphinKey;
+        _timer.Stop();
+        DialogResult = true;
+        Close();
+    }
+
+    private void PollGamepadState(object? sender, EventArgs e)
+    {
+        const short DEADZONE = 16000;
+        try
+        {
+            if (XInputGetState14(0, out var state) == 0 || XInputGetState13(0, out state) == 0)
+            {
+                // Buttons (Dolphin SDL format: Button S=South/A, Button E=East/B, Button W=West/X, Button N=North/Y)
+                ushort btn = state.Gamepad.wButtons;
+                if ((btn & 0x1000) != 0) SetBindingAndClose("`Button S`");          // A (South)
+                else if ((btn & 0x2000) != 0) SetBindingAndClose("`Button E`");     // B (East)
+                else if ((btn & 0x4000) != 0) SetBindingAndClose("`Button W`");     // X (West)
+                else if ((btn & 0x8000) != 0) SetBindingAndClose("`Button N`");     // Y (North)
+                else if ((btn & 0x0100) != 0) SetBindingAndClose("`Shoulder L`");   // Left Bumper
+                else if ((btn & 0x0200) != 0) SetBindingAndClose("`Shoulder R`");   // Right Bumper
+                else if ((btn & 0x0010) != 0) SetBindingAndClose("`Start`");        // Start
+                else if ((btn & 0x0020) != 0) SetBindingAndClose("`Back`");         // Back
+                else if ((btn & 0x0040) != 0) SetBindingAndClose("`Thumb L`");      // Left Stick Click
+                else if ((btn & 0x0080) != 0) SetBindingAndClose("`Thumb R`");      // Right Stick Click
+                else if ((btn & 0x0001) != 0) SetBindingAndClose("`Pad N`");        // D-Pad Up
+                else if ((btn & 0x0002) != 0) SetBindingAndClose("`Pad S`");        // D-Pad Down
+                else if ((btn & 0x0004) != 0) SetBindingAndClose("`Pad W`");        // D-Pad Left
+                else if ((btn & 0x0008) != 0) SetBindingAndClose("`Pad E`");        // D-Pad Right
+
+                // Triggers (analog)
+                else if (state.Gamepad.bLeftTrigger > 100) SetBindingAndClose("`Trigger L`");
+                else if (state.Gamepad.bRightTrigger > 100) SetBindingAndClose("`Trigger R`");
+
+                // Left Analog Stick axes
+                else if (state.Gamepad.sThumbLY > DEADZONE) SetBindingAndClose("`Left Y+`");   // Left Stick Up
+                else if (state.Gamepad.sThumbLY < -DEADZONE) SetBindingAndClose("`Left Y-`");  // Left Stick Down
+                else if (state.Gamepad.sThumbLX < -DEADZONE) SetBindingAndClose("`Left X-`");  // Left Stick Left
+                else if (state.Gamepad.sThumbLX > DEADZONE) SetBindingAndClose("`Left X+`");   // Left Stick Right
+
+                // Right Analog Stick axes
+                else if (state.Gamepad.sThumbRY > DEADZONE) SetBindingAndClose("`Right Y+`");  // Right Stick Up
+                else if (state.Gamepad.sThumbRY < -DEADZONE) SetBindingAndClose("`Right Y-`"); // Right Stick Down
+                else if (state.Gamepad.sThumbRX < -DEADZONE) SetBindingAndClose("`Right X-`"); // Right Stick Left
+                else if (state.Gamepad.sThumbRX > DEADZONE) SetBindingAndClose("`Right X+`");  // Right Stick Right
+            }
+        }
+        catch { }
+    }
+
+    private void SetBindingAndClose(string binding)
+    {
+        SelectedBinding = binding;
+        _timer.Stop();
+        DialogResult = true;
+        Close();
     }
 }
