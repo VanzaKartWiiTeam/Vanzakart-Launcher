@@ -100,11 +100,11 @@ $modDirectoryName = if ($Channel -eq "Beta") { "VKBeta" } else { "VanzaKart" }
 $archiveName = "$modDirectoryName.zip"
 
 # Liste di esclusione (devono corrispondere a quelle del Launcher in C#)
-$ProtectedDirs = @("My Stuff", "UserData", "userdata", "Saves", "Save", "Licenses", "License", "Patenti", "Profiles", "Miis", "Mii", "private")
+$ProtectedDirs = @("My Stuff", "UserData", "userdata", "Saves", "Save", "Licenses", "License", "Patenti", "Profiles", "Miis", "Mii", "private", "Patches", "patches")
 $ProtectedFiles = @("rksys.dat", "RFL_DB.dat", "active_mii.txt", "mii_profile.json")
 $ProtectedExts = @(".mii", ".miigx", ".mae", ".vk-mii")
 $ProtectedSubstrings = @("save", "license", "patent", "mii", "profile")
-$AlwaysIncludedDirs = @("CTBRSTM", "MiiOutfitC", "Race")
+$AlwaysIncludedDirs = @("CTBRSTM", "MiiOutfitC", "Race", "Language")
 $AlwaysIncludedRelativeDirSuffixes = @("Scene/Model")
 
 function Has-ProtectedDirectorySegment {

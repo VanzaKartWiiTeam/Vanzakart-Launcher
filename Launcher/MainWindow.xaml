@@ -1101,7 +1101,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.3" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.3.5" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1567,7 +1567,7 @@
                                      </Grid.RowDefinitions>
 
                                      <!-- TOP 3 PODIUM -->
-                                     <Grid Grid.Row="0" Margin="0,18,0,30" MinHeight="348" ClipToBounds="False">
+                                     <Grid Grid.Row="0" Margin="0,38,0,30" MinHeight="348" ClipToBounds="False">
                                          <Grid.ColumnDefinitions>
                                              <ColumnDefinition Width="*"/>   <!-- 2nd Place -->
                                              <ColumnDefinition Width="1.1*"/> <!-- 1st Place -->
@@ -1665,6 +1665,7 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
                                                       <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="12" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                      <TextBlock Text="{Binding GamesStatsLine}" FontSize="10" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                                                       <Image Source="{Binding RankImageUrl}" Width="38" Height="38" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,6,0,0">
                                                           <Image.Style>
                                                               <Style TargetType="Image">
@@ -1757,18 +1758,19 @@
                                                              <DropShadowEffect BlurRadius="8" ShadowDepth="0" Color="#FFD166" Opacity="0.5"/>
                                                          </TextBlock.Effect>
                                                      </TextBlock>
-                                                      <Image Source="{Binding RankImageUrl}" Width="48" Height="48" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0">
-                                                          <Image.Style>
-                                                              <Style TargetType="Image">
-                                                                  <Setter Property="Visibility" Value="Collapsed"/>
-                                                                  <Style.Triggers>
-                                                                      <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                          <Setter Property="Visibility" Value="Visible"/>
-                                                                      </DataTrigger>
-                                                                  </Style.Triggers>
-                                                              </Style>
-                                                          </Image.Style>
-                                                      </Image>
+                                                     <TextBlock Text="{Binding GamesStatsLine}" FontSize="10.5" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                     <Image Source="{Binding RankImageUrl}" Width="48" Height="48" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,8,0,0">
+                                                         <Image.Style>
+                                                             <Style TargetType="Image">
+                                                                 <Setter Property="Visibility" Value="Collapsed"/>
+                                                                 <Style.Triggers>
+                                                                     <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                                     </DataTrigger>
+                                                                 </Style.Triggers>
+                                                             </Style>
+                                                         </Image.Style>
+                                                     </Image>
                                                      <TextBlock Text="{Binding FriendCode}" FontSize="11" Foreground="{StaticResource TextFaint}" HorizontalAlignment="Center" Margin="0,7,0,0"/>
                                                  </StackPanel>
                                              </Grid>
@@ -1841,6 +1843,7 @@
                                                      </Border>
                                                      <TextBlock Text="{Binding Name, FallbackValue=Player}" FontSize="15.5" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" MaxWidth="170"/>
                                                       <TextBlock Text="{Binding DisplayPoints, FallbackValue='0 VR'}" FontSize="11.5" FontWeight="SemiBold" Foreground="#39E7FF" HorizontalAlignment="Center" Margin="0,2,0,0"/>
+                                                      <TextBlock Text="{Binding GamesStatsLine}" FontSize="10" Foreground="{StaticResource TextSecondary}" HorizontalAlignment="Center" Margin="0,2,0,0"/>
                                                       <Image Source="{Binding RankImageUrl}" Width="38" Height="38" Stretch="Uniform" HorizontalAlignment="Center" Margin="0,6,0,0">
                                                           <Image.Style>
                                                               <Style TargetType="Image">
@@ -1940,23 +1943,27 @@
                                                  <!-- Column Headers -->
                                                  <Grid DockPanel.Dock="Top" Margin="14,0,14,8">
                                                      <Grid.ColumnDefinitions>
-                                                         <ColumnDefinition Width="48"/>  <!-- POS -->
-                                                         <ColumnDefinition Width="64"/>  <!-- Avatar -->
+                                                         <ColumnDefinition Width="40"/>  <!-- POS -->
+                                                         <ColumnDefinition Width="56"/>  <!-- Avatar -->
                                                          <ColumnDefinition Width="*"/>   <!-- Player Name -->
-                                                         <ColumnDefinition Width="100"/> <!-- VR -->
-                                                         <ColumnDefinition Width="60"/> <!-- Rank -->
-                                                         <ColumnDefinition Width="85"/>  <!-- 24h -->
-                                                         <ColumnDefinition Width="120"/> <!-- Last seen -->
- 
+                                                         <ColumnDefinition Width="80"/>  <!-- VR -->
+                                                         <ColumnDefinition Width="55"/>  <!-- WINS -->
+                                                         <ColumnDefinition Width="55"/>  <!-- GAMES -->
+                                                         <ColumnDefinition Width="60"/>  <!-- WIN % -->
+                                                         <ColumnDefinition Width="45"/>  <!-- Rank -->
+                                                         <ColumnDefinition Width="65"/>  <!-- 24h -->
+                                                         <ColumnDefinition Width="100"/> <!-- Last seen -->
                                                      </Grid.ColumnDefinitions>
                                                      
                                                      <TextBlock Text="POS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="0"/>
                                                      <TextBlock Text="PLAYER" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="1" Grid.ColumnSpan="2" HorizontalAlignment="Left"/>
                                                      <TextBlock Text="VR" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="3"/>
-                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
-                                                     <TextBlock Text="24H" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
-                                                     <TextBlock Text="LAST SEEN" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
- 
+                                                     <TextBlock Text="WINS" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="4"/>
+                                                     <TextBlock Text="GAMES" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="5"/>
+                                                     <TextBlock Text="WIN %" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="6"/>
+                                                     <TextBlock Text="RANK" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="7"/>
+                                                     <TextBlock Text="24H" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="8"/>
+                                                     <TextBlock Text="LAST SEEN" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}" Grid.Column="9"/>
                                                  </Grid>
                                                  
                                                  <!-- Scrollable List of Ranks -->
@@ -1971,14 +1978,16 @@
                                                          <Border Style="{StaticResource LeaderboardRowBorder}">
                                                              <Grid>
                                                                  <Grid.ColumnDefinitions>
-                                                                     <ColumnDefinition Width="48"/>  <!-- Position -->
-                                                                     <ColumnDefinition Width="64"/>  <!-- Avatar -->
+                                                                     <ColumnDefinition Width="40"/>  <!-- Position -->
+                                                                     <ColumnDefinition Width="56"/>  <!-- Avatar -->
                                                                      <ColumnDefinition Width="*"/>   <!-- Player Name -->
-                                                                     <ColumnDefinition Width="100"/> <!-- Points -->
-                                                                     <ColumnDefinition Width="60"/> <!-- Rank -->
-                                                                     <ColumnDefinition Width="85"/>  <!-- 24h -->
-                                                                     <ColumnDefinition Width="120"/> <!-- Last seen -->
- 
+                                                                     <ColumnDefinition Width="80"/>  <!-- Points -->
+                                                                     <ColumnDefinition Width="55"/>  <!-- Wins -->
+                                                                     <ColumnDefinition Width="55"/>  <!-- Games -->
+                                                                     <ColumnDefinition Width="60"/>  <!-- Win % -->
+                                                                     <ColumnDefinition Width="45"/>  <!-- Rank -->
+                                                                     <ColumnDefinition Width="65"/>  <!-- 24h -->
+                                                                     <ColumnDefinition Width="100"/> <!-- Last seen -->
                                                                  </Grid.ColumnDefinitions>
 
                                                                  <!-- Position -->
@@ -2035,7 +2044,7 @@
                                                                  </Border>
 
                                                                  <!-- Player Name -->
-                                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center">
+                                                                 <StackPanel Grid.Column="2" VerticalAlignment="Center" Margin="14,0,0,0">
                                                                      <StackPanel Orientation="Horizontal">
                                                                          <TextBlock Text="{Binding Name}" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center"/>
                                                                          <!-- "YOU" Badge -->
@@ -2050,25 +2059,48 @@
                                                                  <!-- Points -->
                                                                  <TextBlock Text="{Binding DisplayPoints}" FontSize="13.5" FontWeight="Bold" Foreground="#00F2FF" VerticalAlignment="Center" Grid.Column="3"/>
 
+                                                                 <!-- Wins -->
+                                                                 <TextBlock Text="{Binding WinsLabel}" FontSize="12" FontWeight="SemiBold" Foreground="#5CE1A3" VerticalAlignment="Center" Grid.Column="4"/>
+
+                                                                 <!-- Games -->
+                                                                 <TextBlock Text="{Binding GamesLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{StaticResource TextPrimary}" VerticalAlignment="Center" Grid.Column="5"/>
+
+                                                                 <!-- Winrate -->
+                                                                 <TextBlock Text="{Binding WinrateLabel}" FontSize="11.5" FontWeight="SemiBold" Foreground="#FFD166" VerticalAlignment="Center" Grid.Column="6"/>
+
                                                                  <!-- API rank image -->
-                                                                 <Image Grid.Column="4" Source="{Binding RankImageUrl}" Width="34" Height="34" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center">
-                                                                     <Image.Style>
-                                                                         <Style TargetType="Image">
-                                                                             <Setter Property="Visibility" Value="Collapsed"/>
-                                                                             <Style.Triggers>
-                                                                                 <DataTrigger Binding="{Binding HasRankImage}" Value="True">
-                                                                                     <Setter Property="Visibility" Value="Visible"/>
-                                                                                 </DataTrigger>
-                                                                             </Style.Triggers>
-                                                                         </Style>
-                                                                     </Image.Style>
-                                                                 </Image>
+                                                                 <Grid Grid.Column="7" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                     <Image Source="{Binding RankImageUrl}" Width="24" Height="24" Stretch="Uniform" HorizontalAlignment="Left" VerticalAlignment="Center">
+                                                                         <Image.Style>
+                                                                             <Style TargetType="Image">
+                                                                                 <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                 <Style.Triggers>
+                                                                                     <DataTrigger Binding="{Binding HasRankImage}" Value="True">
+                                                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                                                     </DataTrigger>
+                                                                                 </Style.Triggers>
+                                                                             </Style>
+                                                                         </Image.Style>
+                                                                     </Image>
+                                                                     <TextBlock Text="-" FontSize="12" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center">
+                                                                         <TextBlock.Style>
+                                                                             <Style TargetType="TextBlock">
+                                                                                 <Setter Property="Visibility" Value="Collapsed"/>
+                                                                                 <Style.Triggers>
+                                                                                     <DataTrigger Binding="{Binding HasRankImage}" Value="False">
+                                                                                         <Setter Property="Visibility" Value="Visible"/>
+                                                                                     </DataTrigger>
+                                                                                 </Style.Triggers>
+                                                                             </Style>
+                                                                         </TextBlock.Style>
+                                                                     </TextBlock>
+                                                                 </Grid>
 
                                                                  <!-- VR movement from the extended API -->
-                                                                 <TextBlock Text="{Binding VrLast24HoursLabel}" FontSize="12.5" FontWeight="SemiBold" Foreground="{Binding VrTrendColor}" VerticalAlignment="Center" Grid.Column="5" ToolTip="{Binding VrTrendToolTip}"/>
+                                                                 <TextBlock Text="{Binding VrLast24HoursLabel}" FontSize="12" FontWeight="SemiBold" Foreground="{Binding VrTrendColor}" VerticalAlignment="Center" Grid.Column="8" ToolTip="{Binding VrTrendToolTip}"/>
 
                                                                  <!-- Last online activity -->
-                                                                 <TextBlock Text="{Binding LastSeenLabel}" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="6" TextTrimming="CharacterEllipsis"/>
+                                                                 <TextBlock Text="{Binding LastSeenLabel}" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" Grid.Column="9" TextTrimming="CharacterEllipsis"/>
                                                              </Grid>
                                                          </Border>
                                                      </DataTemplate>
@@ -3206,6 +3238,7 @@
                                                         <ComboBoxItem Content="Stable (recommended)" Tag="Stable"/>
                                                         <ComboBoxItem Content="Beta (experimental)" Tag="Beta"/>
                                                     </ComboBox>
+                                                    <Button x:Name="ManageBetaTokenButton" Content="🔑 Beta Token" Style="{StaticResource CompactButton}" Margin="0,8,0,0" Visibility="Collapsed" Click="ManageBetaTokenButton_OnClick"/>
                                                 </StackPanel>
                                             </Grid>
                                         </Border>

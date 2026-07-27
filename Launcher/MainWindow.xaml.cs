@@ -57,6 +57,7 @@ public partial class MainWindow : Window
     private const int DifferentialDownloadConcurrency = 4;
     private readonly ModUpdateSafetyService _modUpdateSafetyService = new();
     private readonly ModInstallationStateService _modInstallationStateService = new();
+    private readonly BetaAccessService _betaAccessService = new();
     private readonly SemaphoreSlim _updateCheckLock = new(1, 1);
     private bool _isRefreshingMiis;
     private bool _isRenderingLicenseAvatars;
@@ -158,8 +159,6 @@ public partial class MainWindow : Window
         LicenseMiiPickerListBox.ItemsSource = _licenseMiiPickerItems;
         InstalledAddonsItemsControl.ItemsSource = _installedAddons;
         GameBananaModsItemsControl.ItemsSource = _gameBananaMods;
-        _navigationService.Navigated += tab => NavigateTo(tab);
-
         LoadSettingsIntoUi();
         ApplyWindowBounds();
 
@@ -172,6 +171,7 @@ public partial class MainWindow : Window
             StartAmbientMotion();
             RefreshMiiRuntimeStatus();
             ConfigureFilesystemWatchers();
+            await ValidateSavedBetaTokenOnStartupAsync();
             if (_userPreferences.AutoCheckUpdates)
             {
                 await CheckForUpdatesAsync(showMessages: false);
@@ -181,6 +181,8 @@ public partial class MainWindow : Window
                 await FetchNewsFromServerAsync();
             }
         };
+
+        _navigationService.Navigated += tab => NavigateTo(tab);
     }
 
     private void ApplyWindowBounds()
@@ -526,6 +528,77 @@ public partial class MainWindow : Window
         ReleaseChannelSettingsCard.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
         ModReleaseChannelComboBox.IsEnabled = !_isBusy;
+
+        if (ManageBetaTokenButton != null)
+        {
+            ManageBetaTokenButton.Visibility = SelectedModReleaseChannel == ModReleaseChannel.Beta ? Visibility.Visible : Visibility.Collapsed;
+        }
+    }
+
+    private async Task ValidateSavedBetaTokenOnStartupAsync()
+    {
+        if (_userPreferences.ModReleaseChannel != ModReleaseChannel.Beta)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(_userPreferences.BetaAccessToken))
+        {
+            _userPreferences.ModReleaseChannel = ModReleaseChannel.Stable;
+            _preferencesService.Save(_userPreferences);
+            ConfigureModReleaseDefaults(ModReleaseChannel.Stable);
+            RefreshReleaseChannelUi();
+            RefreshAllState();
+            return;
+        }
+
+        var result = await _betaAccessService.VerifyTokenAsync(_userPreferences.BetaAccessToken);
+        if (!result.Success && !result.IsNetworkOrServerError)
+        {
+            _userPreferences.BetaAccessToken = string.Empty;
+            _userPreferences.ModReleaseChannel = ModReleaseChannel.Stable;
+            _preferencesService.Save(_userPreferences);
+            ConfigureModReleaseDefaults(ModReleaseChannel.Stable);
+            RefreshReleaseChannelUi();
+            RefreshAllState();
+
+            ShowCustomDialog(
+                "Beta Access Revoked",
+                "Your Beta Access Token is no longer valid or has been modified in the database. You have been automatically switched back to the Stable channel.",
+                MessageBoxButton.OK);
+        }
+    }
+
+    private async Task<bool> PromptBetaTokenIfNeededAsync(bool forcePrompt = false)
+    {
+        if (!forcePrompt && !string.IsNullOrWhiteSpace(_userPreferences.BetaAccessToken))
+        {
+            return true;
+        }
+
+        var dialog = new BetaTokenDialog(_userPreferences.BetaAccessToken)
+        {
+            Owner = this
+        };
+
+        var result = dialog.ShowDialog();
+        if (result == true && !string.IsNullOrWhiteSpace(dialog.VerifiedToken))
+        {
+            _userPreferences.BetaAccessToken = dialog.VerifiedToken;
+            _preferencesService.Save(_userPreferences);
+            return true;
+        }
+
+        return false;
+    }
+
+    private async void ManageBetaTokenButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        var updated = await PromptBetaTokenIfNeededAsync(forcePrompt: true);
+        if (updated)
+        {
+            ShowToast("Beta Token Updated", "Your Access Token has been updated and verified successfully.");
+        }
     }
 
     private async void ModReleaseChannelComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
@@ -545,6 +618,16 @@ public partial class MainWindow : Window
         {
             RestoreReleaseChannelSelection();
             return;
+        }
+
+        if (requestedChannel == ModReleaseChannel.Beta)
+        {
+            var betaUnlocked = await PromptBetaTokenIfNeededAsync();
+            if (!betaUnlocked)
+            {
+                RestoreReleaseChannelSelection();
+                return;
+            }
         }
 
         var message = requestedChannel == ModReleaseChannel.Beta

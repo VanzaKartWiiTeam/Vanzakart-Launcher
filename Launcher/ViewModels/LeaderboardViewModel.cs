@@ -32,7 +32,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
         _networkService = networkService;
         Players = new ObservableCollection<LeaderboardPlayerInfo>();
         
-        Sorts = new ObservableCollection<string> { "Global Rank", "Points", "Prestige" };
+        Sorts = new ObservableCollection<string> { "Global Rank", "Points", "Wins", "Games", "Winrate", "Prestige" };
     }
 
     public ObservableCollection<LeaderboardPlayerInfo> Players { get; }
@@ -124,9 +124,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
         try
         {
             string url = $"{LauncherConfig.LeaderboardApiUrl}?limit=200&offset=0";
-            Task<string> rankingRequest = _networkService.DownloadStringAsync(url);
-            Task<LeaderboardDetailsResponse?> detailsRequest = TryDownloadDetailsAsync();
-            string json = await rankingRequest;
+            string json = await _networkService.DownloadStringAsync(url);
             
             var options = new JsonSerializerOptions
             {
@@ -137,20 +135,12 @@ public sealed class LeaderboardViewModel : BaseViewModel
             
             if (response != null && response.Success)
             {
-                var details = await detailsRequest;
-                var detailsByFriendCode = details?.Players?
-                    .Where(player => !string.IsNullOrWhiteSpace(player.FriendCode))
-                    .GroupBy(player => CleanFriendCode(player.FriendCode), StringComparer.OrdinalIgnoreCase)
-                    .ToDictionary(group => group.Key, group => group.First(), StringComparer.OrdinalIgnoreCase)
-                    ?? new Dictionary<string, LeaderboardDetailsPlayer>(StringComparer.OrdinalIgnoreCase);
-
                 _allPlayersRaw.Clear();
                 if (response.Players != null)
                 {
                     foreach (var rankedPlayer in response.Players)
                     {
-                        detailsByFriendCode.TryGetValue(CleanFriendCode(rankedPlayer.FriendCode), out var detail);
-                        _allPlayersRaw.Add(CreatePlayer(rankedPlayer, detail));
+                        _allPlayersRaw.Add(CreatePlayer(rankedPlayer));
                     }
                 }
 
@@ -159,6 +149,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
                 UpdateSelfFlags();
                 ApplyFiltersAndSorting();
                 StartAvatarRenderingBackground();
+                StartRankImageCachingBackground();
                 HasError = false;
             }
             else
@@ -255,6 +246,18 @@ public sealed class LeaderboardViewModel : BaseViewModel
             "Points" => players
                 .OrderByDescending(p => p.Points)
                 .ThenBy(p => p.Position),
+            "Wins" => players
+                .OrderByDescending(p => p.Wins)
+                .ThenByDescending(p => p.Points)
+                .ThenBy(p => p.Position),
+            "Games" => players
+                .OrderByDescending(p => p.TotalGames)
+                .ThenByDescending(p => p.Points)
+                .ThenBy(p => p.Position),
+            "Winrate" => players
+                .OrderByDescending(p => p.Winrate)
+                .ThenByDescending(p => p.Wins)
+                .ThenBy(p => p.Position),
             "Prestige" => players
                 .OrderByDescending(p => p.PrestigeRank)
                 .ThenByDescending(p => p.Points)
@@ -282,35 +285,39 @@ public sealed class LeaderboardViewModel : BaseViewModel
         }
     }
 
-    private static LeaderboardPlayerInfo CreatePlayer(
-        LeaderboardApiPlayer rankedPlayer,
-        LeaderboardDetailsPlayer? detail)
+    private static LeaderboardPlayerInfo CreatePlayer(LeaderboardApiPlayer rankedPlayer)
     {
-        int resolvedPrestigeRank = detail?.GetPrestigeRank(detail.PrestigeRank) 
-                                 ?? rankedPlayer.GetPrestigeRank(rankedPlayer.PrestigeRank);
-        if (resolvedPrestigeRank == 0 && detail != null)
-        {
-            resolvedPrestigeRank = rankedPlayer.GetPrestigeRank(rankedPlayer.PrestigeRank);
-        }
+        int resolvedPrestigeRank = rankedPlayer.GetPrestigeRank(rankedPlayer.PrestigeRank, rankedPlayer.Points);
+        int totalGames = rankedPlayer.Races > 0 ? rankedPlayer.Races : rankedPlayer.Games;
+        int safeWins = Math.Min(Math.Max(0, rankedPlayer.Wins), Math.Max(0, totalGames));
+        double winrate = totalGames > 0
+            ? Math.Round((double)safeWins / totalGames * 100.0, 1)
+            : rankedPlayer.Winrate;
+
+        string? rawRankUrl = NormalizeServerAssetUrl(rankedPlayer.GetRankImageUrl());
+        string? rankImageUrl = resolvedPrestigeRank >= 1
+            ? (rawRankUrl ?? $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{resolvedPrestigeRank}.png")
+            : null;
 
         return new LeaderboardPlayerInfo
         {
-            Position = rankedPlayer.Position > 0 ? rankedPlayer.Position : detail?.Rank ?? 0,
-            Name = string.IsNullOrWhiteSpace(rankedPlayer.Name) ? detail?.Name ?? string.Empty : rankedPlayer.Name,
-            Points = rankedPlayer.Points > 0 ? rankedPlayer.Points : detail?.Vr ?? 0,
-            FriendCode = string.IsNullOrWhiteSpace(rankedPlayer.FriendCode)
-                ? detail?.FriendCode ?? string.Empty
-                : rankedPlayer.FriendCode,
+            Position = rankedPlayer.Position,
+            Name = rankedPlayer.Name,
+            Points = rankedPlayer.Points,
+            Wins = safeWins,
+            Races = totalGames,
+            Games = totalGames,
+            Winrate = winrate,
+            FriendCode = rankedPlayer.FriendCode,
             PrestigeRank = resolvedPrestigeRank,
-            LastSeen = detail?.LastSeen,
-            IsSuspicious = detail?.IsSuspicious ?? false,
-            VrLast24Hours = detail?.VrStats?.Last24Hours ?? 0,
-            VrLastWeek = detail?.VrStats?.LastWeek ?? 0,
-            VrLastMonth = detail?.VrStats?.LastMonth ?? 0,
-            MiiData = detail?.MiiData ?? rankedPlayer.MiiData,
-            MiiImage = detail?.MiiImageBase64 ?? rankedPlayer.MiiImage,
-            RankImageUrl = NormalizeServerAssetUrl(
-                rankedPlayer.GetRankImageUrl() ?? detail?.GetRankImageUrl())
+            LastSeen = rankedPlayer.LastSeen,
+            VrLast24Hours = rankedPlayer.VrLast24Hours,
+            VrLastWeek = rankedPlayer.VrLastWeek,
+            VrLastMonth = rankedPlayer.VrLastMonth,
+            IsSuspicious = rankedPlayer.IsSuspicious,
+            MiiData = rankedPlayer.MiiData,
+            MiiImage = rankedPlayer.MiiImage,
+            RankImageUrl = rankImageUrl
         };
     }
 
@@ -354,20 +361,21 @@ public sealed class LeaderboardViewModel : BaseViewModel
                         var cacheKey = MiiAvatarRenderService.GetRenderCacheKey(wiiMii);
                         var cachePath = _miiAvatarRenderService.GetAvatarCachePath(cacheKey);
 
-                        // Delete existing low-resolution cached database thumbnails (< 10KB) to force high-quality rendering
+                        // If already cached with valid high-quality size, use immediately
                         if (File.Exists(cachePath))
                         {
                             try
                             {
                                 var info = new FileInfo(cachePath);
-                                if (info.Length < 10000)
+                                if (info.Length >= 10000)
                                 {
-                                    File.Delete(cachePath);
+                                    player.AvatarImagePath = cachePath;
+                                    continue;
                                 }
                             }
                             catch
                             {
-                                // Ignore file errors
+                                // Ignore
                             }
                         }
 
@@ -375,22 +383,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
                         var path = await _miiAvatarRenderService.EnsureAvatarAsync(wiiMii, token);
                         var silhouettePath = _miiAvatarRenderService.GetFallbackSilhouettePath();
 
-                        // Fallback to the pre-rendered database image if high-res rendering failed or returned silhouette (e.g. offline)
-                        if ((string.IsNullOrWhiteSpace(path) || path == silhouettePath) && !string.IsNullOrWhiteSpace(player.MiiImage))
-                        {
-                            try
-                            {
-                                Directory.CreateDirectory(_miiAvatarRenderService.GetAvatarCacheFolder());
-                                await File.WriteAllBytesAsync(cachePath, Convert.FromBase64String(player.MiiImage), token);
-                                path = cachePath;
-                            }
-                            catch
-                            {
-                                // Ignore file write errors
-                            }
-                        }
-
-                        if (!string.IsNullOrWhiteSpace(path))
+                        if (!string.IsNullOrWhiteSpace(path) && path != silhouettePath)
                         {
                             player.AvatarImagePath = path;
                         }
@@ -406,6 +399,94 @@ public sealed class LeaderboardViewModel : BaseViewModel
                 // Ignored
             }
         }, token);
+    }
+
+    private static readonly HttpClient _rankImageHttpClient = new(new SocketsHttpHandler
+    {
+        ConnectTimeout = TimeSpan.FromSeconds(10),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(15),
+        SslOptions = new System.Net.Security.SslClientAuthenticationOptions
+        {
+            RemoteCertificateValidationCallback = (sender, cert, chain, sslPolicyErrors) => true
+        }
+    })
+    {
+        Timeout = TimeSpan.FromSeconds(15)
+    };
+
+    private void StartRankImageCachingBackground()
+    {
+        var players = _allPlayersRaw.Where(p => p.HasPrestigeRank).ToList();
+        if (players.Count == 0) return;
+
+        var cacheDir = Path.Combine(AppContext.BaseDirectory, "Cache", "RankImages");
+        Directory.CreateDirectory(cacheDir);
+
+        Task.Run(async () =>
+        {
+            var defaultPath = Path.Combine(cacheDir, "rank-1.png");
+
+            // Ensure rank-1.png is downloaded as default fallback for all ranked players
+            if (!File.Exists(defaultPath) || new FileInfo(defaultPath).Length < 500)
+            {
+                try
+                {
+                    var defaultBytes = await _rankImageHttpClient.GetByteArrayAsync("https://sitodaking.it:8443/FOOTAGE/ranks/rank-1.png");
+                    if (defaultBytes.Length >= 500)
+                    {
+                        await File.WriteAllBytesAsync(defaultPath, defaultBytes);
+                    }
+                }
+                catch { /* ignore */ }
+            }
+
+            // Assign rank-1.png fallback to all ranked players immediately so no badge appears blank
+            if (File.Exists(defaultPath))
+            {
+                foreach (var p in players)
+                {
+                    if (string.IsNullOrWhiteSpace(p.RankImageUrl) || p.RankImageUrl.StartsWith("http", StringComparison.OrdinalIgnoreCase))
+                    {
+                        p.RankImageUrl = defaultPath;
+                    }
+                }
+            }
+
+            // Download specific rank numbers if available on server
+            var uniqueRanks = players.Select(p => p.PrestigeRank).Distinct().Where(r => r >= 1).ToList();
+
+            foreach (int rank in uniqueRanks)
+            {
+                var localPath = Path.Combine(cacheDir, $"rank-{rank}.png");
+
+                if (File.Exists(localPath) && new FileInfo(localPath).Length >= 500)
+                {
+                    foreach (var p in players.Where(p => p.PrestigeRank == rank))
+                    {
+                        p.RankImageUrl = localPath;
+                    }
+                    continue;
+                }
+
+                try
+                {
+                    var url = $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{rank}.png";
+                    var bytes = await _rankImageHttpClient.GetByteArrayAsync(url);
+                    if (bytes.Length >= 500)
+                    {
+                        await File.WriteAllBytesAsync(localPath, bytes);
+                        foreach (var p in players.Where(p => p.PrestigeRank == rank))
+                        {
+                            p.RankImageUrl = localPath;
+                        }
+                    }
+                }
+                catch
+                {
+                    // 404 or network failure -> keep rank-1.png fallback
+                }
+            }
+        });
     }
 
     private static string CleanFriendCode(string fc)
@@ -437,7 +518,49 @@ public sealed class LeaderboardViewModel : BaseViewModel
         [System.Text.Json.Serialization.JsonPropertyName("fc")]
         public string FriendCode { get; set; } = string.Empty;
 
+        [System.Text.Json.Serialization.JsonPropertyName("prestigeRank")]
         public int PrestigeRank { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("prestige_rank")]
+        public int PrestigeRankAlt { set => PrestigeRank = value; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("pr")]
+        public int PrAlt { set => PrestigeRank = value; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("rank")]
+        public int Rank { get; set; }
+
+        public int Wins { get; set; }
+        public int Races { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("games")]
+        public int Games { get; set; }
+
+        public double Winrate { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("last_seen")]
+        public DateTimeOffset? LastSeen { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("lastSeen")]
+        public DateTimeOffset? LastSeenAlt { set => LastSeen = value; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("vr_last_24_hours")]
+        public int VrLast24Hours { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("vr_gain_24h")]
+        public int VrGain24h { set => VrLast24Hours = value; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("vrLast24Hours")]
+        public int VrLast24HoursAlt { set => VrLast24Hours = value; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("vr_gain_week")]
+        public int VrLastWeek { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("vr_gain_month")]
+        public int VrLastMonth { get; set; }
+
+        [System.Text.Json.Serialization.JsonPropertyName("is_suspicious")]
+        public bool IsSuspicious { get; set; }
 
         [System.Text.Json.Serialization.JsonPropertyName("mii_data")]
         public string? MiiData { get; set; }
@@ -516,32 +639,30 @@ public sealed class LeaderboardViewModel : BaseViewModel
             return null;
         }
 
-        public int GetPrestigeRank(int directPrestigeRank)
+        public int GetPrestigeRank(int directPrestigeRank, int points = 0)
         {
-            if (directPrestigeRank >= 1 && directPrestigeRank <= 8)
+            if (directPrestigeRank >= 1)
             {
                 return directPrestigeRank;
             }
 
-            if (AdditionalFields == null)
+            if (AdditionalFields != null)
             {
-                return 0;
-            }
-
-            string[] aliases = { "prestigeRank", "pr", "prestige_rank", "prestige", "rank_prestige" };
-            foreach (string alias in aliases)
-            {
-                var entry = AdditionalFields.FirstOrDefault(pair =>
-                    string.Equals(pair.Key, alias, StringComparison.OrdinalIgnoreCase));
-                if (!string.IsNullOrEmpty(entry.Key))
+                string[] aliases = { "prestigeRank", "pr", "prestige_rank", "prestige", "rank_prestige" };
+                foreach (string alias in aliases)
                 {
-                    if (entry.Value.ValueKind == JsonValueKind.Number && entry.Value.TryGetInt32(out int val) && val >= 1 && val <= 8)
+                    var entry = AdditionalFields.FirstOrDefault(pair =>
+                        string.Equals(pair.Key, alias, StringComparison.OrdinalIgnoreCase));
+                    if (!string.IsNullOrEmpty(entry.Key))
                     {
-                        return val;
-                    }
-                    if (entry.Value.ValueKind == JsonValueKind.String && int.TryParse(entry.Value.GetString(), out int strVal) && strVal >= 1 && strVal <= 8)
-                    {
-                        return strVal;
+                        if (entry.Value.ValueKind == JsonValueKind.Number && entry.Value.TryGetInt32(out int val) && val >= 1)
+                        {
+                            return val;
+                        }
+                        if (entry.Value.ValueKind == JsonValueKind.String && int.TryParse(entry.Value.GetString(), out int strVal) && strVal >= 1)
+                        {
+                            return strVal;
+                        }
                     }
                 }
             }

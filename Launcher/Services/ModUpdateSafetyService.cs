@@ -21,7 +21,9 @@ public sealed class ModUpdateSafetyService
         "Profiles",
         "Miis",
         "Mii",
-        "private"
+        "private",
+        "Patches",
+        "patches"
     ];
 
     private static readonly string[] ProtectedFileNames =

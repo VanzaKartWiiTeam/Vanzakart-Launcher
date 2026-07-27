@@ -1,3 +1,4 @@
+using System.IO;
 using System.Text.Json.Serialization;
 using VanzaKartLauncher.ViewModels;
 
@@ -17,6 +18,25 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
     [JsonPropertyName("prestigeRank")]
     public int PrestigeRank { get; init; }
 
+    [JsonPropertyName("wins")]
+    public int Wins { get; init; }
+
+    [JsonPropertyName("races")]
+    public int Races { get; init; }
+
+    [JsonPropertyName("games")]
+    public int Games { get; init; }
+
+    public int TotalGames => Games > 0 ? Games : Races;
+
+    [JsonPropertyName("winrate")]
+    public double Winrate { get; init; }
+
+    public string WinsLabel => $"{Wins:N0}";
+    public string GamesLabel => $"{TotalGames:N0}";
+    public string WinrateLabel => $"{Winrate:F1}%";
+    public string GamesStatsLine => $"W: {Wins:N0} | G: {TotalGames:N0} ({Winrate:F1}%)";
+
     public DateTimeOffset? LastSeen { get; init; }
     public bool IsSuspicious { get; init; }
     public int VrLast24Hours { get; init; }
@@ -27,13 +47,43 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
     {
         get
         {
-            if (PrestigeRank >= 1 && PrestigeRank <= 8)
+            if (PrestigeRank < 1)
             {
-                return $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{PrestigeRank}.png";
+                return null;
             }
-            return _rankImageUrl;
+
+            if (!string.IsNullOrWhiteSpace(_rankImageUrl))
+            {
+                if (File.Exists(_rankImageUrl))
+                {
+                    return _rankImageUrl;
+                }
+            }
+
+            var cacheDir = Path.Combine(AppContext.BaseDirectory, "Cache", "RankImages");
+            var localCache = Path.Combine(cacheDir, $"rank-{PrestigeRank}.png");
+            if (File.Exists(localCache))
+            {
+                return localCache;
+            }
+
+            var fallbackCache = Path.Combine(cacheDir, "rank-1.png");
+            if (File.Exists(fallbackCache))
+            {
+                return fallbackCache;
+            }
+
+            return !string.IsNullOrWhiteSpace(_rankImageUrl)
+                ? _rankImageUrl
+                : $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{PrestigeRank}.png";
         }
-        init => _rankImageUrl = value;
+        set
+        {
+            if (SetProperty(ref _rankImageUrl, value))
+            {
+                OnPropertyChanged(nameof(HasRankImage));
+            }
+        }
     }
 
     public bool IsSelf { get; set; }
@@ -59,6 +109,37 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
 
     public bool HasAvatarImage => !string.IsNullOrWhiteSpace(AvatarImagePath);
     public bool HasRankImage => !string.IsNullOrWhiteSpace(RankImageUrl);
+
+    public bool HasPrestigeRank => PrestigeRank >= 1;
+    public string PrestigeRankLabel => HasPrestigeRank ? PrestigeRank.ToString() : "-";
+
+    public string PrestigeBadgeColor1 => PrestigeRank switch
+    {
+        1 => "#FFD700", // Gold
+        2 => "#C0C0C0", // Silver
+        3 => "#CD7F32", // Bronze
+        4 => "#00F2FF", // Cyan
+        5 => "#B000FF", // Purple
+        6 => "#FF6B7A", // Rose
+        7 => "#5CE1A3", // Emerald
+        8 => "#FFD166", // Amber
+        > 8 => "#FFD166", // Higher ranks fallback color
+        _ => "#3A4255"  // Default dark
+    };
+
+    public string PrestigeBadgeColor2 => PrestigeRank switch
+    {
+        1 => "#FF8C00", // Dark Gold
+        2 => "#7A8899", // Steel
+        3 => "#8B4513", // Saddle Brown
+        4 => "#0088AA", // Deep Cyan
+        5 => "#7000AA", // Deep Purple
+        6 => "#CC3355", // Deep Rose
+        7 => "#2A9D6E", // Deep Emerald
+        8 => "#CC9933", // Deep Amber
+        > 8 => "#CC9933", // Higher ranks fallback color
+        _ => "#252A34"  // Default darker
+    };
 
     public int DisplayPosition
     {

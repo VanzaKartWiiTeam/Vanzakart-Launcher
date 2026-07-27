@@ -15,5 +15,6 @@ public class UserPreferences
     public double TotalPlayTimeMinutes { get; set; }
     public string LastKnownLatestModVersion { get; set; } = string.Empty;
     public string LastKnownLatestBetaModVersion { get; set; } = string.Empty;
+    public string BetaAccessToken { get; set; } = string.Empty;
     public ModReleaseChannel ModReleaseChannel { get; set; } = ModReleaseChannel.Stable;
 }
