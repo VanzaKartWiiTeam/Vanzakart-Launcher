@@ -90,6 +90,17 @@ try {
         $completedBytes = 0L
         $installRoot = [IO.Path]::GetFullPath($InstallDirectory).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar
         $buffer = New-Object byte[] (1024 * 1024)
+        $protectedUserFiles = @(
+            'launcher_settings.json',
+            'user_preferences.json',
+            'mod_version.txt',
+            'mod_beta_version.txt',
+            'musicpack_version.txt',
+            'musicpack_beta_version.txt',
+            'mod_install_state.json',
+            'VanzaKart_launcher.json',
+            'VKBeta_launcher.json'
+        )
 
         foreach ($entry in $archive.Entries) {
             $destination = [IO.Path]::GetFullPath((Join-Path $installRoot $entry.FullName))
@@ -98,6 +109,13 @@ try {
             }
             if ([string]::IsNullOrEmpty($entry.Name)) {
                 [IO.Directory]::CreateDirectory($destination) | Out-Null
+                continue
+            }
+
+            $relativeEntry = $entry.FullName.Replace('\', '/').TrimStart('/')
+            if (-not $relativeEntry.Contains('/') -and $protectedUserFiles -contains $relativeEntry) {
+                $completedBytes += $entry.Length
+                Write-Host "       Preserved user file: $relativeEntry" -ForegroundColor DarkGray
                 continue
             }
 

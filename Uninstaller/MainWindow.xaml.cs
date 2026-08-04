@@ -184,6 +184,8 @@ public partial class MainWindow : Window
     private void DeleteSettings()
     {
         AppendLog("Deleting launcher settings.");
+        TryDeleteFile(GetPersistentLauncherSettingsPath());
+
         foreach (var file in new[]
         {
             "launcher_settings.json",
@@ -245,27 +247,41 @@ public partial class MainWindow : Window
 
     private string? TryReadDolphinUserFolder()
     {
-        var settingsPath = Path.Combine(_installDir, "launcher_settings.json");
-        if (!File.Exists(settingsPath))
+        var settingsPaths = new[]
         {
-            return null;
-        }
+            GetPersistentLauncherSettingsPath(),
+            Path.Combine(_installDir, "launcher_settings.json")
+        };
 
-        try
+        foreach (var settingsPath in settingsPaths.Distinct(StringComparer.OrdinalIgnoreCase))
         {
-            using var stream = File.OpenRead(settingsPath);
-            using var doc = JsonDocument.Parse(stream);
-            if (doc.RootElement.TryGetProperty("UserFolderPath", out var userFolderElement))
+            if (!File.Exists(settingsPath))
             {
-                return userFolderElement.GetString();
+                continue;
             }
-        }
-        catch
-        {
-            AppendLog("Unable to read launcher_settings.json.");
+
+            try
+            {
+                using var stream = File.OpenRead(settingsPath);
+                using var doc = JsonDocument.Parse(stream);
+                if (doc.RootElement.TryGetProperty("UserFolderPath", out var userFolderElement))
+                {
+                    return userFolderElement.GetString();
+                }
+            }
+            catch
+            {
+                AppendLog($"Unable to read launcher settings: {settingsPath}");
+            }
         }
 
         return null;
+    }
+
+    private static string GetPersistentLauncherSettingsPath()
+    {
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        return Path.Combine(localAppData, "VanzaKart", "Launcher", "launcher_settings.json");
     }
 
     private void DeleteKnownDirectories(params string[] names)

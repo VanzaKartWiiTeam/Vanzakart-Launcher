@@ -300,6 +300,7 @@ public partial class MainWindow : Window
             await Task.Run(() =>
             {
                 Directory.CreateDirectory(targetDir);
+                MigrateLegacyLauncherSettings(targetDir);
 
                 if (createBackup && Directory.Exists(targetDir))
                 {
@@ -446,6 +447,42 @@ public partial class MainWindow : Window
         DownloadProgressBar.Value = 100;
         DownloadStatusTextBlock.Text = $"Download complete in {FormatDuration(_downloadStopwatch.Elapsed)}.";
         AppendLog($"Download complete: {FormatBytes(new FileInfo(_tempZipPath).Length)}.");
+    }
+
+    private void MigrateLegacyLauncherSettings(string targetDir)
+    {
+        var legacyPath = Path.Combine(targetDir, "launcher_settings.json");
+        if (!File.Exists(legacyPath))
+        {
+            return;
+        }
+
+        var localAppData = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
+        var persistentPath = Path.Combine(localAppData, "VanzaKart", "Launcher", "launcher_settings.json");
+        if (File.Exists(persistentPath))
+        {
+            return;
+        }
+
+        try
+        {
+            using (var stream = File.OpenRead(legacyPath))
+            using (var document = JsonDocument.Parse(stream))
+            {
+                if (document.RootElement.ValueKind != JsonValueKind.Object)
+                {
+                    return;
+                }
+            }
+
+            Directory.CreateDirectory(Path.GetDirectoryName(persistentPath)!);
+            File.Copy(legacyPath, persistentPath, overwrite: false);
+            AppendLog("Existing launcher paths migrated to protected user storage.");
+        }
+        catch (Exception ex)
+        {
+            AppendLog($"Warning: unable to migrate existing launcher paths: {ex.Message}");
+        }
     }
 
     private void BackupUserData(string targetDir, string backupRoot)

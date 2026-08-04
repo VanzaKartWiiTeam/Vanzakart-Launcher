@@ -2,13 +2,13 @@
   <PropertyGroup>
 	<ApplicationIcon>Assets/app.ico</ApplicationIcon>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <UseWPF>true</UseWPF>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>1.4.0-rc.1</Version>
+    <Version>1.4.4</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
@@ -39,4 +39,19 @@
   <ItemGroup>
     <PackageReference Include="SharpCompress" Version="1.0.0" />
   </ItemGroup>
+
+  <Target Name="RemoveRuntimeUserDataFromPublish" AfterTargets="Publish">
+    <ItemGroup>
+      <RuntimeUserData Include="$(PublishDir)launcher_settings.json" />
+      <RuntimeUserData Include="$(PublishDir)user_preferences.json" />
+      <RuntimeUserData Include="$(PublishDir)mod_version.txt" />
+      <RuntimeUserData Include="$(PublishDir)mod_beta_version.txt" />
+      <RuntimeUserData Include="$(PublishDir)musicpack_version.txt" />
+      <RuntimeUserData Include="$(PublishDir)musicpack_beta_version.txt" />
+      <RuntimeUserData Include="$(PublishDir)mod_install_state.json" />
+      <RuntimeUserData Include="$(PublishDir)VanzaKart_launcher.json" />
+      <RuntimeUserData Include="$(PublishDir)VKBeta_launcher.json" />
+    </ItemGroup>
+    <Delete Files="@(RuntimeUserData)" />
+  </Target>
 </Project>

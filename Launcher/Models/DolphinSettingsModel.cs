@@ -40,7 +40,7 @@ public sealed class DolphinSettingsModel
 
     // --- WII ---
     public int WiiLanguage { get; set; } = 1; // 1=English, 2=German, 3=French, 4=Spanish, 5=Italian, etc.
-    public int WiiRegion { get; set; } = 1; // 1=NTSC-U, 2=PAL, 3=NTSC-J
+    public int WiiRegion { get; set; } = 2; // 0=NTSC-J, 1=NTSC-U, 2=PAL, 3=NTSC-K
     public bool SystemTimeSync { get; set; } = true;
     public bool EnableSdCard { get; set; } = true;
     public bool ForceDisableWiimote { get; set; } = true;
@@ -78,6 +78,9 @@ public sealed class DolphinSettingsModel
 
     // --- ADVANCED ---
     public string LogLevel { get; set; } = "Notice"; // Notice, Error, Warning, Info, Debug
+    public bool LogToFile { get; set; } = true;
+    public bool WaitForShadersBeforeStarting { get; set; } = false;
+    public bool BackendMultithreading { get; set; } = true;
     public bool DebugMode { get; set; } = false;
     public bool PortableMode { get; set; } = false;
 }

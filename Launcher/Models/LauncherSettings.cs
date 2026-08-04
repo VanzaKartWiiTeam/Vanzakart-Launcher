@@ -7,6 +7,7 @@ public sealed class LauncherSettings
     public string DolphinPath { get; set; } = string.Empty;
     public string RomPath { get; set; } = string.Empty;
     public string UserFolderPath { get; set; } = string.Empty;
+    public string ControllerConfigurationMode { get; set; } = string.Empty;
 
     public string GetModFolder()
     {

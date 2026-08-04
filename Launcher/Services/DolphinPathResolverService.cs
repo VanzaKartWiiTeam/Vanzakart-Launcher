@@ -50,7 +50,7 @@ public sealed class DolphinPathResolverService
         try
         {
             var dolphinDirectory = Path.GetDirectoryName(Path.GetFullPath(configuredDolphinPath));
-            if (string.IsNullOrWhiteSpace(dolphinDirectory))
+            if (string.IsNullOrWhiteSpace(dolphinDirectory) || !Directory.Exists(dolphinDirectory))
             {
                 return string.Empty;
             }
