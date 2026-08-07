@@ -2254,7 +2254,7 @@ public partial class MainWindow : Window
       {{
         ""options"": [
           {{ ""choice"": 1, ""option-name"": ""Pack"", ""section-name"": ""{modDirectoryName}"" }},
-          {(optionChoice == 2 ? $"{{ \"choice\": 2, \"option-name\": \"MyStuff\", \"section-name\": \"{modDirectoryName}\" }}," : "")}
+          {(optionChoice == 2 ? $"{{ \"choice\": 2, \"option-name\": \"My Stuff\", \"section-name\": \"{modDirectoryName}\" }}," : "")}
           {{ ""choice"": {saveChoice}, ""option-name"": ""Seperate Savegame"", ""section-name"": ""{modDirectoryName}"" }}
         ],
         ""root"": ""{EscapeJsonValue(rootDir)}"",
