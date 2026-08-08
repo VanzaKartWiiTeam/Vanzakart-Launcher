@@ -2268,10 +2268,11 @@ public partial class MainWindow : Window
 
             File.WriteAllText(jsonPath, json);
 
+            var userFolderClean = (settings.UserFolderPath ?? "").Trim().TrimEnd('\\', '/');
             var process = Process.Start(new ProcessStartInfo
             {
                 FileName = settings.DolphinPath,
-                Arguments = $"-b -u \"{settings.UserFolderPath}\" \"{jsonPath}\"",
+                Arguments = $"-b -u \"{userFolderClean}\" -e \"{jsonPath}\"",
                 UseShellExecute = true,
                 WorkingDirectory = Path.GetDirectoryName(settings.DolphinPath)
             });

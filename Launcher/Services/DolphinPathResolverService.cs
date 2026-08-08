@@ -122,7 +122,7 @@ public sealed class DolphinPathResolverService
     {
         try
         {
-            return string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path);
+            return string.IsNullOrWhiteSpace(path) ? string.Empty : Path.GetFullPath(path).TrimEnd('\\', '/');
         }
         catch
         {
