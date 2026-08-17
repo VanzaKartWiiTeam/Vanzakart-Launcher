@@ -41,6 +41,88 @@ function Normalize-JsonText {
         [char]0x20, [char]0x09, [char]0x0D, [char]0x0A))
 }
 
+# Funzione per creare archivi ZIP conformi alle specifiche PKWARE (separatori '/', UTF-8, directory esplicite).
+# Risolve l'incompatibilità su macOS, Linux e ChromeOS causata da ZipFile / .NET Framework su Windows.
+function New-StandardZipArchive {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$SourceDirectory,
+        [Parameter(Mandatory=$true)]
+        [string]$DestinationZipPath,
+        [System.IO.Compression.CompressionLevel]$CompressionLevel = [System.IO.Compression.CompressionLevel]::Optimal,
+        [string[]]$IncludeEmptyDirs = @()
+    )
+
+    $sourceFullPath = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\', '/')
+    $destFullPath = [System.IO.Path]::GetFullPath($DestinationZipPath)
+
+    $destDir = [System.IO.Path]::GetDirectoryName($destFullPath)
+    if (-not (Test-Path -LiteralPath $destDir)) {
+        [System.IO.Directory]::CreateDirectory($destDir) | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $destFullPath) {
+        Remove-Item -LiteralPath $destFullPath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+    $zipStream = [System.IO.File]::Open($destFullPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $archive = [System.IO.Compression.ZipArchive]::new($zipStream, [System.IO.Compression.ZipArchiveMode]::Create, $false, [System.Text.Encoding]::UTF8)
+
+    $addedEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        # 1. Aggiungi tutti i file usando tassativamente '/' come separatore
+        $files = Get-ChildItem -LiteralPath $sourceFullPath -Recurse -File
+        foreach ($file in $files) {
+            $relative = $file.FullName.Substring($sourceFullPath.Length).TrimStart('\', '/')
+            $entryName = $relative.Replace('\', '/')
+            
+            $entry = $archive.CreateEntry($entryName, $CompressionLevel)
+            $entry.LastWriteTime = $file.LastWriteTime
+            [void]$addedEntries.Add($entryName)
+            
+            $fileStream = [System.IO.File]::OpenRead($file.FullName)
+            $entryStream = $entry.Open()
+            try {
+                $fileStream.CopyTo($entryStream)
+            }
+            finally {
+                $entryStream.Dispose()
+                $fileStream.Dispose()
+            }
+        }
+
+        # 2. Aggiungi tutte le cartelle (incluse quelle vuote) con slash finale '/'
+        $dirs = Get-ChildItem -LiteralPath $sourceFullPath -Recurse -Directory
+        foreach ($dir in $dirs) {
+            $relative = $dir.FullName.Substring($sourceFullPath.Length).TrimStart('\', '/')
+            $dirEntryName = $relative.Replace('\', '/').TrimEnd('/') + '/'
+            if (-not $addedEntries.Contains($dirEntryName)) {
+                $null = $archive.CreateEntry($dirEntryName)
+                [void]$addedEntries.Add($dirEntryName)
+            }
+        }
+
+        # 3. Aggiungi eventuali cartelle vuote extra richieste
+        if ($IncludeEmptyDirs) {
+            foreach ($extraDir in $IncludeEmptyDirs) {
+                if ([string]::IsNullOrWhiteSpace($extraDir)) { continue }
+                $dirEntryName = $extraDir.Replace('\', '/').TrimStart('/').TrimEnd('/') + '/'
+                if ($dirEntryName -ne '/' -and -not $addedEntries.Contains($dirEntryName)) {
+                    $null = $archive.CreateEntry($dirEntryName)
+                    [void]$addedEntries.Add($dirEntryName)
+                }
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $zipStream.Dispose()
+    }
+}
+
 function Needs-HashAddressedFallback {
     param([string]$WebPath)
     return $WebPath -match '[^A-Za-z0-9._~/-]'
@@ -122,10 +204,9 @@ try {
     $backupRoot = "$outputRoot.backup-$([guid]::NewGuid().ToString('N'))"
     New-Item -ItemType Directory -Force -Path $stagingRoot | Out-Null
 
-    Write-Host "Creazione ZIP completo..." -ForegroundColor Yellow
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    Write-Host "Creazione ZIP completo (cross-platform)..." -ForegroundColor Yellow
     $zipPath = Join-Path $stagingRoot "vanzakart_musicpack.zip"
-    [IO.Compression.ZipFile]::CreateFromDirectory($payloadRoot, $zipPath, [IO.Compression.CompressionLevel]::Optimal, $false)
+    New-StandardZipArchive -SourceDirectory $payloadRoot -DestinationZipPath $zipPath
 
     Write-Host "Creazione aggiornamento differenziale..." -ForegroundColor Yellow
     $filesRoot = Join-Path $stagingRoot "files"
@@ -174,13 +255,9 @@ try {
     $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-JsonNoBom -Value ([ordered]@{ mod_version = $Version; archive_sha256 = $zipHash; files = $manifestFiles }) -Path (Join-Path $stagingRoot "manifest_files.json")
 
-    Write-Host "Creazione files.zip per il caricamento sul server..." -ForegroundColor Yellow
+    Write-Host "Creazione files.zip per il caricamento sul server (cross-platform)..." -ForegroundColor Yellow
     $filesZipPath = Join-Path $stagingRoot "files.zip"
-    [IO.Compression.ZipFile]::CreateFromDirectory(
-        $filesRoot,
-        $filesZipPath,
-        [IO.Compression.CompressionLevel]::Optimal,
-        $false)
+    New-StandardZipArchive -SourceDirectory $filesRoot -DestinationZipPath $filesZipPath
 
     $canonical = [ordered]@{}
     foreach ($property in $versions.PSObject.Properties) { $canonical[$property.Name] = $property.Value }

@@ -1266,7 +1266,7 @@
                         <Image Source="/Assets/logo.png" Width="28" Height="28" Stretch="Uniform" Margin="0,0,10,0"/>
                         <TextBlock Text="VANZAKART" FontWeight="Black" FontSize="14" VerticalAlignment="Center"/>
                         <Border Margin="12,0,0,0" Padding="8,3" CornerRadius="8" Background="#1F273C" BorderBrush="#33405F" BorderThickness="1">
-                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.4.6" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
+                            <TextBlock x:Name="VersionBadgeTextBlock" Text="Launcher v1.4.9" FontSize="11" Foreground="{StaticResource TextSecondary}" VerticalAlignment="Center" HorizontalAlignment="Center" Padding="0,0,0,1"/>
                         </Border>
                         <Border Margin="10,0,0,0" Padding="8,3" CornerRadius="8" Background="#151F31" BorderBrush="#30425E" BorderThickness="1">
                             <TextBlock x:Name="ShellStatusTextBlock" Text="Ready" FontSize="11" Foreground="{StaticResource SuccessBrush}" VerticalAlignment="Center" Padding="0,0,0,1" HorizontalAlignment="Center"/>
@@ -1466,7 +1466,7 @@
 
                                                     <Grid>
                                                         <StackPanel>
-                                                            <TextBlock Text="MOD UPDATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
+                                                            <TextBlock x:Name="HomeUpdateHeaderTextBlock" Text="MOD UPDATE" FontSize="11" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
                                                             <TextBlock x:Name="HomeUpdateTitleTextBlock" Text="Checking local state" FontSize="18" FontWeight="Black" Margin="0,5,0,0"/>
                                                         </StackPanel>
                                                         <Border x:Name="HomeUpdateBadgeBorder" HorizontalAlignment="Right" VerticalAlignment="Top" Padding="10,5" CornerRadius="8" Background="#1C2740" BorderBrush="#354A70" BorderThickness="1">
@@ -1500,10 +1500,10 @@
                                                                 <TextBlock Text="Check Updates" VerticalAlignment="Center" FontWeight="Bold" FontSize="13"/>
                                                             </StackPanel>
                                                         </Button>
-                                                        <Button Style="{StaticResource CompactPrimaryButton}" Margin="0,0,10,10" Click="InstallButton_OnClick">
+                                                        <Button x:Name="HomeInstallButton" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,10,10" Click="InstallButton_OnClick">
                                                             <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                                                 <TextBlock Text="&#xE118;" FontFamily="Segoe MDL2 Assets" FontSize="11" Margin="0,0,6,0" VerticalAlignment="Center"/>
-                                                                <TextBlock Text="Update Mod" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
+                                                                <TextBlock x:Name="HomeInstallButtonTextBlock" Text="Update Mod" VerticalAlignment="Center" FontWeight="Bold" FontSize="14"/>
                                                             </StackPanel>
                                                         </Button>
                                                         <Button Style="{StaticResource CompactButton}" Margin="0,0,0,10" Click="RepairModButton_OnClick">
@@ -3385,8 +3385,6 @@
                                                 <Grid Grid.Row="0" Margin="0,0,0,14">
                                                     <StackPanel VerticalAlignment="Center">
                                                         <TextBlock Text="⚙️ SETTINGS" FontSize="22" FontWeight="Black" Foreground="#FFFFFF"/>
-                                                        <TextBlock Text="Everything you need to configure VanzaKart and Dolphin, organized by task."
-                                                                   FontSize="12" Foreground="{StaticResource TextSecondary}" Margin="0,4,0,0"/>
                                                     </StackPanel>
                                                 </Grid>
 
@@ -3427,30 +3425,12 @@
                                             </Grid>
                                         </Border>
 
-                                        <!-- Configuration status banner -->
-                                        <Border Background="#10283A" BorderBrush="#276584" BorderThickness="1" CornerRadius="10" Padding="14,10" Margin="0,0,0,16">
-                                            <Grid>
-                                                <Grid.ColumnDefinitions>
-                                                    <ColumnDefinition Width="Auto"/>
-                                                    <ColumnDefinition Width="*"/>
-                                                </Grid.ColumnDefinitions>
-                                                <TextBlock Text="✓" FontSize="20" Foreground="#50E7A7" VerticalAlignment="Center" Margin="0,0,12,0"/>
-                                                <StackPanel Grid.Column="1" VerticalAlignment="Center">
-                                                    <TextBlock Text="DIRECT DOLPHIN SYNC" FontSize="11" FontWeight="Black" Foreground="#50E7A7"/>
-                                                    <TextBlock Text="Changes are reviewed before saving and written directly to the selected Dolphin user folder." FontSize="12" Foreground="#B9D9EA" TextWrapping="Wrap"/>
-                                                </StackPanel>
-                                            </Grid>
-                                        </Border>
-
                                         <!-- Category Sub-Navigation Buttons (Pills) -->
                                         <WrapPanel x:Name="CategoryTabsStackPanel" Margin="0,0,0,8">
                                                 <Button x:Name="PathsCategoryBtn" Content="📁 Paths" Tag="Paths" Style="{StaticResource CompactPrimaryButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
                                                 <Button x:Name="VideoCategoryBtn" Content="📹 Video" Tag="Video" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
                                                 <Button x:Name="AudioCategoryBtn" Content="🔊 Audio" Tag="Audio" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
                                                 <Button x:Name="ControllerCategoryBtn" Content="🎮 Controller" Tag="Controller" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
-                                                <Button x:Name="WiiCategoryBtn" Content="🌀 Wii" Tag="Wii" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
-                                                <Button x:Name="PerformanceCategoryBtn" Content="⚡ Performance" Tag="Performance" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
-                                                <Button x:Name="EnhancementsCategoryBtn" Content="🎨 Enhancements" Tag="Enhancements" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
                                                 <Button x:Name="AdvancedCategoryBtn" Content="🛠️ Advanced" Tag="Advanced" Style="{StaticResource CompactButton}" Margin="0,0,8,8" Click="CategoryTab_Click"/>
                                                 <Button x:Name="LauncherCategoryBtn" Content="🚀 Launcher &amp; Mod" Tag="Launcher" Style="{StaticResource CompactButton}" Margin="0,0,0,8" Click="CategoryTab_Click"/>
                                         </WrapPanel>
@@ -3671,7 +3651,6 @@
                                                         </Grid.ColumnDefinitions>
                                                         <StackPanel VerticalAlignment="Center">
                                                             <TextBlock Text="⚙️ LAUNCHER CONTROLLER MANAGEMENT" FontSize="13" FontWeight="Bold" Foreground="#00F2FF"/>
-                                                            <TextBlock Text="Disable to use Dolphin's native controller configuration instead." FontSize="11" Foreground="#94A3B8"/>
                                                         </StackPanel>
                                                         <CheckBox Grid.Column="1" x:Name="ManageControllersCheckBox" Content="Enable Launcher Controller Mapping" IsChecked="False" VerticalAlignment="Center" FontWeight="Bold" Checked="ManageControllersCheckBox_OnChanged" Unchecked="ManageControllersCheckBox_OnChanged"/>
                                                     </Grid>
@@ -3900,117 +3879,6 @@
                                             </Grid>
                                         </Border>
 
-                                        <!-- 5. WII SECTION -->
-                                        <Border x:Name="WiiSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
-                                            <StackPanel x:Name="WiiSectionStackPanel">
-                                                <Grid Margin="0,0,0,14">
-                                                    <TextBlock Text="🌀 WII &amp; SYSTEM SETTINGS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetWiiSection_OnClick"/>
-                                                </Grid>
-
-                                                <UniformGrid Columns="2">
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_WiiLanguage">
-                                                        <TextBlock Text="Wii Console Language" FontWeight="Bold" Margin="0,0,0,6"/>
-                                                        <ComboBox x:Name="WiiLanguageComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Sets internal Wii console system language.">
-                                                            <ComboBoxItem Content="English (Recommended for Mario Kart Wii) ⭐" Tag="1"/>
-                                                            <ComboBoxItem Content="Italian" Tag="5"/>
-                                                            <ComboBoxItem Content="German" Tag="2"/>
-                                                            <ComboBoxItem Content="French" Tag="3"/>
-                                                            <ComboBoxItem Content="Spanish" Tag="4"/>
-                                                            <ComboBoxItem Content="Dutch" Tag="6"/>
-                                                            <ComboBoxItem Content="Traditional Chinese" Tag="7"/>
-                                                            <ComboBoxItem Content="Simplified Chinese" Tag="8"/>
-                                                            <ComboBoxItem Content="Korean" Tag="9"/>
-                                                        </ComboBox>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_WiiRegion">
-                                                        <TextBlock Text="Wii Console Region" FontWeight="Bold" Margin="0,0,0,6"/>
-                                                        <ComboBox x:Name="WiiRegionComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="SettingControl_Changed" ToolTip="Wii console hardware region. PAL/EUR is standard for European discs/ISOs.">
-                                                            <ComboBoxItem Content="PAL / Europe ⭐" Tag="2"/>
-                                                            <ComboBoxItem Content="NTSC-U / USA" Tag="1"/>
-                                                            <ComboBoxItem Content="NTSC-J / Japan" Tag="0"/>
-                                                            <ComboBoxItem Content="NTSC-K / Korea" Tag="3"/>
-                                                        </ComboBox>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_EnableSdCard">
-                                                        <TextBlock Text="Virtual SD Card (1GB)" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="EnableSdCardCheckBox" Content="Enable Virtual SD Card (Required for CTGP &amp; Mods)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Enables emulated SD card needed for custom track pack saving."/>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_ForceDisableWiimote">
-                                                        <TextBlock Text="Disable Wiimote Speaker" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="ForceDisableWiimoteCheckBox" Content="Disable Wiimote Speaker Audio" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Disables real/emulated Wiimote speaker sound to prevent stuttering."/>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_RetroRewind">
-                                                        <TextBlock Text="Retro Rewind Support" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="RetroRewindCheckBox" Content="Enable Retro Rewind Compatibility" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Configures Dolphin settings for Retro Rewind custom pack."/>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_EnableCheats">
-                                                        <TextBlock Text="Cheats &amp; Gecko Codes" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="EnableCheatsCheckBox" Content="Enable Cheats / Gecko Codes" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Allows Gecko codes and cheat engines to execute."/>
-                                                    </StackPanel>
-                                                </UniformGrid>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <!-- 6. PERFORMANCE SECTION -->
-                                        <Border x:Name="PerformanceSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
-                                            <StackPanel x:Name="PerformanceSectionStackPanel">
-                                                <Grid Margin="0,0,0,14">
-                                                    <TextBlock Text="⚡ PERFORMANCE &amp; CPU EMULATION" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetPerformanceSection_OnClick"/>
-                                                </Grid>
-
-                                                <UniformGrid Columns="2">
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_PerformancePreset">
-                                                        <TextBlock Text="Quick Performance Preset" FontWeight="Bold" Margin="0,0,0,6"/>
-                                                        <ComboBox x:Name="PerformancePresetComboBox" Style="{StaticResource CustomComboBox}" Height="40" SelectionChanged="PerformancePreset_OnSelectionChanged">
-                                                            <ComboBoxItem Content="VanzaKart Optimized ⭐" Tag="VanzaKart Recommended"/>
-                                                            <ComboBoxItem Content="Balanced" Tag="Balanced"/>
-                                                            <ComboBoxItem Content="High Performance" Tag="High-Performance"/>
-                                                            <ComboBoxItem Content="Low-End PC" Tag="Low-End"/>
-                                                        </ComboBox>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_DualCore">
-                                                        <TextBlock Text="Dual Core (CPU Threading)" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="DualCoreCheckBox" Content="Enable Dual Core (Recommended)" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Separates CPU and GPU emulation across dedicated processor cores."/>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_SkipIdle">
-                                                        <TextBlock Text="Skip Idle CPU Loops" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="SkipIdleCheckBox" Content="Skip Idle CPU Loops" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Boosts performance by skipping emulated CPU idle loops."/>
-                                                    </StackPanel>
-
-                                                    <StackPanel Margin="12,0,0,14" x:Name="Card_FastDiscSpeed">
-                                                        <TextBlock Text="Fast Disc Speed Loading" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="FastDiscSpeedCheckBox" Content="Fast Disc Speed Loading ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Dramatically speeds up track and menu loading times."/>
-                                                    </StackPanel>
-
-                                                </UniformGrid>
-                                            </StackPanel>
-                                        </Border>
-
-                                        <Border x:Name="EnhancementsSectionCard" Style="{StaticResource GlassCard}" Margin="0,0,0,18" Visibility="Collapsed">
-                                            <StackPanel x:Name="EnhancementsSectionStackPanel">
-                                                <Grid Margin="0,0,0,14">
-                                                    <TextBlock Text="🎨 GRAPHICS ENHANCEMENTS &amp; TEXTURE PACKS" FontSize="14" FontWeight="Bold" Foreground="{StaticResource TextSecondary}"/>
-                                                    <Button Content="Reset Section" HorizontalAlignment="Right" Style="{StaticResource CompactButton}" Click="ResetEnhancementsSection_OnClick"/>
-                                                </Grid>
-
-                                                <UniformGrid Columns="2">
-                                                    <StackPanel Margin="0,0,12,14" x:Name="Card_LoadCustomTextures">
-                                                        <TextBlock Text="Custom Texture Packs" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                        <CheckBox x:Name="LoadCustomTexturesCheckBox" Content="Load Custom HD Textures ⭐" Checked="SettingControl_Changed" Unchecked="SettingControl_Changed" ToolTip="Enables loading high-definition custom texture packs for VanzaKart."/>
-                                                    </StackPanel>
-
-                                                </UniformGrid>
-                                            </StackPanel>
-                                        </Border>
 
                                         <!-- 8. LAUNCHER & MODPACK SECTION -->
                                         <Border x:Name="LauncherSectionCard" Visibility="Collapsed">
@@ -4085,15 +3953,7 @@
                                             <StackPanel x:Name="AdvancedSectionStackPanel">
                                                 <StackPanel Margin="0,0,0,14">
                                                     <TextBlock Text="🛠️ ADVANCED SETTINGS" FontSize="14" FontWeight="Bold" Foreground="#8DB9FF"/>
-                                                    <TextBlock Text="Specialized diagnostics and compatibility controls. Recommended defaults are safe for normal play."
-                                                               Foreground="{StaticResource TextSecondary}" FontSize="12" Margin="0,5,0,0"/>
                                                 </StackPanel>
-
-                                                <Border Background="#14233A" BorderBrush="#31517E" BorderThickness="1"
-                                                        CornerRadius="9" Padding="12,9" Margin="0,0,0,16">
-                                                    <TextBlock Text="These controls are intentionally separated from everyday settings. Change them only when troubleshooting compatibility, latency or performance."
-                                                               TextWrapping="Wrap" Foreground="#A9C9F5" FontSize="11"/>
-                                                </Border>
 
                                                 <TextBlock Text="DIAGNOSTICS" FontSize="11" FontWeight="Black" Foreground="#8DB9FF" Margin="0,0,0,10"/>
                                                 <UniformGrid Columns="2" Margin="0,0,0,8">
@@ -4131,94 +3991,6 @@
                                                                   ToolTip="Allows supported graphics backends to process work on multiple CPU threads."/>
                                                     </StackPanel>
                                                 </UniformGrid>
-
-                                                <Border Background="#111A2B" BorderBrush="#293A58" BorderThickness="1"
-                                                        CornerRadius="10" Padding="16" Margin="0,0,0,16">
-                                                    <StackPanel>
-                                                        <TextBlock Text="GRAPHICS COMPATIBILITY" FontSize="11" FontWeight="Black" Foreground="#8DB9FF" Margin="0,0,0,12"/>
-                                                        <UniformGrid Columns="2">
-                                                            <StackPanel Margin="0,0,12,14" x:Name="Card_ShaderCompilation">
-                                                                <TextBlock Text="Shader Compilation Mode" FontWeight="Bold" Margin="0,0,0,6"/>
-                                                                <ComboBox x:Name="ShaderCompilationComboBox" Style="{StaticResource CustomComboBox}" Height="40"
-                                                                          SelectionChanged="SettingControl_Changed"
-                                                                          ToolTip="Hybrid Ubershaders prevents stuttering during first track or effect loads.">
-                                                                    <ComboBoxItem Content="Synchronous (Standard)" Tag="0"/>
-                                                                    <ComboBoxItem Content="Asynchronous (Skip Drawing)" Tag="1"/>
-                                                                    <ComboBoxItem Content="Asynchronous Hybrid Ubershaders (Recommended)" Tag="2"/>
-                                                                    <ComboBoxItem Content="Synchronous Specialized Ubershaders" Tag="3"/>
-                                                                </ComboBox>
-                                                            </StackPanel>
-
-                                                            <StackPanel Margin="12,0,0,14" x:Name="Card_WidescreenHack">
-                                                                <TextBlock Text="Widescreen Rendering Hack" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                                <CheckBox x:Name="WidescreenHackCheckBox" Content="Force a wider 16:9 viewport"
-                                                                          Checked="SettingControl_Changed" Unchecked="SettingControl_Changed"
-                                                                          ToolTip="Overrides the game's viewport. Leave disabled unless a mod requires it."/>
-                                                            </StackPanel>
-                                                        </UniformGrid>
-                                                    </StackPanel>
-                                                </Border>
-
-                                                <Border Background="#111A2B" BorderBrush="#293A58" BorderThickness="1"
-                                                        CornerRadius="10" Padding="16" Margin="0,0,0,16">
-                                                    <StackPanel>
-                                                        <TextBlock Text="AUDIO COMPATIBILITY" FontSize="11" FontWeight="Black" Foreground="#8DB9FF" Margin="0,0,0,12"/>
-                                                        <UniformGrid Columns="2">
-                                                            <StackPanel Margin="0,0,12,14" x:Name="Card_DspLle">
-                                                                <TextBlock Text="DSP Emulation Engine" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                                <CheckBox x:Name="DspLleCheckBox" Content="Use accurate DSP LLE emulation"
-                                                                          Checked="SettingControl_Changed" Unchecked="SettingControl_Changed"
-                                                                          ToolTip="More accurate but heavier than the recommended DSP HLE mode."/>
-                                                            </StackPanel>
-
-                                                            <StackPanel Margin="12,0,0,14" x:Name="Card_AudioLatency">
-                                                                <Grid Margin="0,0,0,6">
-                                                                    <TextBlock Text="Audio Buffer Latency" FontWeight="Bold"/>
-                                                                    <TextBox x:Name="AudioLatencyTextBox" Text="20" Width="68" Height="26"
-                                                                             Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right"
-                                                                             TextChanged="AudioLatencyTextBox_TextChanged"/>
-                                                                </Grid>
-                                                                <Slider x:Name="AudioLatencySlider" Style="{StaticResource ModernSlider}"
-                                                                        Minimum="10" Maximum="100" Value="20" TickFrequency="5" IsSnapToTickEnabled="True"
-                                                                        ValueChanged="AudioLatencySlider_OnValueChanged"
-                                                                        ToolTip="Sets the audio output buffer in milliseconds."/>
-                                                            </StackPanel>
-                                                        </UniformGrid>
-                                                    </StackPanel>
-                                                </Border>
-
-                                                <Border Background="#111A2B" BorderBrush="#293A58" BorderThickness="1"
-                                                        CornerRadius="10" Padding="16" Margin="0,0,0,16">
-                                                    <StackPanel>
-                                                        <TextBlock Text="CPU &amp; MEMORY TUNING" FontSize="11" FontWeight="Black" Foreground="#8DB9FF" Margin="0,0,0,12"/>
-                                                        <UniformGrid Columns="2">
-                                                            <StackPanel Margin="0,0,12,14" x:Name="Card_CpuOverride">
-                                                                <TextBlock Text="CPU Clock Override" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                                <CheckBox x:Name="CpuOverrideCheckBox" Content="Enable custom emulated CPU clock"
-                                                                          Checked="SettingControl_Changed" Unchecked="SettingControl_Changed"/>
-                                                            </StackPanel>
-
-                                                            <StackPanel Margin="12,0,0,14" x:Name="Card_CpuClockRatio">
-                                                                <Grid Margin="0,0,0,6">
-                                                                    <TextBlock Text="CPU Clock Ratio" FontWeight="Bold"/>
-                                                                    <TextBox x:Name="CpuClockRatioTextBox" Text="100%" Width="68" Height="26"
-                                                                             Style="{StaticResource CompactNumberTextBox}" HorizontalAlignment="Right"
-                                                                             TextChanged="CpuClockRatioTextBox_TextChanged"/>
-                                                                </Grid>
-                                                                <Slider x:Name="CpuClockRatioSlider" Style="{StaticResource ModernSlider}"
-                                                                        Minimum="0.5" Maximum="3.0" Value="1.0" TickFrequency="0.1"
-                                                                        IsSnapToTickEnabled="True" ValueChanged="CpuClockRatioSlider_OnValueChanged"/>
-                                                            </StackPanel>
-
-                                                            <StackPanel Margin="0,0,12,4" x:Name="Card_PrefetchCustomTextures">
-                                                                <TextBlock Text="Texture Memory Prefetch" FontWeight="Bold" Margin="0,0,0,8"/>
-                                                                <CheckBox x:Name="PrefetchCustomTexturesCheckBox" Content="Load all custom textures into RAM"
-                                                                          Checked="SettingControl_Changed" Unchecked="SettingControl_Changed"
-                                                                          ToolTip="Can reduce texture stutter but significantly increases memory use."/>
-                                                            </StackPanel>
-                                                        </UniformGrid>
-                                                    </StackPanel>
-                                                </Border>
 
                                                 <Border Background="#1A1826" BorderBrush="#573445" BorderThickness="1"
                                                         CornerRadius="9" Padding="14">

@@ -72,6 +72,8 @@ public partial class MainWindow : Window
     private UserPreferences _userPreferences;
     private ModInstallationState _installedModState;
     private bool _isLoadingReleaseChannel;
+    private bool _isDownloadingLauncherUpdate = false;
+    private string _latestLauncherVersion = string.Empty;
 
     private readonly string _tempZipPath = Path.Combine(AppContext.BaseDirectory, "mod_temp.zip");
     private readonly string _localModVersionFile = Path.Combine(AppContext.BaseDirectory, "mod_version.txt");
@@ -115,6 +117,7 @@ public partial class MainWindow : Window
     private double _smoothedDownloadBytesPerSecond;
     private int _releaseChannelRevision;
     private readonly DolphinSettingsManager _dolphinSettingsManager = new();
+
 
     public MainWindow()
     {
@@ -586,11 +589,11 @@ public partial class MainWindow : Window
         }
     }
 
-    private async Task<bool> PromptBetaTokenIfNeededAsync(bool forcePrompt = false)
+    private Task<bool> PromptBetaTokenIfNeededAsync(bool forcePrompt = false)
     {
         if (!forcePrompt && !string.IsNullOrWhiteSpace(_userPreferences.BetaAccessToken))
         {
-            return true;
+            return Task.FromResult(true);
         }
 
         var dialog = new BetaTokenDialog(_userPreferences.BetaAccessToken)
@@ -603,10 +606,10 @@ public partial class MainWindow : Window
         {
             _userPreferences.BetaAccessToken = dialog.VerifiedToken;
             _preferencesService.Save(_userPreferences);
-            return true;
+            return Task.FromResult(true);
         }
 
-        return false;
+        return Task.FromResult(false);
     }
 
     private async void ManageBetaTokenButton_OnClick(object sender, RoutedEventArgs e)
@@ -904,10 +907,35 @@ public partial class MainWindow : Window
         var localVersion = installed ? GetInstalledModVersion() : "Not installed";
         var latest = string.IsNullOrWhiteSpace(_latestModVersion) ? "Unknown" : _latestModVersion;
 
-        HomeInstalledVersionTextBlock.Text = installed
-            ? $"{GetChannelDisplayName(SelectedModReleaseChannel)} {localVersion}"
-            : localVersion;
-        HomeLatestVersionTextBlock.Text = $"{GetChannelDisplayName(SelectedModReleaseChannel)} {latest}";
+        if (_isDownloadingLauncherUpdate && !string.IsNullOrWhiteSpace(_latestLauncherVersion))
+        {
+            var instVer = LauncherConfig.CurrentLauncherVersion.StartsWith("v") ? LauncherConfig.CurrentLauncherVersion : $"v{LauncherConfig.CurrentLauncherVersion}";
+            var latVer = _latestLauncherVersion.StartsWith("v") ? _latestLauncherVersion : $"v{_latestLauncherVersion}";
+
+            HomeInstalledVersionTextBlock.Text = instVer;
+            HomeLatestVersionTextBlock.Text = latVer;
+        }
+        else
+        {
+            HomeInstalledVersionTextBlock.Text = installed
+                ? $"{GetChannelDisplayName(SelectedModReleaseChannel)} {localVersion}"
+                : localVersion;
+            HomeLatestVersionTextBlock.Text = $"{GetChannelDisplayName(SelectedModReleaseChannel)} {latest}";
+        }
+
+        if (HomeInstallButtonTextBlock != null)
+        {
+            HomeInstallButtonTextBlock.Text = installed ? "Update Mod" : "Install Mod";
+        }
+        if (InstallButton != null)
+        {
+            InstallButton.Content = installed ? "Update Mod" : "Install Mod";
+        }
+
+        if (HomeUpdateHeaderTextBlock != null)
+        {
+            HomeUpdateHeaderTextBlock.Text = "MOD UPDATE";
+        }
 
         if (!string.IsNullOrWhiteSpace(_lastUpdateError))
         {
@@ -920,7 +948,23 @@ public partial class MainWindow : Window
             var detail = string.IsNullOrWhiteSpace(HomeUpdateCheckTextBlock.Text)
                 ? "Update operation is running."
                 : HomeUpdateCheckTextBlock.Text;
-            SetHomeUpdateBadge(UpdatePhaseTextBlock.Text, "Working", "#233151", "#39E7FF", detail);
+
+            if (_isDownloadingLauncherUpdate)
+            {
+                if (HomeUpdateHeaderTextBlock != null)
+                {
+                    HomeUpdateHeaderTextBlock.Text = "LAUNCHER UPDATE";
+                }
+                if (HomeInstallButtonTextBlock != null)
+                {
+                    HomeInstallButtonTextBlock.Text = "Updating...";
+                }
+                SetHomeUpdateBadge("Launcher", "Updating Launcher", "#3C2D12", "#FFD166", detail);
+            }
+            else
+            {
+                SetHomeUpdateBadge(UpdatePhaseTextBlock.Text, "Working", "#233151", "#39E7FF", detail);
+            }
             return;
         }
 
@@ -2163,7 +2207,7 @@ public partial class MainWindow : Window
         return string.IsNullOrWhiteSpace(_lastUpdateError) && !string.IsNullOrWhiteSpace(_latestModVersion);
     }
 
-    private async void LaunchButton_OnClick(object sender, RoutedEventArgs e)
+    private void LaunchButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (_isBusy)
         {
@@ -2451,6 +2495,8 @@ public partial class MainWindow : Window
         // outside the installation directory.
         _settingsService.Save(BuildSettingsFromUi());
 
+        _latestLauncherVersion = targetVersion;
+        _isDownloadingLauncherUpdate = true;
         SetBusy(true);
         ResetDownloadMetrics();
         DownloadProgressBar.Visibility = Visibility.Visible;
@@ -2485,6 +2531,8 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             SetStatus("Launcher update failed", (WpfBrush)FindResource("DangerBrush"));
+            _isDownloadingLauncherUpdate = false;
+            _latestLauncherVersion = string.Empty;
             SetUpdateState("Failed", ex.Message, 0);
             ShowCustomDialog("Launcher update error", ex.Message, MessageBoxButton.OK);
             SetBusy(false);
@@ -4444,24 +4492,6 @@ public partial class MainWindow : Window
             Value(AudioVolumeSlider),
             SelectedTag(AudioBackendComboBox),
             Checked(AudioStretchingCheckBox),
-            SelectedTag(WiiLanguageComboBox),
-            SelectedTag(WiiRegionComboBox),
-            Checked(EnableSdCardCheckBox),
-            Checked(ForceDisableWiimoteCheckBox),
-            Checked(RetroRewindCheckBox),
-            Checked(EnableCheatsCheckBox),
-            SelectedTag(PerformancePresetComboBox),
-            Checked(DualCoreCheckBox),
-            Checked(SkipIdleCheckBox),
-            Checked(FastDiscSpeedCheckBox),
-            Checked(LoadCustomTexturesCheckBox),
-            SelectedTag(ShaderCompilationComboBox),
-            Checked(WidescreenHackCheckBox),
-            Checked(DspLleCheckBox),
-            Value(AudioLatencySlider),
-            Checked(CpuOverrideCheckBox),
-            Value(CpuClockRatioSlider),
-            Checked(PrefetchCustomTexturesCheckBox),
             SelectedTag(LogLevelComboBox),
             Checked(LogToFileCheckBox),
             Checked(WaitForShadersCheckBox),
@@ -4547,9 +4577,6 @@ public partial class MainWindow : Window
         if (VideoSectionCard != null) VideoSectionCard.Visibility = "Video".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (AudioSectionCard != null) AudioSectionCard.Visibility = "Audio".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (ControllerSectionCard != null) ControllerSectionCard.Visibility = "Controller".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
-        if (WiiSectionCard != null) WiiSectionCard.Visibility = "Wii".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
-        if (PerformanceSectionCard != null) PerformanceSectionCard.Visibility = "Performance".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
-        if (EnhancementsSectionCard != null) EnhancementsSectionCard.Visibility = "Enhancements".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (AdvancedSectionCard != null) AdvancedSectionCard.Visibility = "Advanced".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (LauncherSectionCard != null) LauncherSectionCard.Visibility = "Launcher".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
 
@@ -5071,120 +5098,13 @@ public partial class MainWindow : Window
     }
 
     private void ResetControllerSection_OnClick(object sender, RoutedEventArgs e) { LoadControllerBindingsForPort(_selectedControllerPort); ShowSettingsStatusNotification("🔄 Controller section reset."); }
-    private void ResetWiiSection_OnClick(object sender, RoutedEventArgs e)
-    {
-        var wasUpdating = _isUpdatingDolphinUi;
-        _isUpdatingDolphinUi = true;
-        try
-        {
-            SetComboBoxByTag(WiiLanguageComboBox, "1");
-            SetComboBoxByTag(WiiRegionComboBox, "2");
-            if (EnableSdCardCheckBox != null) EnableSdCardCheckBox.IsChecked = true;
-            if (ForceDisableWiimoteCheckBox != null) ForceDisableWiimoteCheckBox.IsChecked = true;
-            if (RetroRewindCheckBox != null) RetroRewindCheckBox.IsChecked = true;
-            if (EnableCheatsCheckBox != null) EnableCheatsCheckBox.IsChecked = true;
-        }
-        finally
-        {
-            _isUpdatingDolphinUi = wasUpdating;
-        }
-
-        SettingControl_Changed(sender, e);
-        ShowSettingsStatusNotification("🔄 Wii settings restored to the recommended PAL configuration.");
-    }
-
-    private void ResetPerformanceSection_OnClick(object sender, RoutedEventArgs e)
-    {
-        var wasUpdating = _isUpdatingDolphinUi;
-        _isUpdatingDolphinUi = true;
-        try
-        {
-            SetComboBoxByTag(PerformancePresetComboBox, "Balanced");
-            ApplyPerformancePresetToUi("Balanced");
-        }
-        finally
-        {
-            _isUpdatingDolphinUi = wasUpdating;
-        }
-
-        SettingControl_Changed(sender, e);
-        ShowSettingsStatusNotification("🔄 Balanced performance defaults restored.");
-    }
-    private void ResetEnhancementsSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Enhancements section reset.");
-    private void PerformancePreset_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
-    {
-        if (_isUpdatingDolphinUi ||
-            PerformancePresetComboBox?.SelectedItem is not ComboBoxItem selectedItem)
-        {
-            return;
-        }
-
-        var preset = DolphinSettingsManager.NormalizePerformancePreset(selectedItem.Tag?.ToString());
-        var wasUpdating = _isUpdatingDolphinUi;
-        _isUpdatingDolphinUi = true;
-        try
-        {
-            ApplyPerformancePresetToUi(preset);
-        }
-        finally
-        {
-            _isUpdatingDolphinUi = wasUpdating;
-        }
-
-        SettingControl_Changed(sender, e);
-        ShowSettingsStatusNotification($"⚡ {selectedItem.Content} applied. Save Configuration to write it to Dolphin.");
-    }
-
-    private void ApplyPerformancePresetToUi(string preset)
-    {
-        var internalResolution = 3;
-        var shaderCompilation = 2;
-        var anisotropicFiltering = 4;
-        var loadCustomTextures = true;
-        var prefetchCustomTextures = false;
-
-        switch (preset)
-        {
-            case "VanzaKart Recommended":
-                prefetchCustomTextures = true;
-                break;
-            case "High-Performance":
-                internalResolution = 2;
-                anisotropicFiltering = 2;
-                break;
-            case "Low-End":
-                internalResolution = 1;
-                shaderCompilation = 1;
-                anisotropicFiltering = 0;
-                loadCustomTextures = false;
-                break;
-        }
-
-        SetComboBoxByTag(InternalResolutionComboBox, internalResolution.ToString());
-        SetComboBoxByTag(ShaderCompilationComboBox, shaderCompilation.ToString());
-        SetComboBoxByTag(AntiAliasingComboBox, "0");
-        SetComboBoxByTag(AnisotropicFilteringComboBox, anisotropicFiltering.ToString());
-        if (DualCoreCheckBox != null) DualCoreCheckBox.IsChecked = true;
-        if (SkipIdleCheckBox != null) SkipIdleCheckBox.IsChecked = true;
-        if (FastDiscSpeedCheckBox != null) FastDiscSpeedCheckBox.IsChecked = true;
-        if (CpuOverrideCheckBox != null) CpuOverrideCheckBox.IsChecked = false;
-        if (AudioStretchingCheckBox != null) AudioStretchingCheckBox.IsChecked = true;
-        if (LoadCustomTexturesCheckBox != null) LoadCustomTexturesCheckBox.IsChecked = loadCustomTextures;
-        if (PrefetchCustomTexturesCheckBox != null) PrefetchCustomTexturesCheckBox.IsChecked = prefetchCustomTextures;
-        if (WaitForShadersCheckBox != null) WaitForShadersCheckBox.IsChecked = false;
-        if (BackendMultithreadingCheckBox != null) BackendMultithreadingCheckBox.IsChecked = true;
-    }
 
     private void AudioVolumeTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AudioVolumeTextBox.Text, out double val) && AudioVolumeSlider != null) AudioVolumeSlider.Value = Math.Clamp(val, 0, 100); }
     private void AudioVolumeSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AudioVolumeTextBox != null) AudioVolumeTextBox.Text = $"{e.NewValue:F0}"; }
-    private void AudioLatencyTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AudioLatencyTextBox.Text, out double val) && AudioLatencySlider != null) AudioLatencySlider.Value = Math.Clamp(val, 10, 100); }
-    private void AudioLatencySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AudioLatencyTextBox != null) AudioLatencyTextBox.Text = $"{e.NewValue:F0}"; }
     private void AnalogSensitivityTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AnalogSensitivityTextBox.Text, out double val) && AnalogSensitivitySlider != null) AnalogSensitivitySlider.Value = Math.Clamp(val, 50, 150); }
     private void AnalogSensitivitySlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AnalogSensitivityTextBox != null) AnalogSensitivityTextBox.Text = $"{e.NewValue:F0}"; }
     private void AnalogDeadzoneTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AnalogDeadzoneTextBox.Text, out double val) && AnalogDeadzoneSlider != null) AnalogDeadzoneSlider.Value = Math.Clamp(val, 0, 50); ControllerControl_Changed(sender, e); }
     private void AnalogDeadzoneSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AnalogDeadzoneTextBox != null) AnalogDeadzoneTextBox.Text = $"{e.NewValue:F0}"; ControllerControl_Changed(sender, e); }
-    private void CpuClockRatioTextBox_TextChanged(object sender, TextChangedEventArgs e) { string text = CpuClockRatioTextBox.Text.Replace("%", "").Trim(); if (double.TryParse(text, out double val) && CpuClockRatioSlider != null) CpuClockRatioSlider.Value = Math.Clamp(val / 100.0, 0.5, 3.0); }
-    private void CpuClockRatioSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (CpuClockRatioTextBox != null) CpuClockRatioTextBox.Text = $"{e.NewValue * 100:F0}%"; }
 
     private void SettingsSearchTextBox_OnTextChanged(object sender, TextChangedEventArgs e)
     {
@@ -5208,7 +5128,7 @@ public partial class MainWindow : Window
         Border[] sectionCards = new[]
         {
             PathsSectionCard, VideoSectionCard, AudioSectionCard, ControllerSectionCard,
-            WiiSectionCard, PerformanceSectionCard, EnhancementsSectionCard, AdvancedSectionCard, LauncherSectionCard
+            AdvancedSectionCard, LauncherSectionCard
         };
 
         string lowerQuery = query.ToLowerInvariant();
@@ -5330,13 +5250,10 @@ public partial class MainWindow : Window
         _isUpdatingDolphinUi = true;
         try
         {
-            SetComboBoxByTag(PerformancePresetComboBox, "VanzaKart Recommended");
-            ApplyPerformancePresetToUi("VanzaKart Recommended");
             SetComboBoxByTag(GfxBackendComboBox, "Vulkan");
             SetComboBoxByTag(AspectRatioComboBox, "1");
             if (FullscreenCheckBox != null) FullscreenCheckBox.IsChecked = true;
             if (RemoveBlurCheckBox != null) RemoveBlurCheckBox.IsChecked = true;
-            if (WidescreenHackCheckBox != null) WidescreenHackCheckBox.IsChecked = false;
         }
         finally
         {
@@ -5410,40 +5327,14 @@ public partial class MainWindow : Window
                 if (FullscreenCheckBox != null) FullscreenCheckBox.IsChecked = model.Fullscreen;
                 SetComboBoxByTag(AntiAliasingComboBox, model.AntiAliasing.ToString());
                 SetComboBoxByTag(AnisotropicFilteringComboBox, model.AnisotropicFiltering.ToString());
-                SetComboBoxByTag(ShaderCompilationComboBox, model.ShaderCompilationMode.ToString());
                 if (RemoveBlurCheckBox != null) RemoveBlurCheckBox.IsChecked = model.RemoveBlur;
                 if (ShowFpsCheckBox != null) ShowFpsCheckBox.IsChecked = model.ShowFPS;
-                if (WidescreenHackCheckBox != null) WidescreenHackCheckBox.IsChecked = model.WidescreenHack;
 
                 // Audio
                 if (AudioVolumeSlider != null) AudioVolumeSlider.Value = model.AudioVolume;
                 if (AudioVolumeTextBox != null) AudioVolumeTextBox.Text = model.AudioVolume.ToString();
                 SetComboBoxByTag(AudioBackendComboBox, model.AudioBackend);
                 if (AudioStretchingCheckBox != null) AudioStretchingCheckBox.IsChecked = model.AudioStretching;
-                if (DspLleCheckBox != null) DspLleCheckBox.IsChecked = model.DspLle;
-                if (AudioLatencySlider != null) AudioLatencySlider.Value = model.AudioLatency;
-                if (AudioLatencyTextBox != null) AudioLatencyTextBox.Text = model.AudioLatency.ToString();
-
-                // Wii
-                SetComboBoxByTag(WiiLanguageComboBox, model.WiiLanguage.ToString());
-                SetComboBoxByTag(WiiRegionComboBox, model.WiiRegion.ToString());
-                if (EnableSdCardCheckBox != null) EnableSdCardCheckBox.IsChecked = model.EnableSdCard;
-                if (ForceDisableWiimoteCheckBox != null) ForceDisableWiimoteCheckBox.IsChecked = model.ForceDisableWiimote;
-                if (RetroRewindCheckBox != null) RetroRewindCheckBox.IsChecked = model.EnableRiivolution;
-                if (EnableCheatsCheckBox != null) EnableCheatsCheckBox.IsChecked = model.EnableCheats;
-
-                // Performance
-                SetComboBoxByTag(PerformancePresetComboBox, model.PerformancePreset);
-                if (DualCoreCheckBox != null) DualCoreCheckBox.IsChecked = model.DualCore;
-                if (SkipIdleCheckBox != null) SkipIdleCheckBox.IsChecked = model.SkipIdle;
-                if (FastDiscSpeedCheckBox != null) FastDiscSpeedCheckBox.IsChecked = model.FastDiscSpeed;
-                if (CpuOverrideCheckBox != null) CpuOverrideCheckBox.IsChecked = model.CpuOverride;
-                if (CpuClockRatioSlider != null) CpuClockRatioSlider.Value = model.CpuClockRatio;
-                if (CpuClockRatioTextBox != null) CpuClockRatioTextBox.Text = $"{model.CpuClockRatio * 100:F0}%";
-
-                // Textures & Shaders
-                if (LoadCustomTexturesCheckBox != null) LoadCustomTexturesCheckBox.IsChecked = model.LoadCustomTextures;
-                if (PrefetchCustomTexturesCheckBox != null) PrefetchCustomTexturesCheckBox.IsChecked = model.PrefetchCustomTextures;
 
                 // Advanced
                 SetComboBoxByTag(LogLevelComboBox, model.LogLevel);
@@ -5483,52 +5374,29 @@ public partial class MainWindow : Window
                 return;
             }
 
-            var model = new DolphinSettingsModel
-            {
-                DolphinExecutablePath = settings.DolphinPath ?? "",
-                UserFolderPath = userFolder,
-                ModpackPath = settings.RomPath ?? "",
+            var model = _dolphinSettingsManager.LoadSettings(userFolder, settings);
+            model.DolphinExecutablePath = settings.DolphinPath ?? "";
+            model.UserFolderPath = userFolder;
+            model.ModpackPath = settings.RomPath ?? "";
 
-                GfxBackend = (GfxBackendComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Vulkan",
-                InternalResolution = int.TryParse((InternalResolutionComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int res) ? res : 1,
-                AspectRatio = int.TryParse((AspectRatioComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int ar) ? ar : 0,
-                VSync = VSyncCheckBox?.IsChecked == true,
-                Fullscreen = FullscreenCheckBox?.IsChecked == true,
-                AntiAliasing = int.TryParse((AntiAliasingComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int aa) ? aa : 0,
-                AnisotropicFiltering = int.TryParse((AnisotropicFilteringComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int af) ? af : 0,
-                ShaderCompilationMode = int.TryParse((ShaderCompilationComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int scm) ? scm : 2,
-                RemoveBlur = RemoveBlurCheckBox?.IsChecked == true,
-                ShowFPS = ShowFpsCheckBox?.IsChecked == true,
-                WidescreenHack = WidescreenHackCheckBox?.IsChecked == true,
+            if (GfxBackendComboBox != null) model.GfxBackend = (GfxBackendComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Vulkan";
+            if (InternalResolutionComboBox != null && int.TryParse((InternalResolutionComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int res)) model.InternalResolution = res;
+            if (AspectRatioComboBox != null && int.TryParse((AspectRatioComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int ar)) model.AspectRatio = ar;
+            if (VSyncCheckBox != null) model.VSync = VSyncCheckBox.IsChecked == true;
+            if (FullscreenCheckBox != null) model.Fullscreen = FullscreenCheckBox.IsChecked == true;
+            if (AntiAliasingComboBox != null && int.TryParse((AntiAliasingComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int aa)) model.AntiAliasing = aa;
+            if (AnisotropicFilteringComboBox != null && int.TryParse((AnisotropicFilteringComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int af)) model.AnisotropicFiltering = af;
+            if (RemoveBlurCheckBox != null) model.RemoveBlur = RemoveBlurCheckBox.IsChecked == true;
+            if (ShowFpsCheckBox != null) model.ShowFPS = ShowFpsCheckBox.IsChecked == true;
 
-                AudioVolume = (int)(AudioVolumeSlider?.Value ?? 100),
-                AudioBackend = (AudioBackendComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Cubeb",
-                AudioStretching = AudioStretchingCheckBox?.IsChecked == true,
-                DspLle = DspLleCheckBox?.IsChecked == true,
-                AudioLatency = (int)(AudioLatencySlider?.Value ?? 20),
+            if (AudioVolumeSlider != null) model.AudioVolume = (int)AudioVolumeSlider.Value;
+            if (AudioBackendComboBox != null) model.AudioBackend = (AudioBackendComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Cubeb";
+            if (AudioStretchingCheckBox != null) model.AudioStretching = AudioStretchingCheckBox.IsChecked == true;
 
-                WiiLanguage = int.TryParse((WiiLanguageComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int wl) ? wl : 1,
-                WiiRegion = int.TryParse((WiiRegionComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString(), out int wr) ? wr : 2,
-                EnableSdCard = EnableSdCardCheckBox?.IsChecked == true,
-                ForceDisableWiimote = ForceDisableWiimoteCheckBox?.IsChecked == true,
-                EnableRiivolution = RetroRewindCheckBox?.IsChecked == true,
-                EnableCheats = EnableCheatsCheckBox?.IsChecked == true,
-
-                DualCore = DualCoreCheckBox?.IsChecked == true,
-                PerformancePreset = DolphinSettingsManager.NormalizePerformancePreset(
-                    (PerformancePresetComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString()),
-                SkipIdle = SkipIdleCheckBox?.IsChecked == true,
-                FastDiscSpeed = FastDiscSpeedCheckBox?.IsChecked == true,
-                CpuOverride = CpuOverrideCheckBox?.IsChecked == true,
-                CpuClockRatio = (float)(CpuClockRatioSlider?.Value ?? 1.0),
-
-                LoadCustomTextures = LoadCustomTexturesCheckBox?.IsChecked == true,
-                PrefetchCustomTextures = PrefetchCustomTexturesCheckBox?.IsChecked == true,
-                LogLevel = (LogLevelComboBox?.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Notice",
-                LogToFile = LogToFileCheckBox?.IsChecked == true,
-                WaitForShadersBeforeStarting = WaitForShadersCheckBox?.IsChecked == true,
-                BackendMultithreading = BackendMultithreadingCheckBox?.IsChecked != false
-            };
+            if (LogLevelComboBox != null) model.LogLevel = (LogLevelComboBox.SelectedItem as ComboBoxItem)?.Tag?.ToString() ?? "Notice";
+            if (LogToFileCheckBox != null) model.LogToFile = LogToFileCheckBox.IsChecked == true;
+            if (WaitForShadersCheckBox != null) model.WaitForShadersBeforeStarting = WaitForShadersCheckBox.IsChecked == true;
+            if (BackendMultithreadingCheckBox != null) model.BackendMultithreading = BackendMultithreadingCheckBox.IsChecked != false;
 
             _dolphinSettingsManager.SaveSettings(userFolder, model);
             SaveControllerBindingsFromUi();

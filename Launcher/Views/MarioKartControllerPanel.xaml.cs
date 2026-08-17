@@ -34,6 +34,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
     private bool _hasConflicts;
     private string _lastDeviceSignature = "";
     private DolphinControllerMode _controllerMode = DolphinControllerMode.LauncherConfiguration;
+    private int _scanInProgress;
 
     public MarioKartControllerPanel()
     {
@@ -49,9 +50,14 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
 
         _deviceTimer = new DispatcherTimer(DispatcherPriority.Background)
         {
-            Interval = TimeSpan.FromMilliseconds(700)
+            Interval = TimeSpan.FromSeconds(2.5)
         };
-        _deviceTimer.Tick += (_, _) => RefreshDevices(showMessage: false);
+        _deviceTimer.Tick += (_, _) => _ = RefreshDevicesAsync(showMessage: false);
+
+        _deviceService.DevicesChanged += (_, _) =>
+        {
+            _ = Dispatcher.InvokeAsync(() => _ = RefreshDevicesAsync(showMessage: false));
+        };
         _isLoading = false;
     }
 
@@ -107,7 +113,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
     {
         var userFolder = ResolveUserFolder();
         var configuredDevice = _configurationService.GetConfiguredDevice(userFolder);
-        RefreshDevices(
+        _ = RefreshDevicesAsync(
             showMessage: false,
             preferredDolphinDevice: configuredDevice,
             loadChangedSelection: false);
@@ -195,8 +201,11 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
-        _inputTimer.Start();
-        _deviceTimer.Start();
+        if (IsVisible)
+        {
+            _inputTimer.Start();
+            _deviceTimer.Start();
+        }
         ReloadFromDolphin();
     }
 
@@ -207,6 +216,22 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         CancelCapture();
     }
 
+    private void Panel_OnIsVisibleChanged(object sender, DependencyPropertyChangedEventArgs e)
+    {
+        if (IsVisible)
+        {
+            _inputTimer.Start();
+            _deviceTimer.Start();
+            _ = RefreshDevicesAsync(showMessage: false);
+        }
+        else
+        {
+            _inputTimer.Stop();
+            _deviceTimer.Stop();
+            CancelCapture();
+        }
+    }
+
     private void RefreshButton_OnClick(object sender, RoutedEventArgs e)
     {
         RefreshButton.BeginAnimation(
@@ -215,7 +240,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             {
                 EasingFunction = new CubicEase { EasingMode = EasingMode.EaseOut }
             });
-        RefreshDevices(showMessage: true);
+        _ = RefreshDevicesAsync(showMessage: true);
     }
 
     public bool PrepareControllerModeForLaunch()
@@ -247,107 +272,127 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         }
     }
 
-    private void RefreshDevices(
+    private async Task RefreshDevicesAsync(
         bool showMessage,
         string? preferredDolphinDevice = null,
         bool loadChangedSelection = true)
     {
-        IReadOnlyList<ControllerDeviceInfo> detected;
-        try
+        if (Interlocked.CompareExchange(ref _scanInProgress, 1, 0) != 0)
         {
-            detected = _deviceService.Scan();
-        }
-        catch (Exception ex)
-        {
-            if (showMessage) SetStatus($"Could not detect controllers: {ex.Message}", isError: true);
             return;
         }
 
-        var previousId = SelectedDevice?.Id;
-        var previousDevice = SelectedDevice;
-        var reconnectedEquivalent = previousDevice is null
-            ? null
-            : detected.FirstOrDefault(device =>
-                device.IsConnected &&
-                MarioKartControllerConfigurationService.IsSameDolphinDevice(
-                    previousDevice.DolphinDevice,
-                    device));
-        var wasLoading = _isLoading;
-        _isLoading = true;
         try
         {
-            var desired = detected.ToList();
-            var configuredMatch = string.IsNullOrWhiteSpace(preferredDolphinDevice)
+            IReadOnlyList<ControllerDeviceInfo> detected;
+            try
+            {
+                detected = await Task.Run(() => _deviceService.Scan());
+            }
+            catch (Exception ex)
+            {
+                if (showMessage) SetStatus($"Could not detect controllers: {ex.Message}", isError: true);
+                return;
+            }
+
+            var previousId = SelectedDevice?.Id;
+            var previousDevice = SelectedDevice;
+            var reconnectedEquivalent = previousDevice is null
                 ? null
-                : desired.FirstOrDefault(device =>
+                : detected.FirstOrDefault(device =>
+                    device.IsConnected &&
                     MarioKartControllerConfigurationService.IsSameDolphinDevice(
-                        preferredDolphinDevice,
+                        previousDevice.DolphinDevice,
                         device));
-
-            if (!string.IsNullOrWhiteSpace(preferredDolphinDevice) && configuredMatch is null)
+            var wasLoading = _isLoading;
+            _isLoading = true;
+            try
             {
-                configuredMatch = MarioKartControllerConfigurationService.CreateDisconnectedDevice(
-                    preferredDolphinDevice);
-                desired.Add(configuredMatch);
+                var desired = detected.ToList();
+                var configuredMatch = string.IsNullOrWhiteSpace(preferredDolphinDevice)
+                    ? null
+                    : desired.FirstOrDefault(device =>
+                        MarioKartControllerConfigurationService.IsSameDolphinDevice(
+                            preferredDolphinDevice,
+                            device));
+
+                if (!string.IsNullOrWhiteSpace(preferredDolphinDevice) && configuredMatch is null)
+                {
+                    configuredMatch = MarioKartControllerConfigurationService.CreateDisconnectedDevice(
+                        preferredDolphinDevice);
+                    desired.Add(configuredMatch);
+                }
+
+                if (previousDevice is not null &&
+                    desired.All(d => !string.Equals(d.Id, previousDevice.Id, StringComparison.OrdinalIgnoreCase)))
+                {
+                    previousDevice.IsConnected = false;
+                    desired.Add(previousDevice);
+                }
+
+                var currentIds = Devices.Select(d => $"{d.Id}:{d.IsConnected}").ToArray();
+                var newSorted = desired
+                    .OrderByDescending(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard)
+                    .ThenBy(d => d.Kind == ControllerDeviceKind.Keyboard)
+                    .ThenBy(d => d.DisplayName, StringComparer.CurrentCultureIgnoreCase)
+                    .ToArray();
+                var newIds = newSorted.Select(d => $"{d.Id}:{d.IsConnected}").ToArray();
+
+                if (!currentIds.SequenceEqual(newIds))
+                {
+                    Devices.Clear();
+                    foreach (var device in newSorted)
+                    {
+                        Devices.Add(device);
+                    }
+                }
+
+                SelectedDevice = !string.IsNullOrWhiteSpace(preferredDolphinDevice)
+                    ? Devices.FirstOrDefault(d => ReferenceEquals(d, configuredMatch)) ??
+                      Devices.FirstOrDefault(d =>
+                          MarioKartControllerConfigurationService.IsSameDolphinDevice(
+                              preferredDolphinDevice,
+                              d))
+                    : reconnectedEquivalent is not null
+                        ? Devices.FirstOrDefault(d => ReferenceEquals(d, reconnectedEquivalent))
+                    : previousId is null
+                        ? Devices.FirstOrDefault(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard) ??
+                          Devices.FirstOrDefault(d => d.IsConnected)
+                    : Devices.FirstOrDefault(d => string.Equals(d.Id, previousId, StringComparison.OrdinalIgnoreCase)) ??
+                      Devices.FirstOrDefault(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard) ??
+                      Devices.FirstOrDefault(d => d.IsConnected);
+            }
+            finally
+            {
+                _isLoading = wasLoading;
             }
 
-            if (previousDevice is not null &&
-                desired.All(d => !string.Equals(d.Id, previousDevice.Id, StringComparison.OrdinalIgnoreCase)))
+            var selectionChanged = !ReferenceEquals(previousDevice, SelectedDevice);
+            if (selectionChanged && loadChangedSelection && !wasLoading && SelectedDevice is not null)
             {
-                previousDevice.IsConnected = false;
-                desired.Add(previousDevice);
+                LoadSelectedDevice();
             }
 
-            Devices.Clear();
-            foreach (var device in desired
-                         .OrderByDescending(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard)
-                         .ThenBy(d => d.Kind == ControllerDeviceKind.Keyboard)
-                         .ThenBy(d => d.DisplayName, StringComparer.CurrentCultureIgnoreCase))
+            UpdateConnectionStatus();
+            var signature = string.Join("|", Devices.Where(d => d.IsConnected).Select(d => d.Id));
+            if (!string.Equals(signature, _lastDeviceSignature, StringComparison.Ordinal))
             {
-                Devices.Add(device);
+                if (!string.IsNullOrEmpty(_lastDeviceSignature) && SelectedDevice is not null)
+                {
+                    SetStatus(SelectedDevice.IsConnected
+                        ? $"{SelectedDevice.DisplayName} is ready."
+                        : "Controller disconnected. Connect a device to continue.");
+                }
+                _lastDeviceSignature = signature;
             }
-
-            SelectedDevice = !string.IsNullOrWhiteSpace(preferredDolphinDevice)
-                ? Devices.FirstOrDefault(d => ReferenceEquals(d, configuredMatch)) ??
-                  Devices.FirstOrDefault(d =>
-                      MarioKartControllerConfigurationService.IsSameDolphinDevice(
-                          preferredDolphinDevice,
-                          d))
-                : reconnectedEquivalent is not null
-                    ? Devices.FirstOrDefault(d => ReferenceEquals(d, reconnectedEquivalent))
-                : previousId is null
-                    ? Devices.FirstOrDefault(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard) ??
-                      Devices.FirstOrDefault(d => d.IsConnected)
-                : Devices.FirstOrDefault(d => string.Equals(d.Id, previousId, StringComparison.OrdinalIgnoreCase)) ??
-                  Devices.FirstOrDefault(d => d.IsConnected && d.Kind != ControllerDeviceKind.Keyboard) ??
-                  Devices.FirstOrDefault(d => d.IsConnected);
+            else if (showMessage)
+            {
+                SetStatus("Controller list refreshed.");
+            }
         }
         finally
         {
-            _isLoading = wasLoading;
-        }
-
-        var selectionChanged = !ReferenceEquals(previousDevice, SelectedDevice);
-        if (selectionChanged && loadChangedSelection && !wasLoading && SelectedDevice is not null)
-        {
-            LoadSelectedDevice();
-        }
-
-        UpdateConnectionStatus();
-        var signature = string.Join("|", Devices.Where(d => d.IsConnected).Select(d => d.Id));
-        if (!string.Equals(signature, _lastDeviceSignature, StringComparison.Ordinal))
-        {
-            if (!string.IsNullOrEmpty(_lastDeviceSignature) && SelectedDevice is not null)
-            {
-                SetStatus(SelectedDevice.IsConnected
-                    ? $"{SelectedDevice.DisplayName} is ready."
-                    : "Controller disconnected. Connect a device to continue.");
-            }
-            _lastDeviceSignature = signature;
-        }
-        else if (showMessage)
-        {
-            SetStatus("Controller list refreshed.");
+            Interlocked.Exchange(ref _scanInProgress, 0);
         }
     }
 

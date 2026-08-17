@@ -206,7 +206,7 @@ public sealed class ModUpdateSafetyService
         var protectedAbsolutePaths = BuildProtectedAbsolutePaths(settings, modRoot, modDirectoryName);
 
         using var archive = ZipFile.OpenRead(zipPath);
-        var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name)).ToList();
+        var entries = archive.Entries.Where(e => !string.IsNullOrEmpty(e.Name) && !e.FullName.EndsWith('/') && !e.FullName.EndsWith('\\')).ToList();
         var totalEntries = Math.Max(1, entries.Count);
         var zipRelativePaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -220,7 +220,7 @@ public sealed class ModUpdateSafetyService
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var entryRelative = entry.FullName.Replace('/', Path.DirectorySeparatorChar);
+            var entryRelative = entry.FullName.Replace('\\', '/').TrimStart('/').Replace('/', Path.DirectorySeparatorChar);
             var destPath = Path.GetFullPath(Path.Combine(destinationRoot, entryRelative));
 
             if (!destPath.StartsWith(

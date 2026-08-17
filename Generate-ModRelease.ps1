@@ -233,6 +233,88 @@ function Normalize-JsonText {
         [char]0x20, [char]0x09, [char]0x0D, [char]0x0A))
 }
 
+# Funzione per creare archivi ZIP conformi alle specifiche PKWARE (separatori '/', UTF-8, directory esplicite).
+# Risolve l'incompatibilità su macOS, Linux e ChromeOS causata da Compress-Archive / .NET Framework su Windows.
+function New-StandardZipArchive {
+    param (
+        [Parameter(Mandatory=$true)]
+        [string]$SourceDirectory,
+        [Parameter(Mandatory=$true)]
+        [string]$DestinationZipPath,
+        [System.IO.Compression.CompressionLevel]$CompressionLevel = [System.IO.Compression.CompressionLevel]::Optimal,
+        [string[]]$IncludeEmptyDirs = @()
+    )
+
+    $sourceFullPath = [System.IO.Path]::GetFullPath($SourceDirectory).TrimEnd('\', '/')
+    $destFullPath = [System.IO.Path]::GetFullPath($DestinationZipPath)
+
+    $destDir = [System.IO.Path]::GetDirectoryName($destFullPath)
+    if (-not (Test-Path -LiteralPath $destDir)) {
+        [System.IO.Directory]::CreateDirectory($destDir) | Out-Null
+    }
+
+    if (Test-Path -LiteralPath $destFullPath) {
+        Remove-Item -LiteralPath $destFullPath -Force -ErrorAction SilentlyContinue
+    }
+
+    Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
+
+    $zipStream = [System.IO.File]::Open($destFullPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::ReadWrite, [System.IO.FileShare]::None)
+    $archive = [System.IO.Compression.ZipArchive]::new($zipStream, [System.IO.Compression.ZipArchiveMode]::Create, $false, [System.Text.Encoding]::UTF8)
+
+    $addedEntries = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+    try {
+        # 1. Aggiungi tutti i file usando tassativamente '/' come separatore
+        $files = Get-ChildItem -LiteralPath $sourceFullPath -Recurse -File
+        foreach ($file in $files) {
+            $relative = $file.FullName.Substring($sourceFullPath.Length).TrimStart('\', '/')
+            $entryName = $relative.Replace('\', '/')
+            
+            $entry = $archive.CreateEntry($entryName, $CompressionLevel)
+            $entry.LastWriteTime = $file.LastWriteTime
+            [void]$addedEntries.Add($entryName)
+            
+            $fileStream = [System.IO.File]::OpenRead($file.FullName)
+            $entryStream = $entry.Open()
+            try {
+                $fileStream.CopyTo($entryStream)
+            }
+            finally {
+                $entryStream.Dispose()
+                $fileStream.Dispose()
+            }
+        }
+
+        # 2. Aggiungi tutte le cartelle (incluse quelle vuote) con slash finale '/'
+        $dirs = Get-ChildItem -LiteralPath $sourceFullPath -Recurse -Directory
+        foreach ($dir in $dirs) {
+            $relative = $dir.FullName.Substring($sourceFullPath.Length).TrimStart('\', '/')
+            $dirEntryName = $relative.Replace('\', '/').TrimEnd('/') + '/'
+            if (-not $addedEntries.Contains($dirEntryName)) {
+                $null = $archive.CreateEntry($dirEntryName)
+                [void]$addedEntries.Add($dirEntryName)
+            }
+        }
+
+        # 3. Aggiungi eventuali cartelle vuote extra richieste
+        if ($IncludeEmptyDirs) {
+            foreach ($extraDir in $IncludeEmptyDirs) {
+                if ([string]::IsNullOrWhiteSpace($extraDir)) { continue }
+                $dirEntryName = $extraDir.Replace('\', '/').TrimStart('/').TrimEnd('/') + '/'
+                if ($dirEntryName -ne '/' -and -not $addedEntries.Contains($dirEntryName)) {
+                    $null = $archive.CreateEntry($dirEntryName)
+                    [void]$addedEntries.Add($dirEntryName)
+                }
+            }
+        }
+    }
+    finally {
+        $archive.Dispose()
+        $zipStream.Dispose()
+    }
+}
+
 $serverDirectory = if ($Channel -eq "Beta") { "VanzakartBeta" } else { "Modpack" }
 $modReleaseBaseUrl = "$($ServerBaseUrl.TrimEnd('/'))/$serverDirectory"
 
@@ -431,28 +513,10 @@ $manifestJsonContent = ConvertTo-Json -InputObject $manifestObject -Depth 100
 [System.IO.File]::WriteAllText($manifestJsonPath, $manifestJsonContent)
 Write-Host "Creato manifest dei file: manifest_files.json" -ForegroundColor Green
 
-# 2. Compressione dell'archivio completo per installazioni da zero
+# 2. Compressione dell'archivio completo per installazioni da zero (standard cross-platform)
 $zipPath = Join-Path $absoluteOutputDir $archiveName
-Write-Host "Compressione dello ZIP per installazioni complete..." -ForegroundColor Yellow
-# Comprime il contenuto della cartella temporanea nel file zip di output
-Compress-Archive -Path "$tempZipFolder\*" -DestinationPath $zipPath -Force
-
-# Compress-Archive può ignorare le directory vuote. Le registra quindi
-# esplicitamente nello ZIP, senza creare file placeholder dentro CTBRSTM.
-if ($alwaysIncludedRelativeDirs.Count -gt 0) {
-    Add-Type -AssemblyName System.IO.Compression.FileSystem
-    $zip = [System.IO.Compression.ZipFile]::Open($zipPath, [System.IO.Compression.ZipArchiveMode]::Update)
-    try {
-        foreach ($relativeDir in $alwaysIncludedRelativeDirs) {
-            $entryName = ("$modDirectoryName/" + $relativeDir.Replace('\', '/')).TrimEnd('/') + '/'
-            $existingEntry = $zip.Entries | Where-Object { $_.FullName.Equals($entryName, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1
-            if (-not $existingEntry) { [void]$zip.CreateEntry($entryName) }
-        }
-    }
-    finally {
-        $zip.Dispose()
-    }
-}
+Write-Host "Compressione dello ZIP per installazioni complete (cross-platform)..." -ForegroundColor Yellow
+New-StandardZipArchive -SourceDirectory $tempZipFolder -DestinationZipPath $zipPath
 Write-Host "Creato archivio ZIP completo: $archiveName" -ForegroundColor Green
 
 # 3. Compressione della cartella dei file differenziali per il caricamento sul server.
@@ -460,8 +524,8 @@ Write-Host "Creato archivio ZIP completo: $archiveName" -ForegroundColor Green
 # serve per trasferire e poi estrarre l'intera struttura sul server.
 if ($CreateFilesZip) {
     $filesZipPath = Join-Path $absoluteOutputDir "files.zip"
-    Write-Host "Compressione dei file differenziali in files.zip..." -ForegroundColor Yellow
-    Compress-Archive -Path "$filesOutputDir\*" -DestinationPath $filesZipPath -Force
+    Write-Host "Compressione dei file differenziali in files.zip (cross-platform)..." -ForegroundColor Yellow
+    New-StandardZipArchive -SourceDirectory $filesOutputDir -DestinationZipPath $filesZipPath
     Write-Host "Creato archivio dei file differenziali: files.zip" -ForegroundColor Green
 }
 

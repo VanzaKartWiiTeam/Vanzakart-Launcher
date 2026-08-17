@@ -23,7 +23,8 @@ public sealed class ArchiveService
             foreach (var entry in archive.Entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (string.IsNullOrEmpty(entry.Name))
+                var isDirectory = entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\') || string.IsNullOrEmpty(entry.Name);
+                if (isDirectory)
                 {
                     continue;
                 }
@@ -54,13 +55,15 @@ public sealed class ArchiveService
 
             foreach (var entry in archive.Entries)
             {
-                string destPath = Path.GetFullPath(Path.Combine(destinationFolder, entry.FullName));
+                var entryPath = entry.FullName.Replace('\\', '/').TrimStart('/');
+                var isDirectory = entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\') || string.IsNullOrEmpty(entry.Name);
+                var destPath = Path.GetFullPath(Path.Combine(destinationFolder, entryPath.Replace('/', Path.DirectorySeparatorChar)));
                 if (!destPath.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException("The archive contains an unsafe file path.");
                 }
 
-                if (string.IsNullOrEmpty(entry.Name))
+                if (isDirectory)
                 {
                     Directory.CreateDirectory(destPath);
                 }
@@ -103,13 +106,15 @@ public sealed class ArchiveService
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
-                var destPath = Path.GetFullPath(Path.Combine(destinationFolder, entry.FullName));
+                var entryPath = entry.FullName.Replace('\\', '/').TrimStart('/');
+                var isDirectory = entry.FullName.EndsWith('/') || entry.FullName.EndsWith('\\') || string.IsNullOrEmpty(entry.Name);
+                var destPath = Path.GetFullPath(Path.Combine(destinationFolder, entryPath.Replace('/', Path.DirectorySeparatorChar)));
                 if (!destPath.StartsWith(destinationRoot, StringComparison.OrdinalIgnoreCase))
                 {
                     throw new InvalidDataException("The archive contains an unsafe file path.");
                 }
 
-                if (string.IsNullOrEmpty(entry.Name))
+                if (isDirectory)
                 {
                     Directory.CreateDirectory(destPath);
                 }

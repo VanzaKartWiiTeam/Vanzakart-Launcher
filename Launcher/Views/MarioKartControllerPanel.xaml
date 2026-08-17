@@ -4,6 +4,7 @@
              xmlns:models="clr-namespace:VanzaKartLauncher.Models"
              Loaded="Panel_OnLoaded"
              Unloaded="Panel_OnUnloaded"
+             IsVisibleChanged="Panel_OnIsVisibleChanged"
              PreviewKeyDown="Panel_OnPreviewKeyDown"
              Focusable="True">
     <UserControl.Resources>
@@ -36,6 +37,8 @@
             <Setter Property="Padding" Value="14,9"/>
             <Setter Property="FontWeight" Value="SemiBold"/>
             <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
             <Setter Property="Template">
                 <Setter.Value>
                     <ControlTemplate TargetType="Button">
@@ -44,7 +47,7 @@
                                 BorderThickness="{TemplateBinding BorderThickness}"
                                 CornerRadius="11"
                                 Padding="{TemplateBinding Padding}">
-                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                            <ContentPresenter HorizontalAlignment="{TemplateBinding HorizontalContentAlignment}" VerticalAlignment="{TemplateBinding VerticalContentAlignment}"/>
                         </Border>
                         <ControlTemplate.Triggers>
                             <Trigger Property="IsMouseOver" Value="True">
@@ -381,19 +384,8 @@
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <StackPanel>
-                <StackPanel Orientation="Horizontal">
-                    <Border Width="48" Height="48" CornerRadius="15" Background="#203B66" Margin="0,0,13,0">
-                        <TextBlock Text="MK" FontSize="15" FontWeight="Black"
-                                   Foreground="#A9C9FF"
-                                   HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                    </Border>
-                    <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="MARIO KART CONTROLS" FontSize="22" FontWeight="Bold"/>
-                        <TextBlock Text="Only the controls you need. No Dolphin settings to learn."
-                                   Foreground="{StaticResource MkMuted}" FontSize="12" Margin="0,3,0,0"/>
-                    </StackPanel>
-                </StackPanel>
+            <StackPanel VerticalAlignment="Center">
+                <TextBlock Text="🎮 MARIO KART CONTROLS" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}"/>
             </StackPanel>
             <Border Grid.Column="1" Background="#142A36" BorderBrush="#2D675C"
                     BorderThickness="1" CornerRadius="13" Padding="12,7" VerticalAlignment="Center">
@@ -407,15 +399,9 @@
         <Border Style="{StaticResource MkCard}" Margin="0,0,0,16" Background="#121F34">
             <StackPanel>
                 <Grid Margin="0,0,0,13">
-                    <StackPanel>
+                    <StackPanel VerticalAlignment="Center">
                         <TextBlock Text="Controller mode" FontSize="18" FontWeight="Bold"/>
-                        <TextBlock Text="Choose how Player 1 is connected to Mario Kart Wii."
-                                   Foreground="{StaticResource MkMuted}" FontSize="11" Margin="0,3,0,0"/>
                     </StackPanel>
-                    <Border HorizontalAlignment="Right" VerticalAlignment="Top"
-                            Background="#173B34" CornerRadius="9" Padding="8,4">
-                        <TextBlock Text="PLAYER 1" Foreground="#66EAB1" FontSize="9" FontWeight="Bold"/>
-                    </Border>
                 </Grid>
 
                 <Grid>
@@ -425,48 +411,44 @@
                         <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
                     <Button x:Name="LauncherModeButton" Style="{StaticResource MkButton}"
-                            HorizontalContentAlignment="Stretch" Padding="16,13"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Padding="16,13"
                             Click="LauncherModeButton_OnClick">
-                        <Grid>
+                        <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="42"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <Border Width="34" Height="34" CornerRadius="10" Background="#203B66">
-                                <TextBlock Text="VK" Foreground="#A9C9FF" FontWeight="Black"
+                            <Border Width="34" Height="34" CornerRadius="8" Background="#172554" BorderBrush="#3B82F6" BorderThickness="1" VerticalAlignment="Center">
+                                <TextBlock Text="VK" Foreground="#EFF6FF" FontWeight="Bold" FontSize="12"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <StackPanel Grid.Column="1" Margin="10,0,8,0">
-                                <TextBlock Text="Launcher Configuration (Recommended)" FontWeight="Bold"/>
-                                <TextBlock Text="Fast Mario Kart Wii setup directly in this page"
-                                           Foreground="{StaticResource MkMuted}" FontSize="10" Margin="0,2,0,0"/>
+                            <StackPanel Grid.Column="1" Margin="14,0,8,0" VerticalAlignment="Center">
+                                <TextBlock Text="Launcher Configuration (Recommended - Beta)" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#FFFFFF"/>
                             </StackPanel>
                             <Ellipse x:Name="LauncherModeDot" Grid.Column="2" Width="10" Height="10"
-                                     Fill="#50E7A7" VerticalAlignment="Center"/>
+                                     Fill="#50E7A7" VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </Grid>
                     </Button>
 
                     <Button x:Name="WiimoteModeButton" Grid.Column="2" Style="{StaticResource MkButton}"
-                            HorizontalContentAlignment="Stretch" Padding="16,13"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Center" Padding="16,13"
                             Click="WiimoteModeButton_OnClick">
-                        <Grid>
+                        <Grid VerticalAlignment="Center">
                             <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="42"/>
+                                <ColumnDefinition Width="Auto"/>
                                 <ColumnDefinition Width="*"/>
                                 <ColumnDefinition Width="Auto"/>
                             </Grid.ColumnDefinitions>
-                            <Border Width="34" Height="34" CornerRadius="10" Background="#352E57">
-                                <TextBlock Text="D" Foreground="#C7BDFF" FontWeight="Black" FontSize="12"
+                            <Border Width="34" Height="34" CornerRadius="8" Background="#2E1065" BorderBrush="#8B5CF6" BorderThickness="1" VerticalAlignment="Center">
+                                <TextBlock Text="D" Foreground="#FAF5FF" FontWeight="Bold" FontSize="12"
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
-                            <StackPanel Grid.Column="1" Margin="10,0,8,0">
-                                <TextBlock Text="Configure with Dolphin" FontWeight="Bold"/>
-                                <TextBlock Text="For advanced users and existing Dolphin setups"
-                                           Foreground="{StaticResource MkMuted}" FontSize="10" Margin="0,2,0,0"/>
+                            <StackPanel Grid.Column="1" Margin="14,0,8,0" VerticalAlignment="Center">
+                                <TextBlock Text="Configure with Dolphin" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#F5F8FF"/>
                             </StackPanel>
                             <Ellipse x:Name="WiimoteModeDot" Grid.Column="2" Width="10" Height="10"
-                                     Fill="#40516D" VerticalAlignment="Center"/>
+                                     Fill="#40516D" VerticalAlignment="Center" Margin="8,0,0,0"/>
                         </Grid>
                     </Button>
                 </Grid>

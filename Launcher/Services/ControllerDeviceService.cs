@@ -6,8 +6,26 @@ namespace VanzaKartLauncher.Services;
 
 public sealed class ControllerDeviceService
 {
+    private readonly object _lock = new();
     private readonly Dictionary<string, ControllerDeviceInfo> _knownDevices =
         new(StringComparer.OrdinalIgnoreCase);
+
+    public event EventHandler? DevicesChanged;
+
+    public ControllerDeviceService()
+    {
+        try
+        {
+            RawGameController.RawGameControllerAdded += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
+            RawGameController.RawGameControllerRemoved += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
+            Gamepad.GamepadAdded += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
+            Gamepad.GamepadRemoved += (_, _) => DevicesChanged?.Invoke(this, EventArgs.Empty);
+        }
+        catch
+        {
+            // WinRT hardware events may not be available on all execution contexts
+        }
+    }
 
     public IReadOnlyList<ControllerDeviceInfo> Scan()
     {
@@ -43,47 +61,57 @@ public sealed class ControllerDeviceService
                 result);
         }
 
-        var rawControllers = RawGameController.RawGameControllers;
-        var indexesByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var raw in rawControllers)
+        try
         {
-            var name = string.IsNullOrWhiteSpace(raw.DisplayName) ? "Controller generico" : raw.DisplayName.Trim();
-            var kind = Classify(raw, name);
-            var dolphinName = GetDolphinDeviceName(raw, name, kind);
-
-            // XInput exposes the same physical Xbox pad through both APIs.
-            if (kind == ControllerDeviceKind.Xbox && result.Any(d => d.Kind == ControllerDeviceKind.Xbox))
+            var rawControllers = RawGameController.RawGameControllers;
+            var indexesByName = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            foreach (var raw in rawControllers)
             {
-                continue;
-            }
+                var name = string.IsNullOrWhiteSpace(raw.DisplayName) ? "Controller generico" : raw.DisplayName.Trim();
+                var kind = Classify(raw, name);
+                var dolphinName = GetDolphinDeviceName(raw, name, kind);
 
-            indexesByName.TryGetValue(dolphinName, out var sameNameIndex);
-            indexesByName[dolphinName] = sameNameIndex + 1;
-
-            var id = string.IsNullOrWhiteSpace(raw.NonRoamableId)
-                ? $"raw:{raw.HardwareVendorId:X4}:{raw.HardwareProductId:X4}:{sameNameIndex}"
-                : $"raw:{raw.NonRoamableId}";
-            var gamepad = Gamepad.FromGameController(raw);
-
-            AddOrUpdate(
-                new ControllerDeviceInfo
+                // XInput exposes the same physical Xbox pad through both APIs.
+                if (kind == ControllerDeviceKind.Xbox && result.Any(d => d.Kind == ControllerDeviceKind.Xbox))
                 {
-                    Id = id,
-                    DisplayName = name,
-                    DolphinDevice = $"SDL/{sameNameIndex}/{dolphinName}",
-                    Kind = kind,
-                    UsesRawInputLayout = gamepad is null,
-                    RuntimeDevice = (object?)gamepad ?? raw,
-                    IsConnected = true
-                },
-                seen,
-                result);
+                    continue;
+                }
+
+                indexesByName.TryGetValue(dolphinName, out var sameNameIndex);
+                indexesByName[dolphinName] = sameNameIndex + 1;
+
+                var id = string.IsNullOrWhiteSpace(raw.NonRoamableId)
+                    ? $"raw:{raw.HardwareVendorId:X4}:{raw.HardwareProductId:X4}:{sameNameIndex}"
+                    : $"raw:{raw.NonRoamableId}";
+                var gamepad = Gamepad.FromGameController(raw);
+
+                AddOrUpdate(
+                    new ControllerDeviceInfo
+                    {
+                        Id = id,
+                        DisplayName = name,
+                        DolphinDevice = $"SDL/{sameNameIndex}/{dolphinName}",
+                        Kind = kind,
+                        UsesRawInputLayout = gamepad is null,
+                        RuntimeDevice = (object?)gamepad ?? raw,
+                        IsConnected = true
+                    },
+                    seen,
+                    result);
+            }
+        }
+        catch
+        {
+            // Handle transient device enumeration errors during PnP initialization
         }
 
-        foreach (var known in _knownDevices.Values.Where(d => !seen.Contains(d.Id)))
+        lock (_lock)
         {
-            known.IsConnected = false;
-            known.RuntimeDevice = null;
+            foreach (var known in _knownDevices.Values.Where(d => !seen.Contains(d.Id)))
+            {
+                known.IsConnected = false;
+                known.RuntimeDevice = null;
+            }
         }
 
         return result
@@ -145,16 +173,19 @@ public sealed class ControllerDeviceService
         ICollection<ControllerDeviceInfo> output)
     {
         seen.Add(candidate.Id);
-        if (_knownDevices.TryGetValue(candidate.Id, out var existing))
+        lock (_lock)
         {
-            existing.IsConnected = true;
-            existing.RuntimeDevice = candidate.RuntimeDevice;
-            output.Add(existing);
-            return;
-        }
+            if (_knownDevices.TryGetValue(candidate.Id, out var existing))
+            {
+                existing.IsConnected = true;
+                existing.RuntimeDevice = candidate.RuntimeDevice;
+                output.Add(existing);
+                return;
+            }
 
-        _knownDevices[candidate.Id] = candidate;
-        output.Add(candidate);
+            _knownDevices[candidate.Id] = candidate;
+            output.Add(candidate);
+        }
     }
 
     private static ControllerDeviceKind Classify(RawGameController raw, string name)
