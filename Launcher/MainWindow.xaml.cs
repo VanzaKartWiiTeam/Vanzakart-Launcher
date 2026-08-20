@@ -88,6 +88,8 @@ public partial class MainWindow : Window
     private string _latestModManifestUrl = LauncherConfig.ModManifestUrl;
     private string _latestModFilesUrl = LauncherConfig.ModFilesUrl;
     private string[] _latestModFilesMirrors = Array.Empty<string>();
+    private string _latestModHashFilesUrl = LauncherConfig.ModHashFilesUrl;
+    private string[] _latestModHashFilesMirrors = Array.Empty<string>();
     private string _latestMusicPackVersion = string.Empty;
     private string _latestMusicPackUrl = LauncherConfig.MusicPackUrl;
     private string[] _latestMusicPackMirrors = Array.Empty<string>();
@@ -512,16 +514,19 @@ public partial class MainWindow : Window
             _latestModUrl = LauncherConfig.BetaModUrl;
             _latestModManifestUrl = LauncherConfig.BetaModManifestUrl;
             _latestModFilesUrl = LauncherConfig.BetaModFilesUrl;
+            _latestModHashFilesUrl = LauncherConfig.BetaModHashFilesUrl;
         }
         else
         {
             _latestModUrl = LauncherConfig.ModUrl;
             _latestModManifestUrl = LauncherConfig.ModManifestUrl;
             _latestModFilesUrl = LauncherConfig.ModFilesUrl;
+            _latestModHashFilesUrl = LauncherConfig.ModHashFilesUrl;
         }
 
         _latestModMirrors = Array.Empty<string>();
         _latestModFilesMirrors = Array.Empty<string>();
+        _latestModHashFilesMirrors = Array.Empty<string>();
         _latestModSha256 = string.Empty;
     }
 
@@ -2391,6 +2396,8 @@ public partial class MainWindow : Window
             _latestModManifestUrl = modRelease.ManifestUrl;
             _latestModFilesUrl = modRelease.FilesUrl;
             _latestModFilesMirrors = modRelease.FilesMirrors;
+            _latestModHashFilesUrl = modRelease.HashFilesUrl;
+            _latestModHashFilesMirrors = modRelease.HashFilesMirrors;
             _latestMusicPackVersion = info.MusicPackVersion;
             _latestMusicPackUrl = string.IsNullOrWhiteSpace(info.MusicPackUrl) ? LauncherConfig.MusicPackUrl : info.MusicPackUrl;
             _latestMusicPackMirrors = info.MusicPackMirrors ?? Array.Empty<string>();
@@ -2584,12 +2591,13 @@ public partial class MainWindow : Window
         var escapedPath = EscapeRelativeUrlPath(fileRelativePath);
         var rawPath = fileRelativePath.Replace('\\', '/');
         var hashPath = BuildHashAddressedRelativePath(file.Sha256);
+        var hashFileName = file.Sha256.Trim().ToLowerInvariant();
         var fileUrls = new List<string>();
 
+        // 1. Percorsi file diretti dentro files/
         if (!string.IsNullOrWhiteSpace(_latestModFilesUrl))
         {
             fileUrls.AddRange(BuildDifferentialFileUrlCandidates(_latestModFilesUrl, escapedPath, rawPath));
-            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(_latestModFilesUrl, hashPath, hashPath));
         }
 
         if (_latestModFilesMirrors != null)
@@ -2599,7 +2607,6 @@ public partial class MainWindow : Window
                 if (!string.IsNullOrWhiteSpace(mirror))
                 {
                     fileUrls.AddRange(BuildDifferentialFileUrlCandidates(mirror, escapedPath, rawPath));
-                    fileUrls.AddRange(BuildDifferentialFileUrlCandidates(mirror, hashPath, hashPath));
                 }
             }
         }
@@ -2610,7 +2617,53 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(defaultFilesUrl) && defaultFilesUrl != _latestModFilesUrl)
         {
             fileUrls.AddRange(BuildDifferentialFileUrlCandidates(defaultFilesUrl, escapedPath, rawPath));
-            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(defaultFilesUrl, hashPath, hashPath));
+        }
+
+        // 2. Percorsi file per hash nella cartella indipendente _by_sha256/
+        if (!string.IsNullOrWhiteSpace(_latestModHashFilesUrl))
+        {
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(_latestModHashFilesUrl, hashFileName, hashFileName));
+        }
+        else if (!string.IsNullOrWhiteSpace(_latestModFilesUrl))
+        {
+            var parent = ResolveParentBaseUrl(_latestModFilesUrl);
+            if (!string.IsNullOrWhiteSpace(parent))
+            {
+                fileUrls.AddRange(BuildDifferentialFileUrlCandidates(parent, hashPath, hashPath));
+            }
+        }
+
+        if (_latestModHashFilesMirrors != null && _latestModHashFilesMirrors.Length > 0)
+        {
+            foreach (var mirror in _latestModHashFilesMirrors)
+            {
+                if (!string.IsNullOrWhiteSpace(mirror))
+                {
+                    fileUrls.AddRange(BuildDifferentialFileUrlCandidates(mirror, hashFileName, hashFileName));
+                }
+            }
+        }
+        else if (_latestModFilesMirrors != null)
+        {
+            foreach (var mirror in _latestModFilesMirrors)
+            {
+                if (!string.IsNullOrWhiteSpace(mirror))
+                {
+                    var parent = ResolveParentBaseUrl(mirror);
+                    if (!string.IsNullOrWhiteSpace(parent))
+                    {
+                        fileUrls.AddRange(BuildDifferentialFileUrlCandidates(parent, hashPath, hashPath));
+                    }
+                }
+            }
+        }
+
+        var defaultHashFilesUrl = SelectedModReleaseChannel == ModReleaseChannel.Beta
+            ? LauncherConfig.BetaModHashFilesUrl
+            : LauncherConfig.ModHashFilesUrl;
+        if (!string.IsNullOrWhiteSpace(defaultHashFilesUrl) && defaultHashFilesUrl != _latestModHashFilesUrl)
+        {
+            fileUrls.AddRange(BuildDifferentialFileUrlCandidates(defaultHashFilesUrl, hashFileName, hashFileName));
         }
 
         foreach (var url in fileUrls.Distinct(StringComparer.OrdinalIgnoreCase))
@@ -2628,14 +2681,21 @@ public partial class MainWindow : Window
                 throw new InvalidDataException("The stable versions manifest does not contain a mod version.");
             }
 
+            var filesUrl = string.IsNullOrWhiteSpace(stableInfo.ModFilesUrl) ? LauncherConfig.ModFilesUrl : stableInfo.ModFilesUrl;
+            var hashUrl = string.IsNullOrWhiteSpace(stableInfo.ModHashFilesUrl)
+                ? (string.IsNullOrWhiteSpace(filesUrl) ? LauncherConfig.ModHashFilesUrl : $"{ResolveParentBaseUrl(filesUrl)}/_by_sha256/")
+                : stableInfo.ModHashFilesUrl;
+
             return new ModReleaseMetadata(
                 stableInfo.ModVersion,
                 string.IsNullOrWhiteSpace(stableInfo.ModUrl) ? LauncherConfig.ModUrl : stableInfo.ModUrl,
                 stableInfo.ModMirrors ?? Array.Empty<string>(),
                 stableInfo.ModSha256,
                 string.IsNullOrWhiteSpace(stableInfo.ModManifestUrl) ? LauncherConfig.ModManifestUrl : stableInfo.ModManifestUrl,
-                string.IsNullOrWhiteSpace(stableInfo.ModFilesUrl) ? LauncherConfig.ModFilesUrl : stableInfo.ModFilesUrl,
-                stableInfo.ModFilesMirrors ?? Array.Empty<string>());
+                filesUrl,
+                stableInfo.ModFilesMirrors ?? Array.Empty<string>(),
+                hashUrl,
+                stableInfo.ModHashFilesMirrors ?? Array.Empty<string>());
         }
 
         var betaManifestUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModManifestUrl)
@@ -2653,14 +2713,21 @@ public partial class MainWindow : Window
                 $"Beta metadata is out of sync: versions.json reports {stableInfo.BetaModVersion}, but the Beta manifest reports {manifest.ModVersion}.");
         }
 
+        var betaFilesUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModFilesUrl) ? LauncherConfig.BetaModFilesUrl : stableInfo.BetaModFilesUrl;
+        var betaHashUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModHashFilesUrl)
+            ? (string.IsNullOrWhiteSpace(betaFilesUrl) ? LauncherConfig.BetaModHashFilesUrl : $"{ResolveParentBaseUrl(betaFilesUrl)}/_by_sha256/")
+            : stableInfo.BetaModHashFilesUrl;
+
         return new ModReleaseMetadata(
             manifest.ModVersion,
             string.IsNullOrWhiteSpace(stableInfo.BetaModUrl) ? LauncherConfig.BetaModUrl : stableInfo.BetaModUrl,
             stableInfo.BetaModMirrors ?? Array.Empty<string>(),
             string.IsNullOrWhiteSpace(manifest.ArchiveSha256) ? stableInfo.BetaModSha256 : manifest.ArchiveSha256,
             betaManifestUrl,
-            string.IsNullOrWhiteSpace(stableInfo.BetaModFilesUrl) ? LauncherConfig.BetaModFilesUrl : stableInfo.BetaModFilesUrl,
-            stableInfo.BetaModFilesMirrors ?? Array.Empty<string>());
+            betaFilesUrl,
+            stableInfo.BetaModFilesMirrors ?? Array.Empty<string>(),
+            betaHashUrl,
+            stableInfo.BetaModHashFilesMirrors ?? Array.Empty<string>());
     }
 
     private sealed record ModReleaseMetadata(
@@ -2670,11 +2737,42 @@ public partial class MainWindow : Window
         string ArchiveSha256,
         string ManifestUrl,
         string FilesUrl,
-        string[] FilesMirrors);
+        string[] FilesMirrors,
+        string HashFilesUrl,
+        string[] HashFilesMirrors);
 
     private static string BuildHashAddressedRelativePath(string sha256)
     {
         return $"_by_sha256/{sha256.Trim().ToLowerInvariant()}";
+    }
+
+    private static string ResolveParentBaseUrl(string filesUrl)
+    {
+        if (string.IsNullOrWhiteSpace(filesUrl))
+            return string.Empty;
+
+        var trimmed = filesUrl.Trim().TrimEnd('/');
+        if (trimmed.EndsWith("/files", StringComparison.OrdinalIgnoreCase))
+        {
+            return trimmed[..^"/files".Length];
+        }
+
+        if (Uri.TryCreate(trimmed, UriKind.Absolute, out var uri))
+        {
+            var segments = uri.AbsolutePath.TrimEnd('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length > 1)
+            {
+                var parentPath = "/" + string.Join('/', segments.Take(segments.Length - 1));
+                var builder = new UriBuilder(uri)
+                {
+                    Path = parentPath,
+                    Query = null
+                };
+                return builder.Uri.ToString().TrimEnd('/');
+            }
+        }
+
+        return trimmed;
     }
 
     private static void ValidateModManifest(ModManifest? manifest)

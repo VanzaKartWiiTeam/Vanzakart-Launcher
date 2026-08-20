@@ -42,6 +42,13 @@ public sealed class VersionInfo
     [JsonConverter(typeof(StringArrayOrSingleConverter))]
     public string[] ModFilesMirrors { get; set; } = Array.Empty<string>();
 
+    [JsonPropertyName("mod_hash_files_url")]
+    public string ModHashFilesUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("mod_hash_files_mirrors")]
+    [JsonConverter(typeof(StringArrayOrSingleConverter))]
+    public string[] ModHashFilesMirrors { get; set; } = Array.Empty<string>();
+
     [JsonPropertyName("beta_mod_version")]
     public string BetaModVersion { get; set; } = string.Empty;
 
@@ -64,6 +71,13 @@ public sealed class VersionInfo
     [JsonPropertyName("beta_mod_files_mirrors")]
     [JsonConverter(typeof(StringArrayOrSingleConverter))]
     public string[] BetaModFilesMirrors { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("beta_mod_hash_files_url")]
+    public string BetaModHashFilesUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("beta_mod_hash_files_mirrors")]
+    [JsonConverter(typeof(StringArrayOrSingleConverter))]
+    public string[] BetaModHashFilesMirrors { get; set; } = Array.Empty<string>();
 
     [JsonPropertyName("beta_changelog")]
     [JsonConverter(typeof(StringArrayOrSingleConverter))]

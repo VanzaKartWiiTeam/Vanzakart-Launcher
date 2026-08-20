@@ -2,7 +2,7 @@ namespace VanzaKartLauncher.Services;
 
 public static class LauncherConfig
 {
-    public const string CurrentLauncherVersion = "1.4.9";
+    public const string CurrentLauncherVersion = "1.5.0";
     public const string ModUrl = "https://sitodaking.it:8443/Modpack/VanzaKart.zip";
     public const string LauncherZipUrl = "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip";
     public const string VersionJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json";
@@ -17,9 +17,11 @@ public static class LauncherConfig
     public const string BetaTokenVerifyApiUrl = "https://sitodaking.it:8443/api/vk_beta_token.php";
     public const string ModManifestUrl = "https://sitodaking.it:8443/Modpack/manifest_files.json";
     public const string ModFilesUrl = "https://sitodaking.it:8443/Modpack/files/";
+    public const string ModHashFilesUrl = "https://sitodaking.it:8443/Modpack/_by_sha256/";
     public const string BetaModUrl = "https://sitodaking.it:8443/VanzakartBeta/VKBeta.zip";
     public const string BetaModManifestUrl = "https://sitodaking.it:8443/VanzakartBeta/manifest_files.json";
     public const string BetaModFilesUrl = "https://sitodaking.it:8443/VanzakartBeta/files/";
+    public const string BetaModHashFilesUrl = "https://sitodaking.it:8443/VanzakartBeta/_by_sha256/";
     public const string MusicPackUrl = "https://sitodaking.it:8443/MusicPack/vanzakart_musicpack.zip";
     public const string MusicPackManifestUrl = "https://sitodaking.it:8443/MusicPack/manifest_files.json";
     public const string MusicPackFilesUrl = "https://sitodaking.it:8443/MusicPack/files/";

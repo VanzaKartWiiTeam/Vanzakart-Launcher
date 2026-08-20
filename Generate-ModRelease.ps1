@@ -14,8 +14,8 @@
 .PARAMETER Channel
     Il canale da pubblicare: Stable usa /Modpack, Beta usa /VanzakartBeta.
 .PARAMETER CreateFilesZip
-    Crea files.zip come archivio di trasferimento della cartella files da caricare sul server.
-    E' attivo per impostazione predefinita; il launcher non usa direttamente questo archivio.
+    Crea files.zip e _by_sha256.zip come archivi di trasferimento delle cartelle files e _by_sha256 da caricare sul server.
+    E' attivo per impostazione predefinita; il launcher non usa direttamente questi archivi.
 #>
 
 param (
@@ -359,7 +359,7 @@ Write-Host "Versione launcher attuale scaricata: $currentLauncherVersion" -Foreg
 # Crea directory temporanee e di output
 $tempZipFolder = Join-Path $env:TEMP "vanzakart_release_temp_$([guid]::NewGuid().ToString())"
 $filesOutputDir = Join-Path $absoluteOutputDir "files"
-$hashFilesOutputDir = Join-Path $filesOutputDir "_by_sha256"
+$hashFilesOutputDir = Join-Path $absoluteOutputDir "_by_sha256"
 
 if (Test-Path -LiteralPath $absoluteOutputDir) {
     Write-Host "Rimozione vecchia cartella di output..." -ForegroundColor Yellow
@@ -519,14 +519,19 @@ Write-Host "Compressione dello ZIP per installazioni complete (cross-platform)..
 New-StandardZipArchive -SourceDirectory $tempZipFolder -DestinationZipPath $zipPath
 Write-Host "Creato archivio ZIP completo: $archiveName" -ForegroundColor Green
 
-# 3. Compressione della cartella dei file differenziali per il caricamento sul server.
-# Il launcher scarica i file singoli da files/ e _by_sha256/; creare files.zip
-# serve per trasferire e poi estrarre l'intera struttura sul server.
+# 3. Compressione delle cartelle differenziali per il caricamento sul server.
+# Il launcher scarica i file singoli da files/ e _by_sha256/; creare files.zip e _by_sha256.zip
+# serve per trasferire e poi estrarre le strutture sul server.
 if ($CreateFilesZip) {
     $filesZipPath = Join-Path $absoluteOutputDir "files.zip"
     Write-Host "Compressione dei file differenziali in files.zip (cross-platform)..." -ForegroundColor Yellow
     New-StandardZipArchive -SourceDirectory $filesOutputDir -DestinationZipPath $filesZipPath
     Write-Host "Creato archivio dei file differenziali: files.zip" -ForegroundColor Green
+
+    $hashZipPath = Join-Path $absoluteOutputDir "_by_sha256.zip"
+    Write-Host "Compressione dei file per hash in _by_sha256.zip (cross-platform)..." -ForegroundColor Yellow
+    New-StandardZipArchive -SourceDirectory $hashFilesOutputDir -DestinationZipPath $hashZipPath
+    Write-Host "Creato archivio dei file hash: _by_sha256.zip" -ForegroundColor Green
 }
 
 # Pulisci cartella temporanea
@@ -550,8 +555,10 @@ $baseVersionsObject = @{
     "mod_sha256" = $zipSha256
     "mod_manifest_url" = "$modReleaseBaseUrl/manifest_files.json"
     "mod_files_url" = "$modReleaseBaseUrl/files/"
+    "mod_hash_files_url" = "$modReleaseBaseUrl/_by_sha256/"
     "mod_mirrors" = @()
     "mod_files_mirrors" = @()
+    "mod_hash_files_mirrors" = @()
     "launcher_url" = "https://sitodaking.it/Launcher/vanzakart_launcher.zip"
     "launcher_mirrors" = @()
     "changelog" = @()
@@ -575,9 +582,11 @@ if ($Channel -eq "Beta") {
     $baseVersionsObject["beta_mod_sha256"] = $zipSha256
     $baseVersionsObject["beta_mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
     $baseVersionsObject["beta_mod_files_url"] = "$modReleaseBaseUrl/files/"
+    $baseVersionsObject["beta_mod_hash_files_url"] = "$modReleaseBaseUrl/_by_sha256/"
     $baseVersionsObject["beta_mod_url"] = "$modReleaseBaseUrl/$archiveName"
     $baseVersionsObject["beta_mod_mirrors"] = @()
     $baseVersionsObject["beta_mod_files_mirrors"] = @()
+    $baseVersionsObject["beta_mod_hash_files_mirrors"] = @()
     $baseVersionsObject["beta_changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Beta $Version" })
 }
 else {
@@ -585,9 +594,11 @@ else {
     $baseVersionsObject["mod_sha256"] = $zipSha256
     $baseVersionsObject["mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
     $baseVersionsObject["mod_files_url"] = "$modReleaseBaseUrl/files/"
+    $baseVersionsObject["mod_hash_files_url"] = "$modReleaseBaseUrl/_by_sha256/"
     $baseVersionsObject["mod_url"] = "$modReleaseBaseUrl/$archiveName"
     $baseVersionsObject["mod_mirrors"] = @($existingVersions.mod_mirrors)
     $baseVersionsObject["mod_files_mirrors"] = @($existingVersions.mod_files_mirrors)
+    $baseVersionsObject["mod_hash_files_mirrors"] = @($existingVersions.mod_hash_files_mirrors)
     $baseVersionsObject["changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Modpack $Version" })
 }
 
@@ -611,8 +622,9 @@ Write-Host "1. Carica il contenuto di '$OutputDir' nella cartella /$serverDirect
 Write-Host "   - Carica 'versions.json' in /Launcher/ per ultimo: contiene insieme i dati Stable, Beta, Launcher e Music Pack."
 Write-Host "   - Il file 'manifest_files.json' e '$archiveName' devono risiedere in $modReleaseBaseUrl/"
 Write-Host "   - La cartella 'files' deve risiedere in $modReleaseBaseUrl/files/"
+Write-Host "   - La cartella '_by_sha256' deve risiedere in $modReleaseBaseUrl/_by_sha256/"
 if ($CreateFilesZip) {
-    Write-Host "   - 'files.zip' e' solo un archivio di trasferimento della cartella files; il launcher non lo usa per gli update."
+    Write-Host "   - 'files.zip' e '_by_sha256.zip' sono archivi di trasferimento per caricare ed estrarre le rispettive cartelle sul server; il launcher non li usa direttamente per gli update."
 }
 Write-Host "2. Assicurati che i permessi di lettura sui file sul server siano corretti."
 if ($interactiveLaunch) {
