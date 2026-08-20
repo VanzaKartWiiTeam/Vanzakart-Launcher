@@ -3,15 +3,19 @@ param(
     [string]$Version = "",
     [string]$OutputDir = (Join-Path $PSScriptRoot "MusicPackRelease"),
     [string]$VersionsJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json",
+    [string]$EndpointsJsonUrl = "https://sitodaking.it:8443/Launcher/endpoints.json",
     [string]$ServerBaseUrl = "https://sitodaking.it:8443",
     [string]$BetaManifestUrl = "",
-    [string[]]$Changelog = @()
+    [string[]]$Changelog = @(),
+    [switch]$CreateFilesZip = $true
 )
 
 $ErrorActionPreference = "Stop"
 $utf8NoBom = [System.Text.UTF8Encoding]::new($false)
 $stagingRoot = $null
 $backupRoot = $null
+$interactiveInvocation = -not $PSBoundParameters.ContainsKey("MusicPackPath") -or
+                         -not $PSBoundParameters.ContainsKey("Version")
 
 function Write-JsonNoBom {
     param([object]$Value, [string]$Path)
@@ -165,6 +169,16 @@ try {
     if (-not $versions.mod_version) { throw "versions.json non contiene mod_version." }
     if (-not $versions.launcher_version) { throw "versions.json non contiene launcher_version." }
 
+    $existingEndpoints = $null
+    try {
+        Write-Host "Download endpoints.json attuale..." -ForegroundColor Yellow
+        $endpointsJson = Normalize-JsonText ((Invoke-WebRequest -UseBasicParsing -Uri "${EndpointsJsonUrl}?t=$cacheBuster" -TimeoutSec 30).Content)
+        $existingEndpoints = $endpointsJson | ConvertFrom-Json
+    }
+    catch {
+        Write-Host "File endpoints.json non trovato online (verrà generato nuovo)." -ForegroundColor DarkYellow
+    }
+
     $serverBaseUrl = $ServerBaseUrl.TrimEnd('/')
     $betaBaseUrl = "$serverBaseUrl/VanzakartBeta"
     if ([string]::IsNullOrWhiteSpace($BetaManifestUrl)) {
@@ -210,7 +224,7 @@ try {
 
     Write-Host "Creazione aggiornamento differenziale..." -ForegroundColor Yellow
     $filesRoot = Join-Path $stagingRoot "files"
-    $hashFilesRoot = Join-Path $filesRoot "_by_sha256"
+    $hashFilesRoot = Join-Path $stagingRoot "_by_sha256"
     New-Item -ItemType Directory -Force -Path $filesRoot | Out-Null
     New-Item -ItemType Directory -Force -Path $hashFilesRoot | Out-Null
     $manifestFiles = [System.Collections.Generic.List[object]]::new()
@@ -255,10 +269,19 @@ try {
     $zipHash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
     Write-JsonNoBom -Value ([ordered]@{ mod_version = $Version; archive_sha256 = $zipHash; files = $manifestFiles }) -Path (Join-Path $stagingRoot "manifest_files.json")
 
-    Write-Host "Creazione files.zip per il caricamento sul server (cross-platform)..." -ForegroundColor Yellow
-    $filesZipPath = Join-Path $stagingRoot "files.zip"
-    New-StandardZipArchive -SourceDirectory $filesRoot -DestinationZipPath $filesZipPath
+    if ($CreateFilesZip) {
+        Write-Host "Creazione files.zip per il caricamento sul server (cross-platform)..." -ForegroundColor Yellow
+        $filesZipPath = Join-Path $stagingRoot "files.zip"
+        New-StandardZipArchive -SourceDirectory $filesRoot -DestinationZipPath $filesZipPath
 
+        if ($hashFallbackUniqueHashes.Count -gt 0) {
+            Write-Host "Creazione _by_sha256.zip per il caricamento sul server (cross-platform)..." -ForegroundColor Yellow
+            $hashZipPath = Join-Path $stagingRoot "_by_sha256.zip"
+            New-StandardZipArchive -SourceDirectory $hashFilesRoot -DestinationZipPath $hashZipPath
+        }
+    }
+
+    # Creazione versions.json
     $canonical = [ordered]@{}
     foreach ($property in $versions.PSObject.Properties) { $canonical[$property.Name] = $property.Value }
 
@@ -304,6 +327,48 @@ try {
     $canonical["music_pack_files_mirrors"] = As-StringArray $null
     $canonical["music_pack_changelog"] = if ($Changelog.Count -gt 0) { As-StringArray $Changelog } else { As-StringArray "VanzaKart Music Pack $Version" }
     Write-JsonNoBom -Value $canonical -Path (Join-Path $stagingRoot "versions.json")
+    Write-Host "Creato/Aggiornato il file: versions.json" -ForegroundColor Green
+
+    # Creazione endpoints.json
+    $endpointsObject = [ordered]@{
+        "endpoints_url" = if ($existingEndpoints.endpoints_url) { [string]$existingEndpoints.endpoints_url } else { "$serverBaseUrl/Launcher/endpoints.json" }
+        "launcher_url" = if ($existingEndpoints.launcher_url) { [string]$existingEndpoints.launcher_url } elseif ($versions.launcher_url) { [string]$versions.launcher_url } else { "$serverBaseUrl/Launcher/vanzakart_launcher.zip" }
+        "launcher_mirrors" = if ($existingEndpoints.launcher_mirrors) { @($existingEndpoints.launcher_mirrors) } else { @() }
+
+        "mod_url" = if ($existingEndpoints.mod_url) { [string]$existingEndpoints.mod_url } elseif ($versions.mod_url) { [string]$versions.mod_url } else { "$serverBaseUrl/Modpack/VanzaKart.zip" }
+        "mod_manifest_url" = if ($existingEndpoints.mod_manifest_url) { [string]$existingEndpoints.mod_manifest_url } elseif ($versions.mod_manifest_url) { [string]$versions.mod_manifest_url } else { "$serverBaseUrl/Modpack/manifest_files.json" }
+        "mod_files_url" = if ($existingEndpoints.mod_files_url) { [string]$existingEndpoints.mod_files_url } elseif ($versions.mod_files_url) { [string]$versions.mod_files_url } else { "$serverBaseUrl/Modpack/files/" }
+        "mod_hash_files_url" = if ($existingEndpoints.mod_hash_files_url) { [string]$existingEndpoints.mod_hash_files_url } elseif ($versions.mod_hash_files_url) { [string]$versions.mod_hash_files_url } else { "$serverBaseUrl/Modpack/_by_sha256/" }
+        "mod_mirrors" = if ($existingEndpoints.mod_mirrors) { @($existingEndpoints.mod_mirrors) } else { @() }
+        "mod_files_mirrors" = if ($existingEndpoints.mod_files_mirrors) { @($existingEndpoints.mod_files_mirrors) } else { @() }
+        "mod_hash_files_mirrors" = if ($existingEndpoints.mod_hash_files_mirrors) { @($existingEndpoints.mod_hash_files_mirrors) } else { @() }
+
+        "beta_mod_url" = if ($existingEndpoints.beta_mod_url) { [string]$existingEndpoints.beta_mod_url } elseif ($versions.beta_mod_url) { [string]$versions.beta_mod_url } else { "$serverBaseUrl/VanzakartBeta/VKBeta.zip" }
+        "beta_mod_manifest_url" = if ($existingEndpoints.beta_mod_manifest_url) { [string]$existingEndpoints.beta_mod_manifest_url } elseif ($versions.beta_mod_manifest_url) { [string]$versions.beta_mod_manifest_url } else { "$serverBaseUrl/VanzakartBeta/manifest_files.json" }
+        "beta_mod_files_url" = if ($existingEndpoints.beta_mod_files_url) { [string]$existingEndpoints.beta_mod_files_url } elseif ($versions.beta_mod_files_url) { [string]$versions.beta_mod_files_url } else { "$serverBaseUrl/VanzakartBeta/files/" }
+        "beta_mod_hash_files_url" = if ($existingEndpoints.beta_mod_hash_files_url) { [string]$existingEndpoints.beta_mod_hash_files_url } elseif ($versions.beta_mod_hash_files_url) { [string]$versions.beta_mod_hash_files_url } else { "$serverBaseUrl/VanzakartBeta/_by_sha256/" }
+        "beta_mod_mirrors" = if ($existingEndpoints.beta_mod_mirrors) { @($existingEndpoints.beta_mod_mirrors) } else { @() }
+        "beta_mod_files_mirrors" = if ($existingEndpoints.beta_mod_files_mirrors) { @($existingEndpoints.beta_mod_files_mirrors) } else { @() }
+        "beta_mod_hash_files_mirrors" = if ($existingEndpoints.beta_mod_hash_files_mirrors) { @($existingEndpoints.beta_mod_hash_files_mirrors) } else { @() }
+
+        "music_pack_url" = "$serverBaseUrl/MusicPack/vanzakart_musicpack.zip"
+        "music_pack_manifest_url" = "$serverBaseUrl/MusicPack/manifest_files.json"
+        "music_pack_files_url" = "$serverBaseUrl/MusicPack/files/"
+        "music_pack_mirrors" = if ($existingEndpoints.music_pack_mirrors) { @($existingEndpoints.music_pack_mirrors) } else { @() }
+        "music_pack_files_mirrors" = if ($existingEndpoints.music_pack_files_mirrors) { @($existingEndpoints.music_pack_files_mirrors) } else { @() }
+
+        "news_url" = if ($existingEndpoints.news_url) { [string]$existingEndpoints.news_url } elseif ($versions.news_url) { [string]$versions.news_url } elseif ($versions.news_json_url) { [string]$versions.news_json_url } else { "$serverBaseUrl/Launcher/news.json" }
+        "leaderboard_api_url" = if ($existingEndpoints.leaderboard_api_url) { [string]$existingEndpoints.leaderboard_api_url } elseif ($versions.leaderboard_api_url) { [string]$versions.leaderboard_api_url } else { "$serverBaseUrl/api/vk_leaderboard.php" }
+        "leaderboard_details_api_url" = if ($existingEndpoints.leaderboard_details_api_url) { [string]$existingEndpoints.leaderboard_details_api_url } elseif ($versions.leaderboard_details_api_url) { [string]$versions.leaderboard_details_api_url } else { "$serverBaseUrl/api/leaderboard/" }
+        "rooms_api_url" = if ($existingEndpoints.rooms_api_url) { [string]$existingEndpoints.rooms_api_url } elseif ($versions.rooms_api_url) { [string]$versions.rooms_api_url } else { "$serverBaseUrl/api/vk_rooms.php" }
+        "beta_token_verify_api_url" = if ($existingEndpoints.beta_token_verify_api_url) { [string]$existingEndpoints.beta_token_verify_api_url } elseif ($versions.beta_token_verify_api_url) { [string]$versions.beta_token_verify_api_url } else { "$serverBaseUrl/api/vk_beta_token.php" }
+        "download_page_url" = if ($existingEndpoints.download_page_url) { [string]$existingEndpoints.download_page_url } elseif ($versions.download_page_url) { [string]$versions.download_page_url } else { "https://vwfc.sitodaking.it/" }
+        "mii_rendering_archive_url" = if ($existingEndpoints.mii_rendering_archive_url) { [string]$existingEndpoints.mii_rendering_archive_url } elseif ($versions.mii_rendering_archive_url) { [string]$versions.mii_rendering_archive_url } else { "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip" }
+        "server_base_url" = if ($existingEndpoints.server_base_url) { [string]$existingEndpoints.server_base_url } else { "$serverBaseUrl/" }
+        "rank_images_base_url" = if ($existingEndpoints.rank_images_base_url) { [string]$existingEndpoints.rank_images_base_url } else { "$serverBaseUrl/FOOTAGE/ranks/" }
+    }
+    Write-JsonNoBom -Value $endpointsObject -Path (Join-Path $stagingRoot "endpoints.json")
+    Write-Host "Creato/Aggiornato il file: endpoints.json" -ForegroundColor Green
 
     if (Test-Path -LiteralPath $outputRoot) { Move-Item -LiteralPath $outputRoot -Destination $backupRoot }
     try {
@@ -318,12 +383,25 @@ try {
         throw
     }
 
+    Write-Host "`n=== PROCESSO COMPLETATO ===" -ForegroundColor Green
     Write-Host "Release Music Pack $Version completata: $outputRoot" -ForegroundColor Green
-    Write-Host "Carica files.zip sul server ed estrailo dentro /MusicPack/files/ includendo anche la cartella _by_sha256."
-    Write-Host "Carica vanzakart_musicpack.zip e manifest_files.json in /MusicPack/; versions.json in /Launcher/ per ultimo."
+    Write-Host "Ecco le istruzioni per il caricamento:"
+    Write-Host "1. Carica vanzakart_musicpack.zip e manifest_files.json in /MusicPack/"
+    Write-Host "2. Carica la cartella 'files' in /MusicPack/files/ e la cartella '_by_sha256' in /MusicPack/_by_sha256/"
+    if ($CreateFilesZip) {
+        Write-Host "   (oppure carica ed estrai files.zip e _by_sha256.zip direttamente sul server)"
+    }
+    Write-Host "3. Carica versions.json ed endpoints.json in /Launcher/ per ultimi."
+
+    if ($interactiveInvocation) {
+        [void](Read-Host "`nPremi INVIO; la console resterà aperta")
+    }
 }
 catch {
     if ($stagingRoot -and (Test-Path -LiteralPath $stagingRoot)) { Remove-Item -LiteralPath $stagingRoot -Recurse -Force -ErrorAction SilentlyContinue }
     Write-Host "MUSIC PACK RELEASE FAILED: $($_.Exception.Message)" -ForegroundColor Red
+    if ($interactiveInvocation) {
+        [void](Read-Host "`nPremi INVIO per chiudere")
+    }
     throw
 }

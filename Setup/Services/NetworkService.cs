@@ -20,16 +20,30 @@ public sealed class NetworkService
 
     public async Task<bool> CheckInternetAsync(CancellationToken cancellationToken = default)
     {
-        try
+        string[] testEndpoints = [
+            "https://sitodaking.it:8443/Launcher/endpoints.json",
+            "https://1.1.1.1",
+            "https://www.google.com"
+        ];
+
+        foreach (var endpoint in testEndpoints)
         {
-            using var request = new HttpRequestMessage(HttpMethod.Head, "https://sitodaking.it:8443/");
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
-            return response.IsSuccessStatusCode;
+            try
+            {
+                using var request = new HttpRequestMessage(HttpMethod.Head, endpoint);
+                using var response = await _httpClient.SendAsync(request, cancellationToken);
+                if (response.IsSuccessStatusCode || (int)response.StatusCode < 500)
+                {
+                    return true;
+                }
+            }
+            catch
+            {
+                // Try next endpoint
+            }
         }
-        catch
-        {
-            return false;
-        }
+
+        return false;
     }
 
     public async Task<long> GetContentLengthAsync(string url, CancellationToken cancellationToken = default)

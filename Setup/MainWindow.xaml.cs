@@ -19,6 +19,7 @@ namespace VanzaKartSetup;
 public partial class MainWindow : Window
 {
     private const string VersionsJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json";
+    private const string EndpointsJsonUrl = "https://sitodaking.it:8443/Launcher/endpoints.json";
     private const string DefaultLauncherZipUrl = "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip";
     private const long FallbackDownloadSizeBytes = 350L * 1024L * 1024L;
     private const long MinimumRequiredBytes = 900L * 1024L * 1024L;
@@ -115,8 +116,30 @@ public partial class MainWindow : Window
     {
         try
         {
+            var cacheBuster = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+
+            // 1. Prova a leggere launcher_url da endpoints.json
+            try
+            {
+                var endpointsUrl = $"{EndpointsJsonUrl}?t={cacheBuster}";
+                var endpointsJson = await _networkService.DownloadStringAsync(endpointsUrl);
+                if (!string.IsNullOrWhiteSpace(endpointsJson))
+                {
+                    var endpointsInfo = JsonSerializer.Deserialize<SetupEndpointsInfo>(endpointsJson.TrimStart('\uFEFF', '\u200B'));
+                    if (endpointsInfo != null && IsSafeHttpsUrl(endpointsInfo.LauncherUrl))
+                    {
+                        _launcherZipUrl = endpointsInfo.LauncherUrl.Trim();
+                    }
+                }
+            }
+            catch
+            {
+                // Fallback silenzioso se endpoints.json non è ancora presente
+            }
+
+            // 2. Legge launcher_version da versions.json
             var separator = VersionsJsonUrl.Contains('?') ? '&' : '?';
-            var url = $"{VersionsJsonUrl}{separator}t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
+            var url = $"{VersionsJsonUrl}{separator}t={cacheBuster}";
             var json = await _networkService.DownloadStringAsync(url);
             var info = JsonSerializer.Deserialize<SetupVersionInfo>(json.TrimStart('\uFEFF', '\u200B'));
             if (info == null || !IsValidLauncherVersion(info.LauncherVersion))
@@ -126,9 +149,13 @@ public partial class MainWindow : Window
 
             var previousDownloadUrl = _launcherZipUrl;
             _launcherVersion = info.LauncherVersion.Trim();
-            _launcherZipUrl = IsSafeHttpsUrl(info.LauncherUrl)
-                ? info.LauncherUrl.Trim()
-                : DefaultLauncherZipUrl;
+            if (string.IsNullOrWhiteSpace(_launcherZipUrl) || _launcherZipUrl == DefaultLauncherZipUrl)
+            {
+                if (IsSafeHttpsUrl(info.LauncherUrl))
+                {
+                    _launcherZipUrl = info.LauncherUrl.Trim();
+                }
+            }
             if (!previousDownloadUrl.Equals(_launcherZipUrl, StringComparison.OrdinalIgnoreCase))
             {
                 _downloadSizeBytes = 0;
@@ -872,6 +899,12 @@ public sealed class SetupVersionInfo
     [JsonPropertyName("launcher_version")]
     public string LauncherVersion { get; set; } = string.Empty;
 
+    [JsonPropertyName("launcher_url")]
+    public string LauncherUrl { get; set; } = string.Empty;
+}
+
+public sealed class SetupEndpointsInfo
+{
     [JsonPropertyName("launcher_url")]
     public string LauncherUrl { get; set; } = string.Empty;
 }

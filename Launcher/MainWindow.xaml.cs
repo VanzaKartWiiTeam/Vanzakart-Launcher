@@ -2367,11 +2367,13 @@ public partial class MainWindow : Window
                 SetUpdateState("Checking", "Reading VanzaKart update manifest...", 0);
             }
 
-            await FetchNewsFromServerAsync();
+            await TryFetchEndpointsAsync();
 
             var noCacheUrl = $"{LauncherConfig.VersionJsonUrl}?t={DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()}";
             var json = await _networkService.DownloadStringAsync(noCacheUrl);
             var info = JsonSerializer.Deserialize<VersionInfo>(json.TrimStart('\uFEFF', '\u200B')) ?? new VersionInfo();
+
+            await FetchNewsFromServerAsync();
             var modRelease = await ResolveModReleaseAsync(info, requestedChannel);
             if (channelRevision != _releaseChannelRevision)
             {
@@ -2399,15 +2401,15 @@ public partial class MainWindow : Window
             _latestModHashFilesUrl = modRelease.HashFilesUrl;
             _latestModHashFilesMirrors = modRelease.HashFilesMirrors;
             _latestMusicPackVersion = info.MusicPackVersion;
-            _latestMusicPackUrl = string.IsNullOrWhiteSpace(info.MusicPackUrl) ? LauncherConfig.MusicPackUrl : info.MusicPackUrl;
-            _latestMusicPackMirrors = info.MusicPackMirrors ?? Array.Empty<string>();
+            _latestMusicPackUrl = LauncherConfig.MusicPackUrl;
+            _latestMusicPackMirrors = LauncherConfig.MusicPackMirrors;
             _latestMusicPackSha256 = info.MusicPackSha256;
             _latestMusicPackChangelog = info.MusicPackChangelog ?? Array.Empty<string>();
-            _latestMusicPackManifestUrl = string.IsNullOrWhiteSpace(info.MusicPackManifestUrl) ? LauncherConfig.MusicPackManifestUrl : info.MusicPackManifestUrl;
-            _latestMusicPackFilesUrl = string.IsNullOrWhiteSpace(info.MusicPackFilesUrl) ? LauncherConfig.MusicPackFilesUrl : info.MusicPackFilesUrl;
-            _latestMusicPackFilesMirrors = info.MusicPackFilesMirrors ?? Array.Empty<string>();
-            _latestLauncherUrl = string.IsNullOrWhiteSpace(info.LauncherUrl) ? LauncherConfig.LauncherZipUrl : info.LauncherUrl;
-            _latestLauncherMirrors = info.LauncherMirrors ?? Array.Empty<string>();
+            _latestMusicPackManifestUrl = LauncherConfig.MusicPackManifestUrl;
+            _latestMusicPackFilesUrl = LauncherConfig.MusicPackFilesUrl;
+            _latestMusicPackFilesMirrors = LauncherConfig.MusicPackFilesMirrors;
+            _latestLauncherUrl = LauncherConfig.LauncherZipUrl;
+            _latestLauncherMirrors = LauncherConfig.LauncherMirrors;
             _latestChangelog = info.Changelog ?? Array.Empty<string>();
 
             if (!string.IsNullOrWhiteSpace(info.LauncherVersion) &&
@@ -2681,26 +2683,19 @@ public partial class MainWindow : Window
                 throw new InvalidDataException("The stable versions manifest does not contain a mod version.");
             }
 
-            var filesUrl = string.IsNullOrWhiteSpace(stableInfo.ModFilesUrl) ? LauncherConfig.ModFilesUrl : stableInfo.ModFilesUrl;
-            var hashUrl = string.IsNullOrWhiteSpace(stableInfo.ModHashFilesUrl)
-                ? (string.IsNullOrWhiteSpace(filesUrl) ? LauncherConfig.ModHashFilesUrl : $"{ResolveParentBaseUrl(filesUrl)}/_by_sha256/")
-                : stableInfo.ModHashFilesUrl;
-
             return new ModReleaseMetadata(
                 stableInfo.ModVersion,
-                string.IsNullOrWhiteSpace(stableInfo.ModUrl) ? LauncherConfig.ModUrl : stableInfo.ModUrl,
-                stableInfo.ModMirrors ?? Array.Empty<string>(),
+                LauncherConfig.ModUrl,
+                LauncherConfig.ModMirrors,
                 stableInfo.ModSha256,
-                string.IsNullOrWhiteSpace(stableInfo.ModManifestUrl) ? LauncherConfig.ModManifestUrl : stableInfo.ModManifestUrl,
-                filesUrl,
-                stableInfo.ModFilesMirrors ?? Array.Empty<string>(),
-                hashUrl,
-                stableInfo.ModHashFilesMirrors ?? Array.Empty<string>());
+                LauncherConfig.ModManifestUrl,
+                LauncherConfig.ModFilesUrl,
+                LauncherConfig.ModFilesMirrors,
+                LauncherConfig.ModHashFilesUrl,
+                LauncherConfig.ModHashFilesMirrors);
         }
 
-        var betaManifestUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModManifestUrl)
-            ? LauncherConfig.BetaModManifestUrl
-            : stableInfo.BetaModManifestUrl;
+        var betaManifestUrl = LauncherConfig.BetaModManifestUrl;
         var manifestJson = await _networkService.DownloadStringAsync(AddNoCacheQuery(betaManifestUrl));
         var manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'))
             ?? throw new InvalidDataException("The Beta update manifest is invalid.");
@@ -2713,21 +2708,16 @@ public partial class MainWindow : Window
                 $"Beta metadata is out of sync: versions.json reports {stableInfo.BetaModVersion}, but the Beta manifest reports {manifest.ModVersion}.");
         }
 
-        var betaFilesUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModFilesUrl) ? LauncherConfig.BetaModFilesUrl : stableInfo.BetaModFilesUrl;
-        var betaHashUrl = string.IsNullOrWhiteSpace(stableInfo.BetaModHashFilesUrl)
-            ? (string.IsNullOrWhiteSpace(betaFilesUrl) ? LauncherConfig.BetaModHashFilesUrl : $"{ResolveParentBaseUrl(betaFilesUrl)}/_by_sha256/")
-            : stableInfo.BetaModHashFilesUrl;
-
         return new ModReleaseMetadata(
             manifest.ModVersion,
-            string.IsNullOrWhiteSpace(stableInfo.BetaModUrl) ? LauncherConfig.BetaModUrl : stableInfo.BetaModUrl,
-            stableInfo.BetaModMirrors ?? Array.Empty<string>(),
+            LauncherConfig.BetaModUrl,
+            LauncherConfig.BetaModMirrors,
             string.IsNullOrWhiteSpace(manifest.ArchiveSha256) ? stableInfo.BetaModSha256 : manifest.ArchiveSha256,
             betaManifestUrl,
-            betaFilesUrl,
-            stableInfo.BetaModFilesMirrors ?? Array.Empty<string>(),
-            betaHashUrl,
-            stableInfo.BetaModHashFilesMirrors ?? Array.Empty<string>());
+            LauncherConfig.BetaModFilesUrl,
+            LauncherConfig.BetaModFilesMirrors,
+            LauncherConfig.BetaModHashFilesUrl,
+            LauncherConfig.BetaModHashFilesMirrors);
     }
 
     private sealed record ModReleaseMetadata(
@@ -4099,6 +4089,30 @@ public partial class MainWindow : Window
         }
         catch
         {
+        }
+    }
+
+    private async Task TryFetchEndpointsAsync()
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(LauncherConfig.EndpointsJsonUrl))
+                return;
+
+            var noCacheUrl = AddNoCacheQuery(LauncherConfig.EndpointsJsonUrl);
+            var json = await _networkService.DownloadStringAsync(noCacheUrl);
+            if (!string.IsNullOrWhiteSpace(json))
+            {
+                var endpoints = JsonSerializer.Deserialize<LauncherEndpointsInfo>(json.TrimStart('\uFEFF', '\u200B'));
+                if (endpoints != null)
+                {
+                    LauncherConfig.ApplyEndpoints(endpoints);
+                }
+            }
+        }
+        catch
+        {
+            // Silently fall back to versions.json / defaults if endpoints.json is not available on server
         }
     }
 

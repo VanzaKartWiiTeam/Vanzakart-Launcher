@@ -296,7 +296,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
         string? rawRankUrl = NormalizeServerAssetUrl(rankedPlayer.GetRankImageUrl());
         string? rankImageUrl = resolvedPrestigeRank >= 1
-            ? (rawRankUrl ?? $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{resolvedPrestigeRank}.png")
+            ? (rawRankUrl ?? $"{LauncherConfig.RankImagesBaseUrl.TrimEnd('/')}/rank-{resolvedPrestigeRank}.png")
             : null;
 
         return new LeaderboardPlayerInfo
@@ -333,7 +333,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
             return absoluteUri.ToString();
         }
 
-        return Uri.TryCreate(new Uri("https://sitodaking.it:8443/"), value, out var serverUri)
+        return Uri.TryCreate(new Uri(LauncherConfig.ServerBaseUrl), value, out var serverUri)
             ? serverUri.ToString()
             : null;
     }
@@ -431,7 +431,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
             {
                 try
                 {
-                    var defaultBytes = await _rankImageHttpClient.GetByteArrayAsync("https://sitodaking.it:8443/FOOTAGE/ranks/rank-1.png");
+                    var defaultBytes = await _rankImageHttpClient.GetByteArrayAsync($"{LauncherConfig.RankImagesBaseUrl.TrimEnd('/')}/rank-1.png");
                     if (defaultBytes.Length >= 500)
                     {
                         await File.WriteAllBytesAsync(defaultPath, defaultBytes);
@@ -470,7 +470,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
                 try
                 {
-                    var url = $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{rank}.png";
+                    var url = $"{LauncherConfig.RankImagesBaseUrl.TrimEnd('/')}/rank-{rank}.png";
                     var bytes = await _rankImageHttpClient.GetByteArrayAsync(url);
                     if (bytes.Length >= 500)
                     {

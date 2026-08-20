@@ -346,6 +346,16 @@ catch {
     throw "Impossibile scaricare o leggere il versions.json da '$versionsJsonUrl': $($_.Exception.Message)"
 }
 
+$existingEndpoints = $null
+$defaultEndpointsUrl = if ($existingVersions.endpoints_url) { [string]$existingVersions.endpoints_url } elseif ($existingVersions.endpoints_json_url) { [string]$existingVersions.endpoints_json_url } else { "https://sitodaking.it:8443/Launcher/endpoints.json" }
+try {
+    $endpointsResponse = Invoke-WebRequest -Uri "${defaultEndpointsUrl}?t=$cacheBuster" -UseBasicParsing -TimeoutSec 10
+    $existingEndpoints = Normalize-JsonText $endpointsResponse.Content | ConvertFrom-Json
+}
+catch {
+    # Non bloccante se endpoints.json non è ancora presente sul server
+}
+
 if (-not $existingVersions.launcher_version) {
     throw "Il versions.json scaricato da '$versionsJsonUrl' non contiene una launcher_version valida."
 }
@@ -605,6 +615,13 @@ else {
 # Questi valori appartengono alle altre release e devono sempre restare invariati.
 $baseVersionsObject["launcher_url"] = if ($existingVersions.launcher_url) { [string]$existingVersions.launcher_url } else { "https://sitodaking.it/Launcher/vanzakart_launcher.zip" }
 $baseVersionsObject["launcher_mirrors"] = @($existingVersions.launcher_mirrors)
+$baseVersionsObject["news_url"] = if ($existingVersions.news_url) { [string]$existingVersions.news_url } elseif ($existingVersions.news_json_url) { [string]$existingVersions.news_json_url } else { "https://sitodaking.it:8443/Launcher/news.json" }
+$baseVersionsObject["leaderboard_api_url"] = if ($existingVersions.leaderboard_api_url) { [string]$existingVersions.leaderboard_api_url } else { "https://sitodaking.it:8443/api/vk_leaderboard.php" }
+$baseVersionsObject["leaderboard_details_api_url"] = if ($existingVersions.leaderboard_details_api_url) { [string]$existingVersions.leaderboard_details_api_url } else { "https://sitodaking.it:8443/api/leaderboard/" }
+$baseVersionsObject["rooms_api_url"] = if ($existingVersions.rooms_api_url) { [string]$existingVersions.rooms_api_url } else { "https://sitodaking.it:8443/api/vk_rooms.php" }
+$baseVersionsObject["beta_token_verify_api_url"] = if ($existingVersions.beta_token_verify_api_url) { [string]$existingVersions.beta_token_verify_api_url } else { "https://sitodaking.it:8443/api/vk_beta_token.php" }
+$baseVersionsObject["download_page_url"] = if ($existingVersions.download_page_url) { [string]$existingVersions.download_page_url } else { "https://vwfc.sitodaking.it/" }
+$baseVersionsObject["mii_rendering_archive_url"] = if ($existingVersions.mii_rendering_archive_url) { [string]$existingVersions.mii_rendering_archive_url } else { "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip" }
 $baseVersionsObject["music_pack_version"] = [string]$existingVersions.music_pack_version
 $baseVersionsObject["music_pack_url"] = if ($existingVersions.music_pack_url) { [string]$existingVersions.music_pack_url } else { "https://sitodaking.it/MusicPack/vanzakart_musicpack.zip" }
 $baseVersionsObject["music_pack_mirrors"] = @($existingVersions.music_pack_mirrors)
@@ -615,11 +632,54 @@ $versionsJsonContent = ConvertTo-Json -InputObject $baseVersionsObject -Depth 10
 [System.IO.File]::WriteAllText($versionsJsonPath, $versionsJsonContent, [System.Text.UTF8Encoding]::new($false))
 Write-Host "Creato/Aggiornato il file: versions.json" -ForegroundColor Green
 
+# 5. Creazione o aggiornamento di endpoints.json
+$endpointsJsonPath = Join-Path $absoluteOutputDir "endpoints.json"
+$endpointsObject = [ordered]@{
+    "mod_url" = if ($Channel -eq "Stable") { "$modReleaseBaseUrl/$archiveName" } elseif ($existingEndpoints.mod_url) { [string]$existingEndpoints.mod_url } elseif ($existingVersions.mod_url) { [string]$existingVersions.mod_url } else { "https://sitodaking.it:8443/Modpack/VanzaKart.zip" }
+    "mod_manifest_url" = if ($Channel -eq "Stable") { "$modReleaseBaseUrl/manifest_files.json" } elseif ($existingEndpoints.mod_manifest_url) { [string]$existingEndpoints.mod_manifest_url } elseif ($existingVersions.mod_manifest_url) { [string]$existingVersions.mod_manifest_url } else { "https://sitodaking.it:8443/Modpack/manifest_files.json" }
+    "mod_files_url" = if ($Channel -eq "Stable") { "$modReleaseBaseUrl/files/" } elseif ($existingEndpoints.mod_files_url) { [string]$existingEndpoints.mod_files_url } elseif ($existingVersions.mod_files_url) { [string]$existingVersions.mod_files_url } else { "https://sitodaking.it:8443/Modpack/files/" }
+    "mod_hash_files_url" = if ($Channel -eq "Stable") { "$modReleaseBaseUrl/_by_sha256/" } elseif ($existingEndpoints.mod_hash_files_url) { [string]$existingEndpoints.mod_hash_files_url } elseif ($existingVersions.mod_hash_files_url) { [string]$existingVersions.mod_hash_files_url } else { "https://sitodaking.it:8443/Modpack/_by_sha256/" }
+    "mod_mirrors" = if ($Channel -eq "Stable") { @($existingVersions.mod_mirrors) } elseif ($existingEndpoints.mod_mirrors) { @($existingEndpoints.mod_mirrors) } else { @() }
+    "mod_files_mirrors" = if ($Channel -eq "Stable") { @($existingVersions.mod_files_mirrors) } elseif ($existingEndpoints.mod_files_mirrors) { @($existingEndpoints.mod_files_mirrors) } else { @() }
+    "mod_hash_files_mirrors" = if ($Channel -eq "Stable") { @($existingVersions.mod_hash_files_mirrors) } elseif ($existingEndpoints.mod_hash_files_mirrors) { @($existingEndpoints.mod_hash_files_mirrors) } else { @() }
+
+    "beta_mod_url" = if ($Channel -eq "Beta") { "$modReleaseBaseUrl/$archiveName" } elseif ($existingEndpoints.beta_mod_url) { [string]$existingEndpoints.beta_mod_url } elseif ($existingVersions.beta_mod_url) { [string]$existingVersions.beta_mod_url } else { "https://sitodaking.it:8443/VanzakartBeta/VKBeta.zip" }
+    "beta_mod_manifest_url" = if ($Channel -eq "Beta") { "$modReleaseBaseUrl/manifest_files.json" } elseif ($existingEndpoints.beta_mod_manifest_url) { [string]$existingEndpoints.beta_mod_manifest_url } elseif ($existingVersions.beta_mod_manifest_url) { [string]$existingVersions.beta_mod_manifest_url } else { "https://sitodaking.it:8443/VanzakartBeta/manifest_files.json" }
+    "beta_mod_files_url" = if ($Channel -eq "Beta") { "$modReleaseBaseUrl/files/" } elseif ($existingEndpoints.beta_mod_files_url) { [string]$existingEndpoints.beta_mod_files_url } elseif ($existingVersions.beta_mod_files_url) { [string]$existingVersions.beta_mod_files_url } else { "https://sitodaking.it:8443/VanzakartBeta/files/" }
+    "beta_mod_hash_files_url" = if ($Channel -eq "Beta") { "$modReleaseBaseUrl/_by_sha256/" } elseif ($existingEndpoints.beta_mod_hash_files_url) { [string]$existingEndpoints.beta_mod_hash_files_url } elseif ($existingVersions.beta_mod_hash_files_url) { [string]$existingVersions.beta_mod_hash_files_url } else { "https://sitodaking.it:8443/VanzakartBeta/_by_sha256/" }
+    "beta_mod_mirrors" = if ($existingEndpoints.beta_mod_mirrors) { @($existingEndpoints.beta_mod_mirrors) } else { @() }
+    "beta_mod_files_mirrors" = if ($existingEndpoints.beta_mod_files_mirrors) { @($existingEndpoints.beta_mod_files_mirrors) } else { @() }
+    "beta_mod_hash_files_mirrors" = if ($existingEndpoints.beta_mod_hash_files_mirrors) { @($existingEndpoints.beta_mod_hash_files_mirrors) } else { @() }
+
+    "music_pack_url" = if ($existingEndpoints.music_pack_url) { [string]$existingEndpoints.music_pack_url } elseif ($existingVersions.music_pack_url) { [string]$existingVersions.music_pack_url } else { "https://sitodaking.it:8443/MusicPack/vanzakart_musicpack.zip" }
+    "music_pack_manifest_url" = if ($existingEndpoints.music_pack_manifest_url) { [string]$existingEndpoints.music_pack_manifest_url } elseif ($existingVersions.music_pack_manifest_url) { [string]$existingVersions.music_pack_manifest_url } else { "https://sitodaking.it:8443/MusicPack/manifest_files.json" }
+    "music_pack_files_url" = if ($existingEndpoints.music_pack_files_url) { [string]$existingEndpoints.music_pack_files_url } elseif ($existingVersions.music_pack_files_url) { [string]$existingVersions.music_pack_files_url } else { "https://sitodaking.it:8443/MusicPack/files/" }
+    "music_pack_mirrors" = if ($existingEndpoints.music_pack_mirrors) { @($existingEndpoints.music_pack_mirrors) } else { @() }
+    "music_pack_files_mirrors" = if ($existingEndpoints.music_pack_files_mirrors) { @($existingEndpoints.music_pack_files_mirrors) } else { @() }
+
+    "launcher_url" = if ($existingEndpoints.launcher_url) { [string]$existingEndpoints.launcher_url } elseif ($existingVersions.launcher_url) { [string]$existingVersions.launcher_url } else { "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip" }
+    "launcher_mirrors" = if ($existingEndpoints.launcher_mirrors) { @($existingEndpoints.launcher_mirrors) } else { @() }
+
+    "news_url" = if ($existingEndpoints.news_url) { [string]$existingEndpoints.news_url } elseif ($existingVersions.news_url) { [string]$existingVersions.news_url } elseif ($existingVersions.news_json_url) { [string]$existingVersions.news_json_url } else { "https://sitodaking.it:8443/Launcher/news.json" }
+    "leaderboard_api_url" = if ($existingEndpoints.leaderboard_api_url) { [string]$existingEndpoints.leaderboard_api_url } elseif ($existingVersions.leaderboard_api_url) { [string]$existingVersions.leaderboard_api_url } else { "https://sitodaking.it:8443/api/vk_leaderboard.php" }
+    "leaderboard_details_api_url" = if ($existingEndpoints.leaderboard_details_api_url) { [string]$existingEndpoints.leaderboard_details_api_url } elseif ($existingVersions.leaderboard_details_api_url) { [string]$existingVersions.leaderboard_details_api_url } else { "https://sitodaking.it:8443/api/leaderboard/" }
+    "rooms_api_url" = if ($existingEndpoints.rooms_api_url) { [string]$existingEndpoints.rooms_api_url } elseif ($existingVersions.rooms_api_url) { [string]$existingVersions.rooms_api_url } else { "https://sitodaking.it:8443/api/vk_rooms.php" }
+    "beta_token_verify_api_url" = if ($existingEndpoints.beta_token_verify_api_url) { [string]$existingEndpoints.beta_token_verify_api_url } elseif ($existingVersions.beta_token_verify_api_url) { [string]$existingVersions.beta_token_verify_api_url } else { "https://sitodaking.it:8443/api/vk_beta_token.php" }
+    "download_page_url" = if ($existingEndpoints.download_page_url) { [string]$existingEndpoints.download_page_url } elseif ($existingVersions.download_page_url) { [string]$existingVersions.download_page_url } else { "https://vwfc.sitodaking.it/" }
+    "mii_rendering_archive_url" = if ($existingEndpoints.mii_rendering_archive_url) { [string]$existingEndpoints.mii_rendering_archive_url } elseif ($existingVersions.mii_rendering_archive_url) { [string]$existingVersions.mii_rendering_archive_url } else { "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip" }
+    "server_base_url" = if ($existingEndpoints.server_base_url) { [string]$existingEndpoints.server_base_url } else { "https://sitodaking.it:8443/" }
+    "rank_images_base_url" = if ($existingEndpoints.rank_images_base_url) { [string]$existingEndpoints.rank_images_base_url } else { "https://sitodaking.it:8443/FOOTAGE/ranks/" }
+}
+
+$endpointsJsonContent = ConvertTo-Json -InputObject $endpointsObject -Depth 100
+[System.IO.File]::WriteAllText($endpointsJsonPath, $endpointsJsonContent, [System.Text.UTF8Encoding]::new($false))
+Write-Host "Creato/Aggiornato il file: endpoints.json" -ForegroundColor Green
+
 Write-Host "`n=== PROCESSO COMPLETATO ===" -ForegroundColor Green
 Write-Host "I file generati nella cartella '$OutputDir' sono pronti per essere caricati!"
 Write-Host "Ecco le istruzioni per il rilascio:"
 Write-Host "1. Carica il contenuto di '$OutputDir' nella cartella /$serverDirectory/ del server."
-Write-Host "   - Carica 'versions.json' in /Launcher/ per ultimo: contiene insieme i dati Stable, Beta, Launcher e Music Pack."
+Write-Host "   - Carica 'versions.json' ed 'endpoints.json' in /Launcher/ per ultimi."
 Write-Host "   - Il file 'manifest_files.json' e '$archiveName' devono risiedere in $modReleaseBaseUrl/"
 Write-Host "   - La cartella 'files' deve risiedere in $modReleaseBaseUrl/files/"
 Write-Host "   - La cartella '_by_sha256' deve risiedere in $modReleaseBaseUrl/_by_sha256/"

@@ -1,5 +1,6 @@
 using System.IO;
 using System.Text.Json.Serialization;
+using VanzaKartLauncher.Services;
 using VanzaKartLauncher.ViewModels;
 
 namespace VanzaKartLauncher.Models;
@@ -75,7 +76,7 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
 
             return !string.IsNullOrWhiteSpace(_rankImageUrl)
                 ? _rankImageUrl
-                : $"https://sitodaking.it:8443/FOOTAGE/ranks/rank-{PrestigeRank}.png";
+                : $"{LauncherConfig.RankImagesBaseUrl.TrimEnd('/')}/rank-{PrestigeRank}.png";
         }
         set
         {
