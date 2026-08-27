@@ -470,10 +470,20 @@ fn is_self(path: &Path) -> bool {
         .unwrap_or(false)
 }
 
+/// `true` se due percorsi indicano lo stesso file.
+///
+/// Prima si normalizza in modo puramente testuale, poi si chiede al
+/// filesystem. Non è un dettaglio di stile: `canonicalize` su Linux pretende
+/// che **ogni** componente del percorso esista — un `b/../a.txt` con `b`
+/// inesistente fallisce — mentre su Windows lo risolve lo stesso. Senza il
+/// primo passaggio la stessa domanda avrebbe due risposte diverse sui due
+/// sistemi.
 fn same_file(left: &Path, right: &Path) -> bool {
-    let canonical =
-        |path: &Path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    canonical(left) == canonical(right)
+    let resolve = |path: &Path| {
+        let lexical = fsops::absolutize(path).unwrap_or_else(|_| path.to_path_buf());
+        std::fs::canonicalize(&lexical).unwrap_or(lexical)
+    };
+    resolve(left) == resolve(right)
 }
 
 /// Copia le impostazioni del launcher in una cartella datata.
@@ -585,8 +595,24 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp");
         let file = temp.path().join("a.txt");
         std::fs::write(&file, b"x").expect("scritto");
-        let indirect = temp.path().join("b").join("..").join("a.txt");
-        assert!(same_file(&file, &indirect));
+
+        // Con la cartella intermedia che esiste davvero.
+        let esistente = temp.path().join("sotto");
+        std::fs::create_dir(&esistente).expect("mkdir");
+        assert!(same_file(&file, &esistente.join("..").join("a.txt")));
+
+        // E con una che non esiste: su Linux `canonicalize` qui fallisce, e
+        // senza la normalizzazione testuale la risposta cambierebbe da un
+        // sistema all'altro.
+        assert!(same_file(
+            &file,
+            &temp.path().join("mai").join("..").join("a.txt")
+        ));
+
+        // Due file diversi restano diversi.
+        let altro = temp.path().join("b.txt");
+        std::fs::write(&altro, b"x").expect("scritto");
+        assert!(!same_file(&file, &altro));
     }
 
     #[test]

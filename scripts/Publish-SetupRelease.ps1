@@ -171,12 +171,29 @@ if (-not $SkipBuild) {
         npx tauri build --target universal-apple-darwin --bundles app
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
+        $payload = Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.tar.gz"
         $tarball = Get-ChildItem -Path 'target' -Recurse -Filter '*.app.tar.gz' -File |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if (-not $tarball) { Fail 'archivio .app.tar.gz non trovato' }
 
-        $name = Copy-Artifact $tarball.FullName (Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.tar.gz")
-        Write-Host "  pacchetto: $name"
+        if ($tarball) {
+            $name = Copy-Artifact $tarball.FullName $payload
+            Write-Host "  pacchetto: $name"
+        }
+        else {
+            # Tauri produce il `.app.tar.gz` solo quando genera gli artefatti
+            # dell'updater. Se non c'e, il bundle si impacchetta qui: serve
+            # comunque all'installer, che non chiede nessuna firma.
+            Warn 'archivio .app.tar.gz non prodotto dalla build: lo creo dal bundle'
+            $bundle = Get-ChildItem -Path 'target' -Recurse -Filter 'VanzaKart Launcher.app' -Directory |
+                Sort-Object LastWriteTime -Descending | Select-Object -First 1
+            if (-not $bundle) { Fail 'bundle .app non trovato' }
+
+            # `tar` di sistema: preserva permessi e collegamenti simbolici del
+            # bundle, che uno zip perderebbe rendendo l'app non avviabile.
+            tar -czf $payload -C $bundle.Parent.FullName $bundle.Name
+            if ($LASTEXITCODE -ne 0) { Fail 'creazione del tar.gz non riuscita' }
+            Write-Host "  pacchetto: $(Split-Path -Leaf $payload)"
+        }
     }
     else {
         npx tauri build --bundles appimage
@@ -185,7 +202,15 @@ if (-not $SkipBuild) {
         $appimage = Get-ChildItem -Path 'target' -Recurse -Filter '*.AppImage' -File |
             Where-Object { $_.Name -notlike '*setup*' } |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if (-not $appimage) { Fail 'AppImage non trovata' }
+        if (-not $appimage) {
+            Fail @"
+AppImage non trovata sotto target/.
+
+Se la build e finita senza errori, il bundler AppImage puo aver fallito il
+download di linuxdeploy: succede quando la rete del runner e lenta. Rilancia
+il workflow.
+"@
+        }
 
         $name = Copy-Artifact $appimage.FullName (Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.AppImage")
         Write-Host "  pacchetto: $name"
