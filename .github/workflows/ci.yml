@@ -35,7 +35,15 @@ jobs:
       - name: Dipendenze di sistema per Tauri
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+          # libudev: `gilrs`, cioè i controller. libdbus: `tao`, la finestra.
+          # Senza, la build muore in fondo alla compilazione con un errore di
+          # pkg-config che non nomina nessuno dei due.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libxdo-dev libudev-dev libdbus-1-dev
+          # L'indicatore di sistema esiste in due varianti e `libappindicator-sys`
+          # cerca l'una o l'altra secondo come è stato compilato: si prova a
+          # installarle entrambe, e se una non c'è si tira avanti con l'altra.
+          sudo apt-get install -y libayatana-appindicator3-dev || true
+          sudo apt-get install -y libappindicator3-dev || true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -137,7 +145,15 @@ jobs:
         if: startsWith(matrix.os, 'ubuntu')
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+          # libudev: `gilrs`, cioè i controller. libdbus: `tao`, la finestra.
+          # Senza, la build muore in fondo alla compilazione con un errore di
+          # pkg-config che non nomina nessuno dei due.
+          sudo apt-get install -y libwebkit2gtk-4.1-dev librsvg2-dev patchelf libxdo-dev libudev-dev libdbus-1-dev
+          # L'indicatore di sistema esiste in due varianti e `libappindicator-sys`
+          # cerca l'una o l'altra secondo come è stato compilato: si prova a
+          # installarle entrambe, e se una non c'è si tira avanti con l'altra.
+          sudo apt-get install -y libayatana-appindicator3-dev || true
+          sudo apt-get install -y libappindicator3-dev || true
 
       - uses: dtolnay/rust-toolchain@stable
         with:
