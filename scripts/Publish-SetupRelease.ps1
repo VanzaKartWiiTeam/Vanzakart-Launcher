@@ -105,6 +105,30 @@ l'installer la mostra all'utente prima di scaricare.
 "@
 }
 
+# --- 1-bis. Variabili di firma vuote: meglio assenti ------------------------
+#
+# `${{ secrets.NOME }}`, quando il segreto non esiste, non sparisce: diventa
+# una stringa vuota. Tauri vede la variabile e conclude che si vuole firmare,
+# poi passa a `security import` un certificato di zero byte e la build muore
+# con "SecKeychainItemImport: parameters not valid". Toglierle di mezzo rende
+# "segreto non configurato" identico a "variabile assente", che è quello che
+# Tauri si aspetta.
+foreach ($variabile in @(
+        'APPLE_CERTIFICATE',
+        'APPLE_CERTIFICATE_PASSWORD',
+        'APPLE_SIGNING_IDENTITY',
+        'APPLE_ID',
+        'APPLE_PASSWORD',
+        'APPLE_TEAM_ID',
+        'TAURI_SIGNING_PRIVATE_KEY',
+        'TAURI_SIGNING_PRIVATE_KEY_PASSWORD')) {
+    $percorso = "Env:\$variabile"
+    if ((Test-Path $percorso) -and [string]::IsNullOrWhiteSpace((Get-Item $percorso).Value)) {
+        Remove-Item $percorso
+        Write-Host "  $variabile era vuota: la tolgo" -ForegroundColor DarkGray
+    }
+}
+
 $releaseDir = Join-Path (Join-Path $OutputDir 'releases') $version
 New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 Write-Host "VanzaKart Launcher $version → $releaseDir"
@@ -390,9 +414,10 @@ Write-Host 'Prima i pacchetti, poi i manifest: al contrario, chi controlla nel'
 Write-Host 'mezzo leggerebbe un indirizzo che non esiste ancora.'
 
 if ($platforms.Count -lt 3) {
+    $parola = if ($platforms.Count -eq 1) { 'piattaforma' } else { 'piattaforme' }
     Write-Host ''
-    Warn "Il manifest copre $($platforms.Count) piattaforme su 3."
-    Write-Host 'Sulle altre l’installer dirà che non c’è un pacchetto per questo'
+    Warn "Il manifest copre $($platforms.Count) $parola su 3."
+    Write-Host "Sulle altre l'installer dira che non c'e un pacchetto per questo"
     Write-Host 'sistema. Gli artefatti mancanti li produce la CI: scaricali,'
     Write-Host "mettili in $releaseDir e rilancia con -SkipBuild."
 }

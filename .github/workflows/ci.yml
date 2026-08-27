@@ -181,21 +181,14 @@ jobs:
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Qui non si firma niente: questo job verifica che i pacchetti si
+      # costruiscano, e le firme le mette il workflow "Rilascio". Passare i
+      # segreti di firma quando non esistono è peggio che non passarli: GitHub
+      # li sostituisce con una stringa vuota, Tauri crede che si voglia firmare
+      # e muore su un certificato di zero byte (release.md §6).
       - name: Build del pacchetto
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx tauri build ${{ matrix.args }}
-        env:
-          # Le firme sono facoltative: senza segreti la build riesce comunque,
-          # ma i pacchetti non sono aggiornabili automaticamente (release.md §5).
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Firma del codice macOS e notarizzazione.
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
       # L'installer non ha bisogno di firme: non si aggiorna da solo, lo si
       # riscarica dal sito. Si costruisce dopo il launcher perché riusa la
