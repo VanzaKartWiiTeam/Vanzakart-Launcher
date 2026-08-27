@@ -181,14 +181,34 @@ jobs:
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
-      # Qui non si firma niente: questo job verifica che i pacchetti si
-      # costruiscano, e le firme le mette il workflow "Rilascio". Passare i
-      # segreti di firma quando non esistono è peggio che non passarli: GitHub
-      # li sostituisce con una stringa vuota, Tauri crede che si voglia firmare
-      # e muore su un certificato di zero byte (release.md §6).
+      # Delle variabili di firma si passano solo quelle che esistono davvero.
+      # Una stringa vuota Tauri la prende per una richiesta di firmare e si
+      # ferma; e senza chiave privata non può nemmeno *produrre* gli artefatti
+      # dell'updater, perché la configurazione dichiara una chiave pubblica.
+      # In quel caso si compila con la configurazione che non li chiede
+      # (release.md §6). Il certificato Apple qui non serve: questo job
+      # verifica che la build funzioni, non pubblica niente.
       - name: Build del pacchetto
+        shell: pwsh
         working-directory: ${{ steps.progetto.outputs.dir }}
-        run: npx tauri build ${{ matrix.args }}
+        run: |
+          foreach ($variabile in 'TAURI_SIGNING_PRIVATE_KEY', 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD') {
+            $percorso = "Env:\$variabile"
+            if ((Test-Path $percorso) -and [string]::IsNullOrWhiteSpace((Get-Item $percorso).Value)) {
+              Remove-Item $percorso
+            }
+          }
+          # Le due righe sono scritte per intero: gli argomenti passati in un
+          # array arrivano a `npx` come un argomento solo.
+          if ($env:TAURI_SIGNING_PRIVATE_KEY) {
+            npx tauri build ${{ matrix.args }}
+          }
+          else {
+            npx tauri build ${{ matrix.args }} --config src-tauri/tauri.local.conf.json
+          }
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
 
       # L'installer non ha bisogno di firme: non si aggiorna da solo, lo si
       # riscarica dal sito. Si costruisce dopo il launcher perché riusa la

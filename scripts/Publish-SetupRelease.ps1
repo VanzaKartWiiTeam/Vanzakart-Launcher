@@ -139,6 +139,13 @@ if (-not $SkipBuild -and -not $env:TAURI_SIGNING_PRIVATE_KEY) {
     Warn 'funziona lo stesso.'
 }
 
+# `true` quando si puo firmare. Senza chiave privata `tauri build` si rifiuta
+# di produrre gli artefatti dell'updater — la configurazione dichiara una
+# chiave pubblica e non potrebbe firmarli — e allora si compila con la
+# configurazione che non li chiede: i pacchetti portabili, quelli che scarica
+# l'installer, non hanno bisogno di nessuna firma.
+$puoFirmare = [bool]$env:TAURI_SIGNING_PRIVATE_KEY
+
 # --- 2. Piattaforma corrente ----------------------------------------------
 $targetKey = if ($IsWindows) { 'windows-x86_64' }
 elseif ($IsMacOS) { 'darwin-universal' }
@@ -156,7 +163,15 @@ if (-not $SkipBuild) {
     if ($IsWindows) {
         # NSIS serve all'aggiornamento in-app; il portabile lo si costruisce
         # qui sotto dall'eseguibile che la stessa build ha prodotto.
-        npx tauri build --bundles nsis
+        # Le due righe sono scritte per intero di proposito: passare gli
+        # argomenti in un array li fa arrivare a `npx` come un argomento solo
+        # ("unexpected argument '--config src-tauri/…'").
+        if ($puoFirmare) {
+            npx tauri build --bundles nsis
+        }
+        else {
+            npx tauri build --bundles nsis --config src-tauri/tauri.local.conf.json
+        }
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $binary = 'target/release/vanzakart-launcher.exe'
@@ -192,7 +207,12 @@ if (-not $SkipBuild) {
         # `app` produce il bundle e il suo `.app.tar.gz`, che è insieme il
         # pacchetto dell'updater e quello che scarica l'installer: su macOS i
         # due canali usano lo stesso file.
-        npx tauri build --target universal-apple-darwin --bundles app
+        if ($puoFirmare) {
+            npx tauri build --target universal-apple-darwin --bundles app
+        }
+        else {
+            npx tauri build --target universal-apple-darwin --bundles app --config src-tauri/tauri.local.conf.json
+        }
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $payload = Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.tar.gz"
@@ -220,7 +240,12 @@ if (-not $SkipBuild) {
         }
     }
     else {
-        npx tauri build --bundles appimage
+        if ($puoFirmare) {
+            npx tauri build --bundles appimage
+        }
+        else {
+            npx tauri build --bundles appimage --config src-tauri/tauri.local.conf.json
+        }
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $appimage = Get-ChildItem -Path 'target' -Recurse -Filter '*.AppImage' -File |
