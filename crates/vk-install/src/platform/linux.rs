@@ -263,10 +263,7 @@ fn exec_argument(path: &Path) -> String {
 
 /// Escape dei valori semplici: solo la barra rovesciata e gli a capo.
 fn escape_value(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\n', " ")
-        .replace('\r', " ")
+    value.replace('\\', "\\\\").replace(['\n', '\r'], " ")
 }
 
 #[cfg(test)]
@@ -359,7 +356,7 @@ mod tests {
         let temp = tempfile::tempdir().expect("temp");
         let app = temp.path().join("app");
         std::fs::create_dir_all(&app).expect("app");
-        assert!(!schedule_removal(&[app.clone()]).expect("rimosso"));
+        assert!(!schedule_removal(std::slice::from_ref(&app)).expect("rimosso"));
         assert!(!app.exists());
     }
 

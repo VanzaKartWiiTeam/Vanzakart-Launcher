@@ -173,6 +173,14 @@ jobs:
       - run: npm ci
         working-directory: ${{ steps.progetto.outputs.dir }}
 
+      # `platform/macos.rs` e `platform/windows.rs` per il compilatore su Linux
+      # non esistono: un lint lì dentro passerebbe indenne il job `quality`,
+      # che gira solo su Linux, e salterebbe fuori al primo rilascio.
+      - name: Clippy della piattaforma
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
       - name: Build del pacchetto
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx tauri build ${{ matrix.args }}

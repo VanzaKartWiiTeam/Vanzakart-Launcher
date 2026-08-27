@@ -163,7 +163,7 @@ mod tests {
         let bundle = temp.path().join("VanzaKart Launcher.app");
         std::fs::create_dir_all(&bundle).expect("bundle");
 
-        assert!(!schedule_removal(&[bundle.clone()]).expect("rimosso"));
+        assert!(!schedule_removal(std::slice::from_ref(&bundle)).expect("rimosso"));
         assert!(!bundle.exists());
     }
 
