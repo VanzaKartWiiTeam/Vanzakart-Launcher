@@ -1,0 +1,29 @@
+[package]
+name = "vk-install"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Motore di installazione e disinstallazione del launcher VanzaKart: payload per OS, scorciatoie, registrazione e rimozione."
+
+[dependencies]
+vk-core.workspace = true
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tokio.workspace = true
+dirs.workspace = true
+sysinfo.workspace = true
+time.workspace = true
+flate2.workspace = true
+tar.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[dev-dependencies]
+tempfile.workspace = true
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+zip.workspace = true

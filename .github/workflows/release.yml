@@ -1,0 +1,188 @@
+name: Rilascio
+
+# Costruisce tutto per Windows, macOS e Linux e prepara una cartella da
+# caricare sul server così com'è. Non serve avere un Mac né una macchina
+# Linux: i runner di GitHub li mettono loro.
+#
+# Due modi per lanciarlo:
+#
+#   · Actions → "Rilascio" → "Run workflow"  (il pulsante compare solo se
+#     questo file esiste anche sul ramo predefinito del repository);
+#   · un tag `v<versione>`, che funziona da qualunque ramo:
+#         git tag v2.0.1 && git push origin v2.0.1
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: 'Novità di questa versione (le vede chi installa e chi aggiorna)'
+        required: false
+        default: ''
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # ── Un pacchetto per sistema operativo ───────────────────────────────────
+  pacchetti:
+    name: Pacchetti ${{ matrix.label }}
+    strategy:
+      # Se macOS fallisce, Windows e Linux devono comunque arrivare in fondo:
+      # meglio un rilascio parziale che nessun rilascio.
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows
+            os: windows-latest
+            rust-targets: x86_64-pc-windows-msvc
+          - label: macOS
+            os: macos-latest
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - label: Linux
+            os: ubuntu-22.04
+            rust-targets: x86_64-unknown-linux-gnu
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Il progetto sta nella radice del repository oppure dentro
+      # `tauri-launcher/`, a seconda di quale dei due repository si pubblica.
+      # Il workflow se ne accorge da solo, così funziona in entrambi.
+      - name: Trova la cartella del progetto
+        id: progetto
+        shell: bash
+        run: |
+          if [ -f tauri-launcher/package.json ]; then
+            echo "dir=tauri-launcher" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Dipendenze di sistema per Tauri
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: ${{ steps.progetto.outputs.dir }} -> target
+          key: release-${{ matrix.label }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ${{ steps.progetto.outputs.dir }}/package-lock.json
+
+      - run: npm ci
+        working-directory: ${{ steps.progetto.outputs.dir }}
+
+      # Lo stesso script che si usa in locale: compila il pacchetto portabile
+      # per l'installer, quello nativo firmato per l'aggiornamento in-app, e
+      # l'installer stesso.
+      - name: Compila e impacchetta
+        shell: pwsh
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: |
+          # Da tag non c'è la casella delle novità: si usa la prima riga del
+          # messaggio del commit taggato.
+          $notes = if ($env:NOTES) { $env:NOTES } else { ($env:FALLBACK_NOTES -split "`n")[0].Trim() }
+          ./scripts/Publish-SetupRelease.ps1 -Notes $notes
+        env:
+          NOTES: ${{ inputs.notes }}
+          FALLBACK_NOTES: ${{ github.event.head_commit.message }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Firma del codice macOS: senza, l'app si apre lo stesso ma il primo
+          # avvio chiede conferma.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pacchetti-${{ matrix.label }}
+          path: ${{ steps.progetto.outputs.dir }}/dist-launcher/releases
+          if-no-files-found: error
+          retention-days: 14
+
+  # ── I tre pacchetti diventano un rilascio solo ───────────────────────────
+  da-caricare:
+    name: Cartella da caricare sul server
+    needs: pacchetti
+    # `always()`: se una piattaforma è fallita si pubblica comunque il
+    # rilascio con le altre due, e i manifest lo dicono.
+    if: always()
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Trova la cartella del progetto
+        id: progetto
+        shell: bash
+        run: |
+          if [ -f tauri-launcher/package.json ]; then
+            echo "dir=tauri-launcher" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Raccogli i pacchetti delle tre piattaforme
+        uses: actions/download-artifact@v4
+        with:
+          pattern: pacchetti-*
+          merge-multiple: true
+          path: ${{ steps.progetto.outputs.dir }}/dist-launcher/releases
+
+      # Nessuna compilazione: solo impronte, firme e i due manifest.
+      - name: Scrivi install.json e i manifest dell'updater
+        shell: pwsh
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: |
+          $notes = if ($env:NOTES) { $env:NOTES } else { ($env:FALLBACK_NOTES -split "`n")[0].Trim() }
+          ./scripts/Publish-SetupRelease.ps1 -SkipBuild -Notes $notes
+        env:
+          NOTES: ${{ inputs.notes }}
+          FALLBACK_NOTES: ${{ github.event.head_commit.message }}
+
+      - name: Istruzioni nel riepilogo del workflow
+        shell: pwsh
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: |
+          $version = (Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json).version
+          $righe = @(
+            "## Rilascio $version pronto",
+            "",
+            "Scarica l'artefatto **da-caricare-sul-server** qui sotto, scompattalo e carica:",
+            "",
+            "| Cosa | Dove |",
+            "| --- | --- |",
+            "| ``releases/$version/*`` | ``/Launcher/releases/$version/`` |",
+            "| ``updater/*.json`` | ``/Launcher/updater/`` |",
+            "| ``install.json`` | ``/Launcher/install.json`` |",
+            "",
+            "**In quest'ordine**: prima i pacchetti, poi i manifest. Al contrario, chi",
+            "controlla nel mezzo legge un indirizzo che non esiste ancora.",
+            "",
+            "I file ``VanzaKart-Setup_*`` sono quelli da mettere sul sito come download."
+          )
+          $righe -join "`n" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: da-caricare-sul-server
+          path: ${{ steps.progetto.outputs.dir }}/dist-launcher
+          if-no-files-found: error
+          retention-days: 30

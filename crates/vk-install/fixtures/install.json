@@ -1,0 +1,28 @@
+{
+  "version": "2.0.0",
+  "notes": "Prova.",
+  "pub_date": "2026-08-27T16:40:34Z",
+  "platforms": {
+    "darwin-universal": {
+      "url": "https://sitodaking.it:8443/Launcher/setup/2.0.0/VanzaKart-Launcher_2.0.0_darwin-universal.tar.gz",
+      "sha256": "4433fc32c58e70a639550dd7aa6cb66f7586717cdfc637714f7eb57abee27f04",
+      "size": 7,
+      "format": "tar-gz",
+      "executable": "VanzaKart Launcher.app"
+    },
+    "linux-x86_64": {
+      "url": "https://sitodaking.it:8443/Launcher/setup/2.0.0/VanzaKart-Launcher_2.0.0_linux-x86_64.AppImage",
+      "sha256": "4433fc32c58e70a639550dd7aa6cb66f7586717cdfc637714f7eb57abee27f04",
+      "size": 7,
+      "format": "app-image",
+      "executable": "vanzakart-launcher.AppImage"
+    },
+    "windows-x86_64": {
+      "url": "https://sitodaking.it:8443/Launcher/setup/2.0.0/VanzaKart-Launcher_2.0.0_windows-x86_64.zip",
+      "sha256": "4433fc32c58e70a639550dd7aa6cb66f7586717cdfc637714f7eb57abee27f04",
+      "size": 7,
+      "format": "zip",
+      "executable": "VanzaKart Launcher.exe"
+    }
+  }
+}

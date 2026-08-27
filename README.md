@@ -15,7 +15,7 @@ non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
 | Piattaforme | Windows | Windows, macOS, Linux |
 | UI | WPF | Svelte 5 in una webview, stessa identità grafica |
 | Aggiornamento del launcher | script PowerShell non firmato | updater Tauri con firma Ed25519 |
-| Installazione | Setup e Uninstaller dedicati | NSIS, DMG, AppImage, deb, rpm |
+| Installazione | Setup e Uninstaller in WPF, solo Windows | stessa procedura guidata su Windows, macOS e Linux (`setup/`), più i pacchetti nativi NSIS, DMG, AppImage, deb, rpm |
 | Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
 | Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
 | Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |
@@ -34,6 +34,8 @@ tauri-launcher/
     vk-core/        HTTP con resume e mirror, manifest, hash, ZIP sicuro,
                     protezione dei dati utente, update transazionale
     vk-dolphin/     INI format-preserving, percorsi, Riivolution, controller
+    vk-install/     installazione e rimozione: manifest dei pacchetti,
+                    scorciatoie, registrazione, registro dell'installazione
     vk-save/        rksys.dat, RFL_DB.dat, blocchi Mii, friend code
   src-tauri/
     src/domain/     tipi scambiati con il frontend
@@ -46,6 +48,8 @@ tauri-launcher/
     lib/components/ componenti riusabili
     lib/styles/     design system estratto dallo XAML
     routes/         una pagina per voce di menu
+  setup/            installer e disinstallatore: stessa finestra, stesso
+                    design, un solo binario in due vesti
   docs/
 ```
 
@@ -55,6 +59,10 @@ si compilano e si testano da soli.
 ```bash
 cargo test -p vk-core
 ```
+
+`vk-install` è l'eccezione consapevole: installare *è* un'operazione di
+piattaforma, e le API di sistema stanno tutte in `vk-install::platform`
+([`docs/installer.md`](docs/installer.md)).
 
 ---
 
@@ -127,6 +135,7 @@ l'import.
 | [`docs/parity-matrix.md`](docs/parity-matrix.md) | 68 funzioni legacy mappate sui nuovi moduli |
 | [`docs/status.md`](docs/status.md) | cosa è pronto, cosa è parziale, cosa manca |
 | [`docs/migration.md`](docs/migration.md) | compatibilità file, import non distruttivo, rollback |
-| [`docs/decisions.md`](docs/decisions.md) | 22 decisioni tecniche con l'alternativa scartata |
+| [`docs/decisions.md`](docs/decisions.md) | 55 decisioni tecniche con l'alternativa scartata |
 | [`docs/ui-parity.md`](docs/ui-parity.md) | token di design estratti dallo XAML e differenze motivate |
 | [`docs/release.md`](docs/release.md) | build, firma, updater, pubblicazione |
+| [`docs/installer.md`](docs/installer.md) | installer e disinstallatore: cosa fanno, contratto `install.json`, come si pubblicano |

@@ -10,6 +10,11 @@
 .env.*
 !.env.example
 
-# Artefatti di rilascio: pacchetto, firma e manifest dell'updater.
-# Li rigenera Publish-LauncherUpdate.ps1 a ogni pubblicazione.
+# Artefatti di rilascio: pacchetti, firme e i due manifest. Li rigenerano
+# Publish-LauncherUpdate.ps1 e Publish-SetupRelease.ps1 a ogni pubblicazione.
 /dist-launcher
+
+# Frontend compilato dell'installer, e gli schemi che Tauri rigenera a ogni
+# build dell'installer.
+/setup/dist
+/setup/src-tauri/gen

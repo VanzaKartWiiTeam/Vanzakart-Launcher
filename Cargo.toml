@@ -1,6 +1,13 @@
 [workspace]
 resolver = "2"
-members = ["crates/vk-core", "crates/vk-dolphin", "crates/vk-save", "src-tauri"]
+members = [
+    "crates/vk-core",
+    "crates/vk-dolphin",
+    "crates/vk-install",
+    "crates/vk-save",
+    "src-tauri",
+    "setup/src-tauri",
+]
 
 [workspace.package]
 version = "2.0.0"
@@ -13,6 +20,7 @@ repository = "https://github.com/cripsum/vanzakart-launcher"
 [workspace.dependencies]
 vk-core = { path = "crates/vk-core" }
 vk-dolphin = { path = "crates/vk-dolphin" }
+vk-install = { path = "crates/vk-install" }
 vk-save = { path = "crates/vk-save" }
 
 serde = { version = "1", features = ["derive"] }
@@ -33,6 +41,10 @@ futures-util = "0.3"
 sha2 = "0.10"
 hex = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate", "bzip2", "time"] }
+# Payload macOS: i bundle `.app` viaggiano come tar.gz, l'unico formato che
+# preserva permessi e symlink interni al bundle.
+flate2 = "1"
+tar = "0.4"
 tempfile = "3"
 dirs = "5"
 url = "2"

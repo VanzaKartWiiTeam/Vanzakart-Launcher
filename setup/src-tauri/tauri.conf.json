@@ -1,0 +1,64 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "VanzaKart Setup",
+  "identifier": "it.sitodaking.vanzakart.setup",
+  "build": {
+    "beforeDevCommand": "npm --prefix .. run dev:setup",
+    "devUrl": "http://localhost:5174",
+    "beforeBuildCommand": "npm --prefix .. run build:setup",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "withGlobalTauri": false,
+    "windows": [
+      {
+        "label": "main",
+        "title": "VanzaKart Setup",
+        "width": 1000,
+        "height": 700,
+        "minWidth": 900,
+        "minHeight": 640,
+        "center": true,
+        "resizable": true,
+        "decorations": false,
+        "transparent": false,
+        "dragDropEnabled": false,
+        "backgroundColor": "#070A13",
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "img-src": "'self' data:",
+        "style-src": "'self' 'unsafe-inline'",
+        "script-src": "'self'",
+        "connect-src": "'self' ipc: http://ipc.localhost",
+        "font-src": "'self' data:",
+        "object-src": "'none'",
+        "base-uri": "'self'",
+        "frame-ancestors": "'none'"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "createUpdaterArtifacts": false,
+    "targets": ["app", "dmg", "appimage"],
+    "icon": ["icons/icon.png", "icons/icon.ico"],
+    "resources": ["resources/*"],
+    "copyright": "VanzaKart",
+    "category": "Utility",
+    "shortDescription": "Installa e disinstalla VanzaKart Launcher",
+    "longDescription": "Scarica e installa VanzaKart Launcher sul computer, crea le scorciatoie e lo rimuove quando serve.",
+    "publisher": "VanzaKart",
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    }
+  }
+}

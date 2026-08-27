@@ -1,0 +1,34 @@
+[package]
+name = "vanzakart-setup"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Installer e disinstallatore di VanzaKart Launcher"
+default-run = "vanzakart-setup"
+
+[lib]
+name = "vanzakart_setup_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+vk-core.workspace = true
+vk-install.workspace = true
+
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+
+serde.workspace = true
+serde_json.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+tokio.workspace = true
+dirs.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true

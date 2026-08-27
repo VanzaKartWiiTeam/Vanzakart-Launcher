@@ -18,10 +18,20 @@
     "types": ["vite/client", "node"],
     "paths": {
       "$lib": ["./src/lib"],
-      "$lib/*": ["./src/lib/*"]
+      "$lib/*": ["./src/lib/*"],
+      "$setup": ["./setup/src"],
+      "$setup/*": ["./setup/src/*"]
     },
     "baseUrl": "."
   },
-  "include": ["src/**/*.ts", "src/**/*.svelte", "vite.config.ts", "eslint.config.js"],
-  "exclude": ["node_modules", "dist", "src-tauri"]
+  "include": [
+    "src/**/*.ts",
+    "src/**/*.svelte",
+    "setup/src/**/*.ts",
+    "setup/src/**/*.svelte",
+    "vite.config.ts",
+    "vite.setup.config.ts",
+    "eslint.config.js"
+  ],
+  "exclude": ["node_modules", "dist", "src-tauri", "setup/dist", "setup/src-tauri"]
 }

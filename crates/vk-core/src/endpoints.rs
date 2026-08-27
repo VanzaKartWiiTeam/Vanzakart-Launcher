@@ -99,6 +99,18 @@ pub struct EndpointsInfo {
     )]
     pub launcher_mirrors: Vec<String>,
 
+    /// Manifest dei pacchetti d'installazione, letto dall'installer
+    /// (`install.json`, vedi `vk_install::release`). Non lo usa il launcher:
+    /// sta qui perché sia pubblicabile senza rifare l'installer.
+    #[serde(default, rename = "launcher_install_url")]
+    pub launcher_install_url: String,
+    #[serde(
+        default,
+        rename = "launcher_install_mirrors",
+        deserialize_with = "string_or_array"
+    )]
+    pub launcher_install_mirrors: Vec<String>,
+
     #[serde(default, rename = "news_url")]
     pub news_url: String,
     #[serde(default, rename = "news_json_url")]
@@ -233,6 +245,7 @@ impl EndpointsInfo {
         merge_url!(music_pack_manifest_url);
         merge_url!(music_pack_files_url);
         merge_url!(launcher_url);
+        merge_url!(launcher_install_url);
         merge_url!(news_url);
         merge_url!(news_json_url);
         merge_url!(leaderboard_api_url);
@@ -253,6 +266,7 @@ impl EndpointsInfo {
         merge_mirrors!(music_pack_mirrors);
         merge_mirrors!(music_pack_files_mirrors);
         merge_mirrors!(launcher_mirrors);
+        merge_mirrors!(launcher_install_mirrors);
 
         rejected
     }

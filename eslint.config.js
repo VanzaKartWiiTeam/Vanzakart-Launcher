@@ -30,6 +30,14 @@ export default ts.config(
     }
   },
   {
-    ignores: ['dist/', 'node_modules/', 'src-tauri/', 'target/', '*.config.js']
+    ignores: [
+      'dist/',
+      'node_modules/',
+      'src-tauri/',
+      'setup/dist/',
+      'setup/src-tauri/',
+      'target/',
+      '*.config.js'
+    ]
   }
 );

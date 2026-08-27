@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, master, tauri-refactoring]
   pull_request:
   workflow_dispatch:
 
@@ -11,10 +11,6 @@ env:
   # La CI non deve mai fallire per un warning ignorato.
   RUSTFLAGS: -D warnings
 
-defaults:
-  run:
-    working-directory: tauri-launcher
-
 jobs:
   # ── Controlli veloci: girano una sola volta, su Linux ────────────────────
   quality:
@@ -22,6 +18,19 @@ jobs:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
+
+      # Il progetto sta nella radice del repository oppure dentro
+      # `tauri-launcher/`, a seconda di quale dei due repository si pubblica.
+      # Il workflow se ne accorge da solo, così funziona in entrambi.
+      - name: Trova la cartella del progetto
+        id: progetto
+        shell: bash
+        run: |
+          if [ -f tauri-launcher/package.json ]; then
+            echo "dir=tauri-launcher" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Dipendenze di sistema per Tauri
         run: |
@@ -34,40 +43,55 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: tauri-launcher -> target
+          workspaces: ${{ steps.progetto.outputs.dir }} -> target
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: tauri-launcher/package-lock.json
+          cache-dependency-path: ${{ steps.progetto.outputs.dir }}/package-lock.json
 
       - run: npm ci
+        working-directory: ${{ steps.progetto.outputs.dir }}
 
       # Il frontend va costruito prima di toccare Rust: `generate_context!`
       # legge `frontendDist`, che deve esistere.
       - name: Lint del frontend
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npm run lint
 
       - name: Type-check del frontend
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx svelte-check --tsconfig ./tsconfig.json --fail-on-warnings
 
       - name: Test del frontend
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx vitest run
 
       - name: Build del frontend
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx vite build
 
+      # Anche quello dell'installer: `generate_context!` legge `frontendDist`,
+      # e `cargo clippy --workspace` compila pure `vanzakart-setup`.
+      - name: Build del frontend dell'installer
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: npx vite build --config vite.setup.config.ts
+
       - name: Formattazione Rust
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo fmt --all --check
 
       - name: Clippy
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo test --workspace
 
       - name: Audit delle dipendenze npm
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npm audit --audit-level=high
 
   # ── Build dei pacchetti per ogni piattaforma ─────────────────────────────
@@ -82,18 +106,32 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             args: --bundles nsis
+            # Su Windows l'installer si distribuisce come singolo .exe.
+            setupArgs: --no-bundle
           - label: macOS universale
             os: macos-latest
             target: universal-apple-darwin
             args: --target universal-apple-darwin --bundles dmg,app
+            setupArgs: --target universal-apple-darwin --bundles dmg
           - label: Linux x64
             os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
             args: --bundles appimage,deb
+            setupArgs: --bundles appimage
 
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Trova la cartella del progetto
+        id: progetto
+        shell: bash
+        run: |
+          if [ -f tauri-launcher/package.json ]; then
+            echo "dir=tauri-launcher" >> "$GITHUB_OUTPUT"
+          else
+            echo "dir=." >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Dipendenze di sistema per Tauri
         if: startsWith(matrix.os, 'ubuntu')
@@ -107,18 +145,20 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: tauri-launcher -> target
+          workspaces: ${{ steps.progetto.outputs.dir }} -> target
           key: ${{ matrix.target }}
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
-          cache-dependency-path: tauri-launcher/package-lock.json
+          cache-dependency-path: ${{ steps.progetto.outputs.dir }}/package-lock.json
 
       - run: npm ci
+        working-directory: ${{ steps.progetto.outputs.dir }}
 
       - name: Build del pacchetto
+        working-directory: ${{ steps.progetto.outputs.dir }}
         run: npx tauri build ${{ matrix.args }}
         env:
           # Le firme sono facoltative: senza segreti la build riesce comunque,
@@ -133,18 +173,29 @@ jobs:
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
 
+      # L'installer non ha bisogno di firme: non si aggiorna da solo, lo si
+      # riscarica dal sito. Si costruisce dopo il launcher perché riusa la
+      # stessa cache di cargo.
+      - name: Build dell'installer
+        working-directory: ${{ steps.progetto.outputs.dir }}/setup
+        run: npx tauri build ${{ matrix.setupArgs }}
+
       - name: Pubblica gli artefatti
         uses: actions/upload-artifact@v4
         with:
           name: vanzakart-launcher-${{ matrix.target }}
           if-no-files-found: error
           retention-days: 14
+          # I pacchetti finiscono nella cartella `target` del workspace, non
+          # in `src-tauri/target`: `src-tauri` è un membro del workspace, e
+          # cargo scrive in un solo posto per tutti.
           path: |
-            tauri-launcher/src-tauri/target/**/release/bundle/nsis/*.exe
-            tauri-launcher/src-tauri/target/**/release/bundle/nsis/*.sig
-            tauri-launcher/src-tauri/target/**/release/bundle/dmg/*.dmg
-            tauri-launcher/src-tauri/target/**/release/bundle/macos/*.tar.gz
-            tauri-launcher/src-tauri/target/**/release/bundle/macos/*.sig
-            tauri-launcher/src-tauri/target/**/release/bundle/appimage/*.AppImage
-            tauri-launcher/src-tauri/target/**/release/bundle/appimage/*.sig
-            tauri-launcher/src-tauri/target/**/release/bundle/deb/*.deb
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/nsis/*.exe
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/nsis/*.sig
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/dmg/*.dmg
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/macos/*.tar.gz
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/macos/*.sig
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/appimage/*.AppImage
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/appimage/*.sig
+            ${{ steps.progetto.outputs.dir }}/target/**/release/bundle/deb/*.deb
+            ${{ steps.progetto.outputs.dir }}/target/release/vanzakart-setup.exe

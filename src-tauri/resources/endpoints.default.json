@@ -1,6 +1,7 @@
 {
   "endpoints_url": "https://sitodaking.it:8443/Launcher/endpoints.json",
   "launcher_url": "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip",
+  "launcher_install_url": "https://sitodaking.it:8443/Launcher/install.json",
   "launcher_mirrors": [],
   "mod_url": "https://sitodaking.it:8443/Modpack/VanzaKart.zip",
   "mod_manifest_url": "https://sitodaking.it:8443/Modpack/manifest_files.json",
