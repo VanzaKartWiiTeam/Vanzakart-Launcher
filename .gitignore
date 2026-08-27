@@ -1,0 +1,15 @@
+/target
+/node_modules
+/dist
+/docs
+/src-tauri/target
+/src-tauri/gen
+*.log
+.DS_Store
+.env
+.env.*
+!.env.example
+
+# Artefatti di rilascio: pacchetto, firma e manifest dell'updater.
+# Li rigenera Publish-LauncherUpdate.ps1 a ogni pubblicazione.
+/dist-launcher

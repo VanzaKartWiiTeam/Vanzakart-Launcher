@@ -1,0 +1,150 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # La CI non deve mai fallire per un warning ignorato.
+  RUSTFLAGS: -D warnings
+
+defaults:
+  run:
+    working-directory: tauri-launcher
+
+jobs:
+  # ── Controlli veloci: girano una sola volta, su Linux ────────────────────
+  quality:
+    name: Formattazione, lint e test
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dipendenze di sistema per Tauri
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri-launcher -> target
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-launcher/package-lock.json
+
+      - run: npm ci
+
+      # Il frontend va costruito prima di toccare Rust: `generate_context!`
+      # legge `frontendDist`, che deve esistere.
+      - name: Lint del frontend
+        run: npm run lint
+
+      - name: Type-check del frontend
+        run: npx svelte-check --tsconfig ./tsconfig.json --fail-on-warnings
+
+      - name: Test del frontend
+        run: npx vitest run
+
+      - name: Build del frontend
+        run: npx vite build
+
+      - name: Formattazione Rust
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Audit delle dipendenze npm
+        run: npm audit --audit-level=high
+
+  # ── Build dei pacchetti per ogni piattaforma ─────────────────────────────
+  bundle:
+    name: Pacchetto ${{ matrix.label }}
+    needs: quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Windows x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            args: --bundles nsis
+          - label: macOS universale
+            os: macos-latest
+            target: universal-apple-darwin
+            args: --target universal-apple-darwin --bundles dmg,app
+          - label: Linux x64
+            os: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            args: --bundles appimage,deb
+
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dipendenze di sistema per Tauri
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libxdo-dev
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.os == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri-launcher -> target
+          key: ${{ matrix.target }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri-launcher/package-lock.json
+
+      - run: npm ci
+
+      - name: Build del pacchetto
+        run: npx tauri build ${{ matrix.args }}
+        env:
+          # Le firme sono facoltative: senza segreti la build riesce comunque,
+          # ma i pacchetti non sono aggiornabili automaticamente (release.md §5).
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Firma del codice macOS e notarizzazione.
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      - name: Pubblica gli artefatti
+        uses: actions/upload-artifact@v4
+        with:
+          name: vanzakart-launcher-${{ matrix.target }}
+          if-no-files-found: error
+          retention-days: 14
+          path: |
+            tauri-launcher/src-tauri/target/**/release/bundle/nsis/*.exe
+            tauri-launcher/src-tauri/target/**/release/bundle/nsis/*.sig
+            tauri-launcher/src-tauri/target/**/release/bundle/dmg/*.dmg
+            tauri-launcher/src-tauri/target/**/release/bundle/macos/*.tar.gz
+            tauri-launcher/src-tauri/target/**/release/bundle/macos/*.sig
+            tauri-launcher/src-tauri/target/**/release/bundle/appimage/*.AppImage
+            tauri-launcher/src-tauri/target/**/release/bundle/appimage/*.sig
+            tauri-launcher/src-tauri/target/**/release/bundle/deb/*.deb

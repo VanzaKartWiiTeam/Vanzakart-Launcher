@@ -1,0 +1,44 @@
+{
+  "name": "vanzakart-launcher",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Frontend del launcher VanzaKart",
+  "scripts": {
+    "dev": "vite",
+    "build": "npm run check && vite build",
+    "build:only": "vite build",
+    "preview": "vite preview",
+    "check": "svelte-check --tsconfig ./tsconfig.json --fail-on-warnings",
+    "lint": "eslint . && prettier --check \"src/**/*.{ts,svelte,css}\"",
+    "format": "prettier --write \"src/**/*.{ts,svelte,css}\"",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "tauri": "tauri",
+    "build:local": "tauri build --bundles nsis --config src-tauri/tauri.local.conf.json"
+  },
+  "devDependencies": {
+    "@sveltejs/vite-plugin-svelte": "^7.3.0",
+    "@tauri-apps/cli": "^2.0.0",
+    "@tsconfig/svelte": "^5.0.4",
+    "@types/node": "^22.20.1",
+    "eslint": "^9.13.0",
+    "eslint-plugin-svelte": "^3.23.0",
+    "globals": "^15.11.0",
+    "jsdom": "^26.0.0",
+    "prettier": "^3.3.3",
+    "prettier-plugin-svelte": "^3.2.7",
+    "svelte": "^5.46.4",
+    "svelte-check": "^4.3.0",
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.12.2",
+    "vite": "^8.2.2",
+    "vitest": "^4.0.0"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.3",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-process": "^2.0.1",
+    "@tauri-apps/plugin-updater": "^2.0.2"
+  }
+}

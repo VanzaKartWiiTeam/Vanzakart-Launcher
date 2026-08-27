@@ -1,0 +1,59 @@
+[package]
+name = "vanzakart-launcher"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "VanzaKart Launcher"
+default-run = "vanzakart-launcher"
+
+[lib]
+name = "vanzakart_launcher_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+vk-core.workspace = true
+vk-dolphin.workspace = true
+vk-save.workspace = true
+
+tauri = { version = "2", features = ["protocol-asset"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-opener = "2"
+tauri-plugin-process = "2"
+
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+tracing-appender.workspace = true
+tokio.workspace = true
+futures-util.workspace = true
+reqwest.workspace = true
+sha2.workspace = true
+zip.workspace = true
+dirs.workspace = true
+getrandom = "0.3"
+url.workspace = true
+time.workspace = true
+sysinfo.workspace = true
+gilrs.workspace = true
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-updater = "2"
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[features]
+# Le scritture sui formati di salvataggio sono attive: i test di round-trip su
+# fixture reali passano (vedi decisions.md D-012). La feature resta come
+# interruttore per produrre una build in sola lettura.
+default = ["save-writes"]
+save-writes = []

@@ -1,0 +1,152 @@
+/*
+ * Design token estratti da Launcher/App.xaml e Launcher/MainWindow.xaml.
+ * Ogni valore qui sotto ha una corrispondenza documentata in
+ * docs/ui-parity.md §1: non modificarli senza aggiornare quel documento.
+ */
+
+:root {
+  /* ---- Colori (MainWindow.xaml Window.Resources) ---- */
+  --vk-text: #f7faff;
+  --vk-text-secondary: #9aa8c6;
+  --vk-text-faint: #64718c;
+
+  --vk-panel: #151b2b;
+  --vk-panel-soft: #111827;
+  --vk-panel-glass: rgb(18 25 42 / 0.933); /* #EE12192A */
+  --vk-stroke: #2a3857;
+  --vk-input: #0b1020;
+
+  --vk-success: #4dffb0;
+  --vk-warning: #ffd166;
+  --vk-danger: #ff6b82;
+
+  --vk-tab-active: #1e2a42;
+
+  /*
+   * Fondi dei controlli "arcobaleno". Il colore lo porta il bordo, non il
+   * riempimento: sono i valori del `PrimaryButton` del WPF (`#151E33`, e
+   * `#1F2C4C` al passaggio del mouse), scelti perché il testo bianco sopra
+   * resta leggibile — cosa che su un riempimento ciano non succede.
+   */
+  --vk-primary-surface: #151e33;
+  --vk-primary-surface-hover: #1f2c4c;
+  --vk-active-surface: #1b2542;
+  --vk-window-border: #4c5c8c;
+  --vk-sidebar-bg: rgb(11 16 32 / 0.722); /* #B80B1020 */
+  --vk-titlebar-bg: rgb(10 15 30 / 0.816); /* #D00A0F1E */
+
+  /* Accenti prismatici, ripresi dai gradienti */
+  --vk-cyan: #00f2ff;
+  --vk-cyan-soft: #39e7ff;
+  --vk-pink: #ff0066;
+  --vk-pink-soft: #ff3b7a;
+  --vk-orange: #ff8800;
+  --vk-yellow: #ffea00;
+  --vk-green: #00ff66;
+  --vk-blue: #3300ff;
+  --vk-purple: #b000ff;
+  --vk-purple-soft: #9d5cff;
+
+  /* ---- Gradienti ---- */
+  --vk-window-gradient: linear-gradient(135deg, #070a13 0%, #0f1426 35%, #061622 70%, #140a1f 100%);
+
+  --vk-rainbow: linear-gradient(
+    90deg,
+    #ff0066 0%,
+    #ff8800 18%,
+    #ffea00 34%,
+    #00ff66 50%,
+    #00f2ff 67%,
+    #3300ff 84%,
+    #b000ff 100%
+  );
+
+  --vk-play-gradient: linear-gradient(135deg, #ff0066 0%, #ff8800 35%, #00f2ff 68%, #b000ff 100%);
+
+  --vk-hero-gradient: linear-gradient(135deg, #ff3b7a -15%, #39e7ff 55%, #9d5cff 120%);
+
+  /* Le barre portano l'arcobaleno intero, non tre stop soli: con il vecchio
+     `#FF0066 → #00F2FF → #B000FF` una barra corta mostrava solo la parte
+     blu/viola e non sembrava affatto arcobaleno. */
+  --vk-progress-gradient: var(--vk-rainbow);
+
+  --vk-podium-1: linear-gradient(
+    160deg,
+    rgb(255 209 102 / 0.667) 0%,
+    rgb(57 231 255 / 0.333) 42%,
+    rgb(16 24 46 / 0.133) 100%
+  );
+  --vk-podium-2: linear-gradient(
+    160deg,
+    rgb(42 32 50 / 0.941) 0%,
+    rgb(18 24 40 / 0.91) 62%,
+    rgb(12 17 30 / 0.851) 100%
+  );
+  --vk-podium-3: linear-gradient(160deg, rgb(33 29 50 / 0.933) 0%, rgb(16 24 39 / 0.867) 100%);
+
+  --vk-card-gradient: linear-gradient(160deg, rgb(25 36 59 / 0.933) 0%, rgb(16 24 39 / 0.867) 100%);
+
+  /* ---- Ombre e glow ---- */
+  --vk-shadow-card: 0 0 28px rgb(0 0 0 / 0.32);
+  --vk-shadow-modal: 0 24px 64px rgb(0 0 0 / 0.55);
+  --vk-glow-cyan: 0 0 26px rgb(0 242 255 / 0.7);
+  --vk-glow-pink: 0 0 12px rgb(255 59 122 / 0.85);
+  --vk-glow-gold: 0 0 12px rgb(255 209 102 / 0.85);
+  --vk-glow-play: 0 10px 40px rgb(255 0 102 / 0.35), 0 0 24px rgb(0 242 255 / 0.25);
+
+  /* ---- Geometria ---- */
+  --vk-radius-window: 18px;
+  --vk-radius-card: 16px;
+  --vk-radius-btn: 14px;
+  --vk-radius-input: 12px;
+  --vk-radius-badge: 8px;
+  --vk-radius-pill: 999px;
+
+  --vk-titlebar-h: 48px;
+  --vk-sidebar-w: 252px;
+  --vk-content-pad-x: 26px;
+  --vk-content-pad-top: 18px;
+  --vk-header-h: 76px;
+
+  --vk-gap-xs: 4px;
+  --vk-gap-sm: 8px;
+  --vk-gap: 12px;
+  --vk-gap-md: 18px;
+  --vk-gap-lg: 26px;
+
+  /* ---- Tipografia ---- */
+  --vk-font:
+    'Segoe UI', 'Inter', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans', sans-serif;
+  --vk-font-mono: 'Cascadia Mono', 'Consolas', 'SF Mono', 'DejaVu Sans Mono', monospace;
+
+  --vk-fs-hero: 50px;
+  --vk-fs-section: 30px;
+  --vk-fs-page-title: 25px;
+  --vk-fs-card-title: 18px;
+  --vk-fs-body: 14px;
+  --vk-fs-small: 13px;
+  --vk-fs-micro: 12px;
+  --vk-fs-eyebrow: 11px;
+
+  /* ---- Movimento ---- */
+  --vk-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --vk-dur-fast: 0.16s;
+  --vk-dur: 0.28s;
+  --vk-dur-slow: 0.6s;
+
+  color-scheme: dark;
+}
+
+/*
+ * Il launcher è dark-only per scelta di design: lo sfondo scuro è ciò che dà
+ * contrasto agli accenti arcobaleno. Un tema chiaro renderebbe illeggibili i
+ * gradienti al neon, quindi `prefers-color-scheme: light` non cambia nulla.
+ */
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --vk-dur-fast: 0.01s;
+    --vk-dur: 0.01s;
+    --vk-dur-slow: 0.01s;
+  }
+}

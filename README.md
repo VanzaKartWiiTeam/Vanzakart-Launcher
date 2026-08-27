@@ -1,0 +1,132 @@
+# VanzaKart Launcher — Tauri 2
+
+Riscrittura del launcher VanzaKart da C#/.NET 8/WPF a **Rust + Tauri 2** con
+frontend **TypeScript + Svelte 5 + Vite**.
+
+Il launcher legacy resta il riferimento per gli utenti finché questa versione
+non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
+
+---
+
+## Cosa cambia rispetto al launcher C#
+
+| | Legacy | Questo |
+| --- | --- | --- |
+| Piattaforme | Windows | Windows, macOS, Linux |
+| UI | WPF | Svelte 5 in una webview, stessa identità grafica |
+| Aggiornamento del launcher | script PowerShell non firmato | updater Tauri con firma Ed25519 |
+| Installazione | Setup e Uninstaller dedicati | NSIS, DMG, AppImage, deb, rpm |
+| Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
+| Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
+| Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |
+
+Contratti server, formato dei manifest, layout delle cartelle della modpack e
+file di versione **non cambiano**: i due launcher possono convivere sulla
+stessa macchina.
+
+---
+
+## Struttura
+
+```
+tauri-launcher/
+  crates/
+    vk-core/        HTTP con resume e mirror, manifest, hash, ZIP sicuro,
+                    protezione dei dati utente, update transazionale
+    vk-dolphin/     INI format-preserving, percorsi, Riivolution, controller
+    vk-save/        rksys.dat, RFL_DB.dat, blocchi Mii, friend code
+  src-tauri/
+    src/domain/     tipi scambiati con il frontend
+    src/storage/    persistenza, migrazioni, import legacy
+    src/platform/   unico punto con API di sistema
+    src/services/   casi d'uso, indipendenti da Tauri
+    src/commands/   guscio IPC
+  src/
+    lib/api/        wrapper IPC tipizzati
+    lib/components/ componenti riusabili
+    lib/styles/     design system estratto dallo XAML
+    routes/         una pagina per voce di menu
+  docs/
+```
+
+I tre crate di dominio non dipendono da Tauri e non chiamano API di sistema:
+si compilano e si testano da soli.
+
+```bash
+cargo test -p vk-core
+```
+
+---
+
+## Sviluppo
+
+```bash
+npm install
+npm run tauri dev
+```
+
+Con log verbosi:
+
+```bash
+VK_LOG=debug npm run tauri dev
+```
+
+### Verifiche
+
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace
+
+npm run lint
+npm run check
+npm run build
+```
+
+Sono le stesse che gira la CI (`.github/workflows/ci.yml`).
+
+---
+
+## Dove finiscono i dati
+
+| OS | Cartella |
+| --- | --- |
+| Windows | `%APPDATA%\VanzaKart\Launcher\` |
+| macOS | `~/Library/Application Support/VanzaKart/Launcher/` |
+| Linux | `~/.local/share/VanzaKart/Launcher/` |
+
+Al primo avvio, su Windows, i dati del launcher legacy vengono importati:
+**copia integrale prima di tradurre, originali mai toccati**. Il dettaglio è
+in [`docs/migration.md`](docs/migration.md), con la procedura per annullare
+l'import.
+
+---
+
+## Sicurezza
+
+- SHA-256 verificato su ogni file scaricato e sull'archivio completo.
+- Estrazione ZIP con difesa Zip-Slip: path assoluti, `..`, drive letter,
+  symlink e zip-bomb vengono rifiutati.
+- Staging + apply atomico: nessun file viene applicato finché l'intero
+  aggiornamento non è stato scaricato e verificato.
+- Backup e rollback verificato per hash prima di ogni aggiornamento.
+- Il frontend **non** ha accesso al filesystem: nessuna capability `fs:*`.
+  Ogni operazione su file passa da un comando Rust che valida i percorsi.
+- Gli endpoint remoti sono accettati solo su `https`, senza credenziali
+  nell'URL, campo per campo.
+- Il token beta non attraversa mai l'IPC dopo essere stato salvato.
+- Log sanitizzati: home directory → `~`, query string rimosse, token mascherati.
+
+---
+
+## Documentazione
+
+| Documento | Contenuto |
+| --- | --- |
+| [`docs/handoff.md`](docs/handoff.md) | **Parti da qui**: contesto completo, regole, cosa manca e come procedere |
+| [`docs/parity-matrix.md`](docs/parity-matrix.md) | 68 funzioni legacy mappate sui nuovi moduli |
+| [`docs/status.md`](docs/status.md) | cosa è pronto, cosa è parziale, cosa manca |
+| [`docs/migration.md`](docs/migration.md) | compatibilità file, import non distruttivo, rollback |
+| [`docs/decisions.md`](docs/decisions.md) | 22 decisioni tecniche con l'alternativa scartata |
+| [`docs/ui-parity.md`](docs/ui-parity.md) | token di design estratti dallo XAML e differenze motivate |
+| [`docs/release.md`](docs/release.md) | build, firma, updater, pubblicazione |
