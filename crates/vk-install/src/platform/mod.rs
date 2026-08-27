@@ -115,11 +115,15 @@ pub(crate) fn remove_parent_if_empty(path: &Path) {
     }
 }
 
-/// `true` se un eseguibile con quel nome è in esecuzione.
+/// `true` se l'eseguibile a quel percorso è in esecuzione.
 ///
 /// Su Windows un file aperto non si sovrascrive: installare sopra un launcher
 /// aperto fallirebbe a metà estrazione, con la cartella già mezza sostituita.
 /// Meglio dirlo prima di cominciare.
+///
+/// Si confronta il **percorso**, non il nome: `VanzaKart Launcher.exe` può
+/// essere anche l'installazione di qualcun altro, e su Linux il nome che il
+/// sistema espone è troncato (vedi [`matches_process_name`]).
 pub fn is_running(executable: &Path) -> bool {
     let Some(file_name) = executable
         .file_name()
@@ -134,13 +138,42 @@ pub fn is_running(executable: &Path) -> bool {
         .file_stem()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| file_name.clone());
+    let target = std::fs::canonicalize(executable).ok();
 
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
     system.processes().values().any(|process| {
+        if let (Some(target), Some(path)) = (target.as_deref(), process.exe()) {
+            // `starts_with` copre i bundle di macOS, dove il processo vive in
+            // `Contents/MacOS/` dentro l'applicazione che si sta cercando.
+            let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            if resolved == target || resolved.starts_with(target) {
+                return true;
+            }
+        }
+
         let name = process.name().to_string_lossy().to_string();
-        name.eq_ignore_ascii_case(&file_name) || name.eq_ignore_ascii_case(&stem)
+        matches_process_name(&name, &file_name) || matches_process_name(&name, &stem)
     })
+}
+
+/// Confronta il nome di un processo con quello atteso.
+///
+/// Su Linux il nome arriva da `/proc/<pid>/comm`, che il kernel **tronca a 15
+/// caratteri**: `vanzakart-launcher.AppImage` si presenta come
+/// `vanzakart-launc`, e un confronto per intero non lo riconoscerebbe mai.
+fn matches_process_name(process_name: &str, expected: &str) -> bool {
+    /// Lunghezza di `/proc/<pid>/comm`, senza il terminatore.
+    const COMM_LIMIT: usize = 15;
+
+    if process_name.eq_ignore_ascii_case(expected) {
+        return true;
+    }
+
+    process_name.len() == COMM_LIMIT
+        && expected.len() > COMM_LIMIT
+        && expected.is_char_boundary(COMM_LIMIT)
+        && expected[..COMM_LIMIT].eq_ignore_ascii_case(process_name)
 }
 
 /// Nome della cartella creata nel menu applicazioni.
@@ -158,6 +191,25 @@ mod tests {
         let path = self_bundle_path().expect("percorso");
         assert!(path.is_absolute());
         assert!(path.exists());
+    }
+
+    #[test]
+    fn a_truncated_process_name_is_still_recognised() {
+        // Su Linux il kernel tiene 15 caratteri di `comm`: senza questa
+        // regola l'installer non si accorgerebbe mai di un launcher aperto.
+        assert!(matches_process_name(
+            "vanzakart-launc",
+            "vanzakart-launcher.AppImage"
+        ));
+        assert!(matches_process_name(
+            "VanzaKart Launcher.exe",
+            "vanzakart launcher.exe"
+        ));
+        assert!(!matches_process_name("vanzakart-launc", "vanzakart-lau"));
+        assert!(!matches_process_name(
+            "altro-programma",
+            "vanzakart-launcher.AppImage"
+        ));
     }
 
     #[test]

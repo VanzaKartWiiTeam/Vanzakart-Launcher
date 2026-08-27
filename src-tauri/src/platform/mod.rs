@@ -36,6 +36,11 @@ pub const fn platform_name() -> &'static str {
 ///
 /// Equivalente di `MainWindow.xaml.cs::IsExecutableRunning`: serve a impedire
 /// l'avvio quando Dolphin è già aperto, perché non rileggerebbe i binding.
+///
+/// Il confronto è **sul percorso**, non sul nome: due programmi possono
+/// chiamarsi allo stesso modo, e su Linux il nome che il sistema espone è
+/// troncato (vedi [`matches_process_name`]). Il nome resta come ripiego per i
+/// processi di cui non si riesce a leggere il percorso.
 pub fn is_executable_running(executable: &Path) -> bool {
     let Some(file_name) = executable
         .file_name()
@@ -51,14 +56,43 @@ pub fn is_executable_running(executable: &Path) -> bool {
         .file_stem()
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| file_name.clone());
+    let target = std::fs::canonicalize(executable).ok();
 
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
     system.processes().values().any(|process| {
+        if let (Some(target), Some(path)) = (target.as_deref(), process.exe()) {
+            // `starts_with` copre i bundle di macOS, dove il processo vive in
+            // `Contents/MacOS/` dentro l'applicazione che si sta cercando.
+            let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+            if resolved == target || resolved.starts_with(target) {
+                return true;
+            }
+        }
+
         let name = process.name().to_string_lossy().to_string();
-        name.eq_ignore_ascii_case(&file_name) || name.eq_ignore_ascii_case(&stem)
+        matches_process_name(&name, &file_name) || matches_process_name(&name, &stem)
     })
+}
+
+/// Confronta il nome di un processo con quello atteso.
+///
+/// Su Linux il nome arriva da `/proc/<pid>/comm`, che il kernel **tronca a 15
+/// caratteri**: `vanzakart-launcher.AppImage` si presenta come
+/// `vanzakart-launc`, e un confronto per intero non lo riconoscerebbe mai.
+fn matches_process_name(process_name: &str, expected: &str) -> bool {
+    /// Lunghezza di `/proc/<pid>/comm`, senza il terminatore.
+    const COMM_LIMIT: usize = 15;
+
+    if process_name.eq_ignore_ascii_case(expected) {
+        return true;
+    }
+
+    process_name.len() == COMM_LIMIT
+        && expected.len() > COMM_LIMIT
+        && expected.is_char_boundary(COMM_LIMIT)
+        && expected[..COMM_LIMIT].eq_ignore_ascii_case(process_name)
 }
 
 /// Radici in cui cercare installazioni portable di Dolphin.
@@ -133,6 +167,22 @@ mod tests {
         assert!(!is_executable_running(Path::new(
             "/percorso/inesistente/QuestoNonEsisteDavvero.exe"
         )));
+    }
+
+    #[test]
+    fn a_truncated_process_name_is_still_recognised() {
+        // È il caso di Linux: il kernel tiene 15 caratteri di `comm`.
+        assert!(matches_process_name(
+            "vanzakart-launc",
+            "vanzakart-launcher.AppImage"
+        ));
+        assert!(matches_process_name("Dolphin.exe", "dolphin.exe"));
+        // Un nome corto troncato non esiste: niente falsi positivi.
+        assert!(!matches_process_name("vanzakart-launc", "vanzakart-lau"));
+        assert!(!matches_process_name(
+            "altro-programma",
+            "vanzakart-launcher.AppImage"
+        ));
     }
 
     #[test]
