@@ -12,6 +12,7 @@
   import ControllerPanel from '$lib/components/ControllerPanel.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import PathField from '$lib/components/PathField.svelte';
   import { app } from '$lib/stores/app.svelte';
   import type { Channel, DolphinSettings } from '$lib/api/types';
 
@@ -139,7 +140,7 @@
       title: 'Seleziona l’eseguibile di Dolphin',
       filters: [{ name: 'Dolphin', extensions: ['exe', 'app', 'AppImage', '*'] }]
     });
-    if (typeof selected === 'string') await savePath({ dolphinPath: selected });
+    if (typeof selected === 'string') await applyPath({ dolphinPath: selected });
   }
 
   async function pickRom() {
@@ -151,7 +152,7 @@
         { name: 'Immagini disco Wii', extensions: ['wbfs', 'iso', 'rvz', 'ciso', 'gcm', 'wia'] }
       ]
     });
-    if (typeof selected === 'string') await savePath({ romPath: selected });
+    if (typeof selected === 'string') await applyPath({ romPath: selected });
   }
 
   async function pickUserFolder() {
@@ -160,17 +161,29 @@
       directory: true,
       title: 'Seleziona la cartella User di Dolphin'
     });
-    if (typeof selected === 'string') await savePath({ userFolderPath: selected });
+    if (typeof selected === 'string') await applyPath({ userFolderPath: selected });
   }
 
-  async function savePath(paths: Parameters<typeof api.updatePaths>[0]) {
+  /** Come `savePath`, ma per il selettore: lì l'errore va nell'avviso. */
+  async function applyPath(paths: Parameters<typeof api.updatePaths>[0]) {
+    const failure = await savePath(paths);
+    if (failure) app.toast('Percorso non valido', failure, 'warning');
+  }
+
+  /**
+   * Salva un percorso. Restituisce il messaggio d'errore, o `null` se è
+   * andata: chi scrive a mano lo vede sotto il campo, dove sta guardando,
+   * invece che in un avviso che passa (§D-076).
+   */
+  async function savePath(paths: Parameters<typeof api.updatePaths>[0]): Promise<string | null> {
     try {
       app.settings = await api.updatePaths(paths);
       await app.refresh();
       dolphin = null;
       notice = 'Percorso aggiornato.';
+      return null;
     } catch (error) {
-      app.toast('Percorso non valido', api.errorMessage(error), 'warning');
+      return api.errorMessage(error);
     }
   }
 
@@ -283,59 +296,32 @@
       </div>
 
       <div class="paths">
-        <div class="path-row">
-          <div class="path-label">
-            <span>Eseguibile di Dolphin</span>
-            <span
-              class="vk-badge {settings?.dolphinValid ? 'vk-badge--success' : 'vk-badge--danger'}"
-            >
-              {settings?.dolphinValid ? 'OK' : 'Mancante'}
-            </span>
-          </div>
-          <input
-            class="vk-input"
-            readonly
-            value={settings?.dolphinPath ?? ''}
-            placeholder="Non configurato"
-          />
-          <button class="vk-btn" onclick={pickDolphin}>Sfoglia</button>
-        </div>
+        <PathField
+          label="Eseguibile di Dolphin"
+          value={settings?.dolphinPath ?? ''}
+          valid={settings?.dolphinValid ?? false}
+          placeholder="Non configurato"
+          onbrowse={pickDolphin}
+          onsave={(dolphinPath) => savePath({ dolphinPath })}
+        />
 
-        <div class="path-row">
-          <div class="path-label">
-            <span>Cartella User di Dolphin</span>
-            <span
-              class="vk-badge {settings?.userFolderValid
-                ? 'vk-badge--success'
-                : 'vk-badge--danger'}"
-            >
-              {settings?.userFolderValid ? 'OK' : 'Mancante'}
-            </span>
-          </div>
-          <input
-            class="vk-input"
-            readonly
-            value={settings?.userFolderPath ?? ''}
-            placeholder="Non configurata"
-          />
-          <button class="vk-btn" onclick={pickUserFolder}>Sfoglia</button>
-        </div>
+        <PathField
+          label="Cartella User di Dolphin"
+          value={settings?.userFolderPath ?? ''}
+          valid={settings?.userFolderValid ?? false}
+          placeholder="Non configurata"
+          onbrowse={pickUserFolder}
+          onsave={(userFolderPath) => savePath({ userFolderPath })}
+        />
 
-        <div class="path-row">
-          <div class="path-label">
-            <span>ROM di Mario Kart Wii</span>
-            <span class="vk-badge {settings?.romValid ? 'vk-badge--success' : 'vk-badge--danger'}">
-              {settings?.romValid ? 'OK' : 'Mancante'}
-            </span>
-          </div>
-          <input
-            class="vk-input"
-            readonly
-            value={settings?.romPath ?? ''}
-            placeholder="Non configurata"
-          />
-          <button class="vk-btn" onclick={pickRom}>Sfoglia</button>
-        </div>
+        <PathField
+          label="ROM di Mario Kart Wii"
+          value={settings?.romPath ?? ''}
+          valid={settings?.romValid ?? false}
+          placeholder="Non configurata"
+          onbrowse={pickRom}
+          onsave={(romPath) => savePath({ romPath })}
+        />
       </div>
 
       {#if settings?.detectedUserFolders?.length}
@@ -797,21 +783,6 @@
     gap: 14px;
   }
 
-  .path-row {
-    display: grid;
-    grid-template-columns: 220px 1fr auto;
-    align-items: center;
-    gap: 12px;
-  }
-
-  .path-label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: var(--vk-fs-small);
-    font-weight: 600;
-  }
-
   .detected {
     margin: 14px 0 0;
     font-size: var(--vk-fs-micro);
@@ -901,11 +872,5 @@
     width: 16px;
     height: 16px;
     flex: none;
-  }
-
-  @media (max-width: 900px) {
-    .path-row {
-      grid-template-columns: 1fr;
-    }
   }
 </style>

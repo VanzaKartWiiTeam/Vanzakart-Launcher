@@ -9,31 +9,23 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
-  import LauncherUpdate from '$lib/components/LauncherUpdate.svelte';
   import logo from '$lib/assets/logo.png';
   import { app, formatDate, formatPlayTime } from '$lib/stores/app.svelte';
-  import type { LauncherUpdateStatus } from '$lib/api/types';
 
   let launching = $state(false);
   let installing = $state(false);
   let checking = $state(false);
   let confirmOutdated = $state(false);
 
-  /** Aggiornamento del launcher, distinto da quello della modpack. */
-  let launcherUpdate = $state<LauncherUpdateStatus | null>(null);
-  let updaterOpen = $state(false);
+  /**
+   * Aggiornamento del launcher: lo stato sta nello store, perché lo guardano
+   * anche l'avviso d'avvio e la finestra che scarica (§D-075).
+   */
+  const launcherUpdate = $derived(app.launcherUpdate);
 
   $effect(() => {
-    void refreshLauncherUpdate();
+    void app.refreshLauncherUpdate();
   });
-
-  async function refreshLauncherUpdate() {
-    try {
-      launcherUpdate = await api.getLauncherUpdateStatus();
-    } catch {
-      // Non è un errore da mostrare: la card semplicemente non compare.
-    }
-  }
 
   const mod = $derived(app.modState);
   const stats = $derived(app.status?.stats ?? null);
@@ -107,7 +99,7 @@
       app.toast('Controllo non riuscito', api.errorMessage(error), 'warning');
     } finally {
       checking = false;
-      void refreshLauncherUpdate();
+      void app.refreshLauncherUpdate();
     }
   }
 
@@ -276,7 +268,7 @@
         </p>
       </div>
       {#if launcherUpdate.downloadPage}
-        <button class="vk-btn vk-btn--primary" onclick={() => (updaterOpen = true)}>
+        <button class="vk-btn vk-btn--primary" onclick={() => (app.updaterOpen = true)}>
           <Icon name="download" size={14} />
           Aggiorna il launcher
         </button>
@@ -284,10 +276,6 @@
     </section>
   {/if}
 </div>
-
-{#if updaterOpen && launcherUpdate}
-  <LauncherUpdate status={launcherUpdate} onclose={() => (updaterOpen = false)} />
-{/if}
 
 <Modal
   open={confirmOutdated}

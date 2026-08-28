@@ -166,6 +166,128 @@ fn has_execute_permission(path: &Path) -> bool {
     path.is_file()
 }
 
+// ---------------------------------------------------------------------------
+// Ambiente dei processi figli
+// ---------------------------------------------------------------------------
+
+/// Toglie da un elenco di percorsi quelli che stanno dentro l'AppImage.
+///
+/// `None` quando non resta niente: la variabile va rimossa, non svuotata.
+///
+/// Serve solo dentro un AppImage, cioè solo su Linux, ma resta compilata
+/// ovunque perché è la parte che si può provare con un test.
+#[cfg_attr(not(all(unix, not(target_os = "macos"))), allow(dead_code))]
+fn without_appdir(value: &str, appdir: &str) -> Option<String> {
+    let rimasti: Vec<&str> = value
+        .split(':')
+        .filter(|voce| !voce.is_empty() && !voce.starts_with(appdir))
+        .collect();
+
+    (!rimasti.is_empty()).then(|| rimasti.join(":"))
+}
+
+/// Ripulisce l'ambiente di un processo figlio dalle variabili dell'AppImage.
+///
+/// Il launcher, dentro un AppImage, gira con `LD_LIBRARY_PATH` che punta alle
+/// librerie impacchettate: sono di Ubuntu 22.04 e servono a lui. Un programma
+/// di sistema avviato da qui le eredita e ci muore sopra —
+///
+/// ```text
+/// /usr/bin/dolphin: /tmp/.mount_xxx/usr/lib/liblzma.so.5: version `XZ_5.4'
+/// not found (required by /usr/lib/libKF6Archive.so.6)
+/// ```
+///
+/// — perché la sua `liblzma` di sistema è più nuova di quella nell'AppImage
+/// (§D-074). Fuori da un AppImage non c'è niente da ripulire.
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn clean_child_environment(command: &mut std::process::Command) {
+    /// Variabili che valgono elenchi di percorsi: si ripuliscono, non si
+    /// tolgono, perché contengono anche percorsi di sistema che servono.
+    const PATH_LISTS: &[&str] = &[
+        "LD_LIBRARY_PATH",
+        "XDG_DATA_DIRS",
+        "GTK_PATH",
+        "GDK_PIXBUF_MODULEDIR",
+        "GIO_EXTRA_MODULES",
+        "QT_PLUGIN_PATH",
+        "PYTHONPATH",
+        "PERLLIB",
+    ];
+
+    /// Variabili che l'AppImage imposta per sé: un figlio non deve vederle.
+    const OWN_VARIABLES: &[&str] = &[
+        "APPDIR",
+        "APPIMAGE",
+        "ARGV0",
+        "OWD",
+        "GTK_EXE_PREFIX",
+        "GTK_DATA_PREFIX",
+        "GTK_IM_MODULE_FILE",
+        "GDK_PIXBUF_MODULE_FILE",
+        "GSETTINGS_SCHEMA_DIR",
+        "GTK_THEME",
+        "GDK_BACKEND",
+        "LD_PRELOAD",
+        "WEBKIT_DISABLE_DMABUF_RENDERER",
+        "WEBKIT_DISABLE_COMPOSITING_MODE",
+    ];
+
+    let Ok(appdir) = std::env::var("APPDIR") else {
+        return;
+    };
+    if appdir.is_empty() {
+        return;
+    }
+
+    for name in PATH_LISTS {
+        let Ok(value) = std::env::var(name) else {
+            continue;
+        };
+
+        match without_appdir(&value, &appdir) {
+            Some(rimasto) => command.env(name, rimasto),
+            None => command.env_remove(name),
+        };
+    }
+
+    for name in OWN_VARIABLES {
+        command.env_remove(name);
+    }
+}
+
+/// Fuori da Linux nessuno inietta niente nell'ambiente.
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+pub fn clean_child_environment(_command: &mut std::process::Command) {}
+
+/// Apre un percorso o un URL con il gestore di sistema, con l'ambiente pulito.
+///
+/// `false` quando non se ne occupa: chi chiama usa il plugin di Tauri, che è
+/// la strada giusta ovunque tranne che dentro un AppImage, dove `xdg-open`
+/// erediterebbe le librerie impacchettate (§D-074).
+#[cfg(all(unix, not(target_os = "macos")))]
+pub fn open_with_system_handler(target: &str) -> bool {
+    if std::env::var_os("APPDIR").is_none() {
+        return false;
+    }
+
+    let mut command = std::process::Command::new("xdg-open");
+    command.arg(target);
+    clean_child_environment(&mut command);
+
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .is_ok()
+}
+
+/// Altrove se ne occupa il plugin.
+#[cfg(not(all(unix, not(target_os = "macos"))))]
+pub fn open_with_system_handler(_target: &str) -> bool {
+    false
+}
+
 /// Radici in cui cercare installazioni portable di Dolphin.
 pub fn dolphin_search_roots() -> Vec<std::path::PathBuf> {
     let mut roots = Vec::new();
@@ -234,6 +356,43 @@ mod tests {
         std::env::set_var("VK_ALLOW_ROOT", "1");
         assert!(!launched_as_root());
         std::env::remove_var("VK_ALLOW_ROOT");
+    }
+
+    #[test]
+    fn the_appimage_paths_are_stripped_and_the_others_kept() {
+        let appdir = "/tmp/.mount_VanzaK";
+
+        assert_eq!(
+            without_appdir("/tmp/.mount_VanzaK/usr/lib:/usr/lib", appdir),
+            Some("/usr/lib".to_string())
+        );
+        assert_eq!(
+            without_appdir(
+                "/tmp/.mount_VanzaK/usr/share:/usr/share:/usr/local/share",
+                appdir
+            ),
+            Some("/usr/share:/usr/local/share".to_string())
+        );
+
+        // Solo percorsi dell'AppImage: la variabile va tolta, non svuotata.
+        assert_eq!(without_appdir("/tmp/.mount_VanzaK/usr/lib", appdir), None);
+        assert_eq!(without_appdir("", appdir), None);
+
+        // Un percorso che comincia allo stesso modo ma non è dentro l'AppImage
+        // non c'entra niente.
+        assert_eq!(
+            without_appdir("/usr/lib:/opt/altro", appdir),
+            Some("/usr/lib:/opt/altro".to_string())
+        );
+    }
+
+    #[test]
+    fn cleaning_a_command_outside_an_appimage_changes_nothing() {
+        // La suite non gira dentro un AppImage: la funzione non deve toccare
+        // niente né andare in panico.
+        let mut command = std::process::Command::new("echo");
+        clean_child_environment(&mut command);
+        assert_eq!(command.get_program(), "echo");
     }
 
     #[test]

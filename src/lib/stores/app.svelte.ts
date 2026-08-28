@@ -9,6 +9,7 @@ import * as api from '$lib/api';
 import type {
   Channel,
   LauncherStatus,
+  LauncherUpdateStatus,
   ModStatus,
   ProgressEvent,
   SettingsView
@@ -65,6 +66,20 @@ class AppStore {
   toasts = $state<Toast[]>([]);
   private nextToastId = 1;
 
+  /**
+   * Aggiornamento del launcher, distinto da quello della modpack.
+   *
+   * Sta qui e non nella home perché lo guardano in due: la card della home e
+   * l'avviso che compare all'avvio (§D-075).
+   */
+  launcherUpdate = $state<LauncherUpdateStatus | null>(null);
+
+  /** `true` mentre è aperta la finestra che scarica l'aggiornamento. */
+  updaterOpen = $state(false);
+
+  /** L'avviso d'avvio si mostra una volta per sessione. */
+  updateNoticeDismissed = $state(false);
+
   get modState(): ModStatus | null {
     return this.status?.modState ?? null;
   }
@@ -100,6 +115,20 @@ class AppStore {
 
   dismissToast(id: number): void {
     this.toasts = this.toasts.filter((item) => item.id !== id);
+  }
+
+  /**
+   * Rilegge lo stato dell'aggiornamento del launcher.
+   *
+   * Non è un errore da mostrare: se il controllo non riesce, l'avviso e la
+   * card semplicemente non compaiono.
+   */
+  async refreshLauncherUpdate(): Promise<void> {
+    try {
+      this.launcherUpdate = await api.getLauncherUpdateStatus();
+    } catch {
+      this.launcherUpdate = null;
+    }
   }
 
   /** Ricarica stato e impostazioni dal backend. */

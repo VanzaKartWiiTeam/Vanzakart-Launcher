@@ -1,8 +1,16 @@
+# Cartelle di compilazione di cargo, comprese quelle con un nome diverso dal
+# solito: `CARGO_TARGET_DIR` le crea dove gli si dice, e una `target-qualcosa`
+# non rientrava in nessuna regola.
 /target
+/target-*
+/src-tauri/target
+/src-tauri/target-*
+/setup/src-tauri/target
+/setup/src-tauri/target-*
+
 /node_modules
 /dist
 /docs
-/src-tauri/target
 /src-tauri/gen
 *.log
 .DS_Store
@@ -18,3 +26,8 @@
 # build dell'installer.
 /setup/dist
 /setup/src-tauri/gen
+
+# Impalcatura temporanea per guardare la UI con un IPC finto: si crea e si
+# cancella durante il lavoro, non fa parte del progetto.
+/preview-tmp
+/vite.preview.config.ts

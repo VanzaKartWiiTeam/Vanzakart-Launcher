@@ -8,9 +8,11 @@
 
   import * as api from '$lib/api';
   import AmbientBackdrop from '$lib/components/AmbientBackdrop.svelte';
+  import LauncherUpdate from '$lib/components/LauncherUpdate.svelte';
   import Sidebar from '$lib/components/Sidebar.svelte';
   import TitleBar from '$lib/components/TitleBar.svelte';
   import Toasts from '$lib/components/Toasts.svelte';
+  import UpdateNotice from '$lib/components/UpdateNotice.svelte';
   import { app, PAGE_META } from '$lib/stores/app.svelte';
 
   import Debug from './Debug.svelte';
@@ -41,6 +43,10 @@
         await app.refresh();
         await api.bootstrap();
         await app.refresh();
+
+        // Dopo il bootstrap si sa se la modpack ha un aggiornamento; questo
+        // aggiunge il launcher, e l'avviso decide da sé se comparire.
+        await app.refreshLauncherUpdate();
       } catch (error) {
         app.toast('Avvio incompleto', api.errorMessage(error), 'warning');
       }
@@ -110,6 +116,17 @@
 
   <Toasts />
 </div>
+
+<!--
+  Avviso e finestra dell'aggiornamento stanno nella shell, non nella home:
+  l'avviso deve poter comparire su qualunque pagina si apra il launcher, e la
+  finestra deve restare aperta anche se si naviga altrove (§D-075).
+-->
+<UpdateNotice />
+
+{#if app.updaterOpen && app.launcherUpdate}
+  <LauncherUpdate status={app.launcherUpdate} onclose={() => (app.updaterOpen = false)} />
+{/if}
 
 <style>
   /*

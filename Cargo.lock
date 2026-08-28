@@ -5061,7 +5061,7 @@ checksum = "ba73ea9cf16a25df0c8caa16c51acb937d5712a8429db78a3ee29d5dcacd3a65"
 
 [[package]]
 name = "vanzakart-launcher"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "dirs 5.0.1",
  "futures-util",
@@ -5096,7 +5096,7 @@ dependencies = [
 
 [[package]]
 name = "vanzakart-setup"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "dirs 5.0.1",
  "serde",
@@ -5134,7 +5134,7 @@ checksum = "0b928f33d975fc6ad9f86c8f283853ad26bdd5b10b7f1542aa2fa15e2289105a"
 
 [[package]]
 name = "vk-core"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "futures-util",
  "hex",
@@ -5153,7 +5153,7 @@ dependencies = [
 
 [[package]]
 name = "vk-dolphin"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "serde",
  "serde_json",
@@ -5164,7 +5164,7 @@ dependencies = [
 
 [[package]]
 name = "vk-install"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "dirs 5.0.1",
  "flate2",
@@ -5184,7 +5184,7 @@ dependencies = [
 
 [[package]]
 name = "vk-save"
-version = "2.0.1"
+version = "2.0.0-beta.4"
 dependencies = [
  "md-5",
  "serde",

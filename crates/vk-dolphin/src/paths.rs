@@ -26,14 +26,33 @@ pub struct PathProbe {
 }
 
 /// Nomi comuni dell'eseguibile di Dolphin per piattaforma.
+///
+/// Su Linux **non** c'è `dolphin` senza suffisso: quello è il gestore di file
+/// di KDE, che sta in `/usr/bin` come l'emulatore. Il confronto è senza
+/// distinzione di maiuscole, quindi tenerlo nell'elenco faceva scegliere al
+/// launcher il programma sbagliato, che poi moriva su `libKF6Archive`
+/// (§D-073). L'emulatore lì si chiama `dolphin-emu`.
 pub fn executable_names() -> &'static [&'static str] {
     if cfg!(windows) {
         &["Dolphin.exe", "DolphinWx.exe", "DolphinQt2.exe"]
     } else if cfg!(target_os = "macos") {
         &["Dolphin", "Dolphin.app"]
     } else {
-        &["dolphin-emu", "dolphin-emu-qt2", "Dolphin"]
+        &["dolphin-emu", "dolphin-emu-qt2", "dolphin-emu-nogui"]
     }
+}
+
+/// `true` se il percorso è il gestore di file di KDE invece dell'emulatore.
+///
+/// Serve a dirlo a chi lo sceglie a mano: si chiamano quasi uguale, e
+/// l'errore che si ottiene altrimenti parla di librerie KDE.
+pub fn is_kde_file_manager(path: &Path) -> bool {
+    if cfg!(windows) || cfg!(target_os = "macos") {
+        return false;
+    }
+
+    path.file_name()
+        .is_some_and(|name| name.eq_ignore_ascii_case("dolphin"))
 }
 
 /// `true` se il nome è quello di un AppImage di Dolphin.
@@ -314,6 +333,26 @@ fn normalize(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_kde_file_manager_is_not_the_emulator() {
+        // Su Linux `/usr/bin/dolphin` è il gestore di file di KDE.
+        let atteso = !cfg!(windows) && !cfg!(target_os = "macos");
+        assert_eq!(
+            super::is_kde_file_manager(std::path::Path::new("/usr/bin/dolphin")),
+            atteso
+        );
+        assert!(!super::is_kde_file_manager(std::path::Path::new(
+            "/usr/bin/dolphin-emu"
+        )));
+
+        // E non compare più fra i nomi cercati dall'auto-rilevamento.
+        if atteso {
+            assert!(!super::executable_names()
+                .iter()
+                .any(|name| name.eq_ignore_ascii_case("dolphin")));
+        }
+    }
+
     #[test]
     fn a_dolphin_appimage_is_recognised_by_its_name() {
         // Vale solo su Linux: altrove un .AppImage non è un eseguibile.

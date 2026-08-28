@@ -574,6 +574,10 @@ pub async fn open_external(app: AppHandle, url: String) -> AppResult<()> {
     vk_core::endpoints::require_safe_endpoint(&url)
         .map_err(|_| AppError::BadRequest("URL non consentito".into()))?;
 
+    if crate::platform::open_with_system_handler(&url) {
+        return Ok(());
+    }
+
     app.opener()
         .open_url(url, None::<&str>)
         .map_err(|error| AppError::Internal(error.to_string()))

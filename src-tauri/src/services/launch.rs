@@ -83,6 +83,20 @@ pub async fn preflight(state: &Arc<AppState>) -> AppResult<Option<LaunchBlocker>
     // il bit di esecuzione: senza questo controllo l'unico segnale sarebbe un
     // "Permission denied" all'avvio (§D-068).
     let executable = vk_dolphin::paths::resolve_launch_executable(&settings.dolphin());
+
+    // `dolphin` e `dolphin-emu` si chiamano quasi uguale, e su Linux il primo
+    // è il gestore di file di KDE: avviandolo si ottiene un errore su
+    // `libKF6Archive` che non dice niente a nessuno (§D-073).
+    if vk_dolphin::paths::is_kde_file_manager(&executable) {
+        return Ok(Some(LaunchBlocker {
+            code: "dolphin-is-file-manager".into(),
+            message: format!(
+                "{} è il gestore di file di KDE, non l'emulatore. Quello che serve                  si chiama `dolphin-emu`: installalo con il gestore di pacchetti                  della tua distribuzione, oppure scarica l'AppImage da dolphin-emu.org                  e indicala qui.",
+                executable.display()
+            ),
+            navigate_to: "settings".into(),
+        }));
+    }
     if !crate::platform::is_executable_file(&executable) {
         return Ok(Some(LaunchBlocker {
             code: "dolphin-not-executable".into(),
@@ -140,6 +154,10 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
     if let Some(directory) = vk_dolphin::paths::executable_directory(&executable) {
         command.current_dir(directory);
     }
+
+    // Dentro un AppImage il launcher gira con le librerie impacchettate: se le
+    // eredita anche Dolphin, che è di sistema, non parte (§D-074).
+    crate::platform::clean_child_environment(&mut command);
 
     let child = command.spawn().map_err(|error| {
         AppError::Dolphin(vk_dolphin::DolphinError::LaunchFailed(error.to_string()))
