@@ -87,6 +87,190 @@ function Copy-Artifact([string]$source, [string]$destination) {
     Split-Path -Leaf $destination
 }
 
+# --- AppImage: quello che linuxdeploy si porta dietro e non dovrebbe -------
+
+# Librerie che un AppImage non deve impacchettare.
+#
+# `libwayland-*` è legata al compositore e allo stack EGL del sistema. Se il
+# processo ne carica due copie — quella dentro l'AppImage, per via del RPATH, e
+# quella che `libEGL` di sistema tira dentro — la creazione del display EGL
+# fallisce e WebKitGTK aborta prima ancora di aprire la finestra:
+#
+#     Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
+#
+# È il motivo per cui `libwayland-client.so.0` sta nella excludelist ufficiale
+# di AppImage; il plugin GTK di linuxdeploy la copia lo stesso. Toglierla è la
+# stessa cosa che fa a mano un `LD_PRELOAD` della libreria di sistema.
+$LibrerieDaEscludere = @(
+    'libwayland-client.so*',
+    'libwayland-cursor.so*',
+    'libwayland-egl.so*',
+    'libwayland-server.so*'
+)
+
+# Trova `appimagetool`, che serve a riconfezionare l'AppDir corretto.
+#
+# Il bundler di Tauri lo ha già scaricato per costruire l'AppImage: si riusa
+# quello, e solo se non c'è lo si prende dalla rete.
+function Get-AppImageTool([string]$bundleDir) {
+    $cercaIn = @(
+        $bundleDir,
+        (Join-Path $HOME '.cache/tauri'),
+        'target/release/bundle/appimage'
+    ) | Where-Object { $_ -and (Test-Path $_) }
+
+    foreach ($cartella in $cercaIn) {
+        $trovato = Get-ChildItem -Path $cartella -Recurse -Filter 'appimagetool*' -File -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+        if ($trovato) { return $trovato.FullName }
+    }
+
+    $comando = Get-Command 'appimagetool' -ErrorAction SilentlyContinue
+    if ($comando) { return $comando.Source }
+
+    $scaricato = Join-Path ([System.IO.Path]::GetTempPath()) 'appimagetool-x86_64.AppImage'
+    if (-not (Test-Path $scaricato)) {
+        Write-Host '  appimagetool non trovato in locale: lo scarico'
+        curl -sSfL -o $scaricato 'https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage'
+        if ($LASTEXITCODE -ne 0) { return $null }
+        chmod +x $scaricato
+    }
+    return $scaricato
+}
+
+# Toglie dall'AppDir le librerie di sistema e rifà l'AppImage.
+#
+# Non fa fallire il rilascio: se qualcosa non va resta l'AppImage originale,
+# con un avviso. Restituisce il percorso da pubblicare.
+function Repair-AppImage([string]$appImagePath) {
+    # Qualunque cosa vada storta qui dentro non deve fermare il rilascio: si
+    # pubblica l'AppImage originale, con un avviso.
+    try {
+        return Repair-AppImageInner $appImagePath
+    }
+    catch {
+        Warn "correzione dell AppImage non riuscita ($($_.Exception.Message)): pubblico quella originale"
+        $global:LASTEXITCODE = 0
+        return $appImagePath
+    }
+    finally {
+        # Gli avvisi qui sopra non devono lasciare un codice d'uscita che il
+        # passo successivo scambierebbe per suo.
+        if ($LASTEXITCODE -ne 0) { $global:LASTEXITCODE = 0 }
+    }
+}
+
+function Repair-AppImageInner([string]$appImagePath) {
+    $bundleDir = Split-Path -Parent $appImagePath
+    $appDir = Get-ChildItem -Path $bundleDir -Directory -Filter '*.AppDir' -ErrorAction SilentlyContinue |
+        Select-Object -First 1
+
+    if (-not $appDir) {
+        Warn 'AppDir non trovato accanto all AppImage: la lascio com e'
+        return $appImagePath
+    }
+
+    $libDir = Join-Path $appDir.FullName 'usr/lib'
+    $rimosse = @()
+    foreach ($schema in $LibrerieDaEscludere) {
+        Get-ChildItem -Path $libDir -Filter $schema -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Remove-Item $_.FullName -Force
+            $rimosse += $_.Name
+        }
+    }
+
+    # Il backend GDK non si forza più su X11: in una sessione Wayland il
+    # launcher deve girare su Wayland. Chi vuole X11 imposta la variabile e
+    # vince lui; senza sessione Wayland resta il comportamento di prima.
+    $hook = Join-Path $appDir.FullName 'apprun-hooks/linuxdeploy-plugin-gtk.sh'
+    $backendCorretto = $false
+    if (Test-Path $hook) {
+        $testo = Get-Content $hook -Raw
+        $nuovo = [regex]::Replace(
+            $testo,
+            '(?m)^export GDK_BACKEND=x11.*$',
+            'if [ -z "${GDK_BACKEND:-}" ] && [ -z "${WAYLAND_DISPLAY:-}" ]; then export GDK_BACKEND=x11; fi'
+        )
+        if ($nuovo -ne $testo) {
+            Set-Content -Path $hook -Value $nuovo -NoNewline
+            $backendCorretto = $true
+        }
+    }
+
+    if ($rimosse.Count -eq 0 -and -not $backendCorretto) {
+        Write-Host '  AppImage gia a posto: niente da correggere'
+        return $appImagePath
+    }
+
+    if ($rimosse.Count -gt 0) {
+        Write-Host "  tolte dall AppDir: $($rimosse -join ', ')"
+    }
+    if ($backendCorretto) {
+        Write-Host '  GDK_BACKEND non e piu forzato su x11'
+    }
+
+    $tool = Get-AppImageTool $bundleDir
+    if (-not $tool) {
+        Warn 'appimagetool non disponibile: pubblico l AppImage non corretta'
+        return $appImagePath
+    }
+
+    $nuovoFile = "$appImagePath.corretta"
+    $env:ARCH = 'x86_64'
+    chmod +x $tool 2>$null
+
+    # `--appimage-extract-and-run` evita di dover montare: serve solo se lo
+    # strumento è a sua volta un AppImage, altrimenti è un argomento che non
+    # conosce.
+    $global:LASTEXITCODE = 0
+    try {
+        if ($tool -like '*.AppImage') {
+            & $tool --appimage-extract-and-run $appDir.FullName $nuovoFile 2>&1 | Out-Null
+        }
+        else {
+            & $tool $appDir.FullName $nuovoFile 2>&1 | Out-Null
+        }
+    }
+    catch {
+        Warn "appimagetool non eseguibile: $($_.Exception.Message)"
+        $global:LASTEXITCODE = 1
+    }
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $nuovoFile)) {
+        Warn 'riconfezionamento non riuscito: pubblico l AppImage non corretta'
+        Remove-Item $nuovoFile -Force -ErrorAction SilentlyContinue
+        return $appImagePath
+    }
+
+    # La firma dell'updater vale per il file che Tauri ha prodotto, non per
+    # quello riconfezionato: va rifatta **prima** di sostituire l'originale.
+    # Se non si può rifare, si tiene l'originale con la sua firma valida: un
+    # aggiornamento che il launcher rifiuta sarebbe peggio del difetto.
+    if (Test-Path "$appImagePath.sig") {
+        $global:LASTEXITCODE = 0
+        try {
+            npx tauri signer sign $nuovoFile 2>&1 | Out-Null
+        }
+        catch {
+            $global:LASTEXITCODE = 1
+        }
+
+        if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$nuovoFile.sig")) {
+            Warn 'firma della AppImage corretta non riuscita: pubblico quella originale'
+            Remove-Item $nuovoFile -Force -ErrorAction SilentlyContinue
+            Remove-Item "$nuovoFile.sig" -Force -ErrorAction SilentlyContinue
+            return $appImagePath
+        }
+        Move-Item "$nuovoFile.sig" "$appImagePath.sig" -Force
+        Write-Host '  firma dell updater rifatta sul file corretto'
+    }
+
+    Move-Item $nuovoFile $appImagePath -Force
+    chmod +x $appImagePath
+    Write-Host '  AppImage riconfezionata'
+    return $appImagePath
+}
+
 # --- 1. Versione: deve coincidere in tutti i punti che la dichiarano -------
 $conf = Get-Content 'src-tauri/tauri.conf.json' -Raw | ConvertFrom-Json
 $version = $conf.version
@@ -261,7 +445,11 @@ il workflow.
 "@
         }
 
-        $name = Copy-Artifact $appimage.FullName (Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.AppImage")
+        # Prima di pubblicarla: via le librerie di sistema che linuxdeploy si
+        # porta dietro e che rompono EGL, e niente X11 forzato (§D-072).
+        $corretta = Repair-AppImage $appimage.FullName
+
+        $name = Copy-Artifact $corretta (Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.AppImage")
         Write-Host "  pacchetto: $name"
     }
 }

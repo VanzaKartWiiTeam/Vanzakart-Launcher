@@ -2,6 +2,13 @@
 
 use std::path::PathBuf;
 
+/// Su macOS non c'è nessuna sonda da eseguire: la webview è di sistema e
+/// WindowServer non ha configurazioni alternative da provare.
+pub fn handle_probe_if_requested() {}
+
+/// Su macOS non c'è una modalità grafica di ripiego: la webview è di sistema.
+pub fn degrade_graphics() {}
+
 /// Controlli d'ambiente prima di aprire la finestra.
 ///
 /// Anche qui l'unico caso che si può riconoscere in anticipo è l'avvio con

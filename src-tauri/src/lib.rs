@@ -27,8 +27,13 @@ pub use error::{AppError, AppResult};
 
 /// Punto d'ingresso condiviso fra il binario e i test.
 pub fn run() {
-    // Prima di tutto il resto: se la finestra non può aprirsi lo si dice qui,
-    // in italiano, invece di lasciare che sia GTK a morire con un panic
+    // Questo processo potrebbe essere una sonda grafica lanciata dal launcher
+    // vero: in quel caso prova ad aprire il display e si chiude, senza toccare
+    // niente (§D-071).
+    platform::handle_probe_if_requested();
+
+    // Poi, prima di tutto il resto: se la finestra non può aprirsi lo si dice
+    // qui, in italiano, invece di lasciare che sia GTK a morire con un panic
     // (§D-067). Va prima anche della cartella dati, così un avvio da root non
     // lascia file di root in giro.
     if let Err(reason) = platform::preflight() {
@@ -55,6 +60,13 @@ VanzaKart Launcher non può avviarsi.
 
     let _guard = init_tracing(&paths);
 
+    // Un avvio precedente morto prima della finestra è quasi sempre lo stack
+    // grafico: si riparte con le impostazioni più prudenti (§D-072).
+    if begin_startup(&paths) {
+        tracing::warn!("l'avvio precedente non è arrivato alla finestra");
+        platform::degrade_graphics();
+    }
+
     let runtime = tokio::runtime::Runtime::new().expect("runtime tokio");
     let state = runtime
         .block_on(state::AppState::bootstrap(paths))
@@ -79,6 +91,7 @@ VanzaKart Launcher non può avviarsi.
 
 /// Costruisce l'applicazione. Separata da [`run`] per essere testabile.
 pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
+    let started = state.clone();
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
@@ -89,12 +102,15 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
 
     builder
         .manage(state)
-        .setup(|app| {
+        .setup(move |app| {
             // La finestra nasce nascosta e viene mostrata a layout pronto,
             // così l'utente non vede un lampo bianco.
             if let Some(window) = app.get_webview_window("main") {
                 let _ = window.show();
             }
+
+            // Da qui in poi l'avvio è riuscito: il segno si toglie.
+            finish_startup(&started.paths);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -185,6 +201,26 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
         ])
 }
 
+/// Segna che un avvio è cominciato. `true` se il precedente non è finito.
+///
+/// Un `abort()` dentro le librerie grafiche non lascia scampo: non è un panic,
+/// non c'è nulla da catturare. L'unico modo di accorgersene è vedere, al
+/// riavvio, che il segno del giro prima è rimasto lì (§D-072).
+fn begin_startup(paths: &storage::paths::AppPaths) -> bool {
+    let marker = paths.startup_marker();
+    let crashed = marker.exists();
+
+    let _ = std::fs::create_dir_all(paths.root());
+    let _ = std::fs::write(&marker, "1");
+
+    crashed
+}
+
+/// Toglie il segno: la finestra c'è, l'avvio è riuscito.
+fn finish_startup(paths: &storage::paths::AppPaths) {
+    let _ = std::fs::remove_file(paths.startup_marker());
+}
+
 /// Fa in modo che un panic della finestra dica qualcosa di utile.
 ///
 /// Quando GTK non parte, `tao` va in panic dentro `gtk::rt::init` con un
@@ -259,4 +295,40 @@ fn init_tracing(
     }
 
     Some(guard)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_startup_that_finishes_leaves_no_mark() {
+        let directory = tempfile::tempdir().expect("cartella temporanea");
+        let paths = storage::paths::AppPaths::at(directory.path());
+
+        // Primo avvio: nessun segno da prima.
+        assert!(!begin_startup(&paths));
+        assert!(paths.startup_marker().exists());
+
+        finish_startup(&paths);
+        assert!(!paths.startup_marker().exists());
+
+        // Secondo avvio: di nuovo pulito.
+        assert!(!begin_startup(&paths));
+    }
+
+    #[test]
+    fn a_startup_that_never_finished_is_noticed_the_next_time() {
+        let directory = tempfile::tempdir().expect("cartella temporanea");
+        let paths = storage::paths::AppPaths::at(directory.path());
+
+        begin_startup(&paths);
+        // Nessuna `finish_startup`: è il crash prima della finestra.
+        assert!(begin_startup(&paths));
+
+        // E il segno resta finché un avvio non arriva in fondo.
+        assert!(begin_startup(&paths));
+        finish_startup(&paths);
+        assert!(!begin_startup(&paths));
+    }
 }

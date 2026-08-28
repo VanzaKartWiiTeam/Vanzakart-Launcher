@@ -65,6 +65,16 @@ impl AppPaths {
         self.root.join("logs")
     }
 
+    /// File che esiste solo mentre un avvio è in corso.
+    ///
+    /// Se c'è ancora quando il launcher parte, l'avvio precedente non è
+    /// arrivato alla finestra: è così che ci si accorge di un crash dentro le
+    /// librerie grafiche, che nessun gestore di errori può intercettare
+    /// (§D-072).
+    pub fn startup_marker(&self) -> PathBuf {
+        self.root.join("startup.lock")
+    }
+
     pub fn cache_dir(&self) -> PathBuf {
         self.root.join("cache")
     }

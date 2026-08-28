@@ -5,6 +5,13 @@ use std::path::PathBuf;
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
+/// Su Windows non c'è nessuna sonda da eseguire: WebView2 non ha
+/// configurazioni grafiche alternative da provare.
+pub fn handle_probe_if_requested() {}
+
+/// Su Windows non c'è una modalità grafica di ripiego: WebView2 è di sistema.
+pub fn degrade_graphics() {}
+
 /// Su Windows non c'è niente da controllare prima di aprire la finestra: la
 /// webview è quella di sistema e non dipende da un server grafico esterno.
 pub fn preflight() -> Result<(), String> {

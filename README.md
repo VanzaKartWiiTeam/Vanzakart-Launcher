@@ -111,6 +111,12 @@ Su Ubuntu 24.04 e su altre distribuzioni recenti gli AppImage hanno bisogno di
 FUSE 2, che non è più preinstallato: `sudo apt install libfuse2t64`, oppure si
 avvia con `--appimage-extract-and-run` senza installare niente.
 
+In una sessione **Wayland** il launcher gira sul backend nativo: l'AppImage non
+forza più X11 e non si porta dietro le librerie Wayland del sistema, che erano
+la causa di un crash di WebKitGTK all'avvio (`decisions.md` §D-072). All'avvio
+prova comunque da sola quale configurazione grafica regge, e se un avvio non
+arriva alla finestra il successivo riparte in modalità conservativa.
+
 Se manca qualche libreria di sistema, il messaggio d'errore indica il pacchetto
 da installare (`libwebkit2gtk-4.1-0` e `libgtk-3-0` su Debian e Ubuntu,
 `webkit2gtk4.1` e `gtk3` su Fedora, `webkit2gtk-4.1` e `gtk3` su Arch). Con i
