@@ -28,7 +28,7 @@ import type {
   LaunchBlocker,
   LauncherStatus,
   LaunchResult,
-  LeaderboardEntry,
+  LeaderboardPage,
   LicenseView,
   MarioKartAction,
   MiiEditorState,
@@ -154,7 +154,7 @@ export const deleteGameSettings = () => call<string[]>('dolphin_delete_game_sett
 export const fetchNews = () => call<NewsItem[]>('news_fetch');
 export const fetchRooms = () => call<RoomsSummary>('rooms_fetch');
 export const fetchLeaderboard = (offset = 0) =>
-  call<LeaderboardEntry[]>('leaderboard_fetch', { offset });
+  call<LeaderboardPage>('leaderboard_fetch', { offset });
 
 // --- Beta -----------------------------------------------------------------
 

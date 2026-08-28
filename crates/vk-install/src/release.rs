@@ -133,6 +133,21 @@ impl ReleasePackage {
     }
 }
 
+/// Dove scaricare **l'installer stesso**, per piattaforma.
+///
+/// Non serve all'installer, che è già in esecuzione quando legge il manifest:
+/// serve al **sito**, che così ha una fonte sola da leggere per i suoi
+/// pulsanti di download, invece di tre link scritti a mano che invecchiano a
+/// ogni versione.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct SetupDownload {
+    pub url: String,
+    #[serde(default)]
+    pub sha256: String,
+    #[serde(default)]
+    pub size: u64,
+}
+
 /// Il manifest completo.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct ReleaseManifest {
@@ -141,8 +156,12 @@ pub struct ReleaseManifest {
     pub notes: String,
     #[serde(default)]
     pub pub_date: String,
+    /// I pacchetti del launcher, quelli che scarica l'installer.
     #[serde(default)]
     pub platforms: BTreeMap<String, ReleasePackage>,
+    /// Gli installer, quelli che scaricano le persone dal sito.
+    #[serde(default)]
+    pub setup: BTreeMap<String, SetupDownload>,
 }
 
 impl ReleaseManifest {
@@ -170,6 +189,13 @@ impl ReleaseManifest {
         }
         for (key, package) in &self.platforms {
             package.validate(key)?;
+        }
+        for (key, download) in &self.setup {
+            if !is_acceptable_source(&download.url) {
+                return Err(InstallError::InvalidManifest(format!(
+                    "setup/{key}: gli URL devono essere https"
+                )));
+            }
         }
         Ok(())
     }
@@ -338,6 +364,39 @@ mod tests {
         assert!(!is_valid_version("../../etc/passwd"));
         assert!(!is_valid_version(""));
         assert!(is_valid_version("2.0.0-beta.1"));
+    }
+
+    #[test]
+    fn the_installers_of_the_site_travel_with_the_manifest() {
+        let raw = SAMPLE.replace(
+            r#""platforms": {"#,
+            r#""setup": {
+                "windows-x86_64": {
+                    "url": "https://example.test/VanzaKart-Setup_2.0.0_windows-x86_64.exe",
+                    "size": 8283136
+                }
+            },
+            "platforms": {"#,
+        );
+
+        let manifest = ReleaseManifest::parse(&raw).expect("manifest");
+        assert_eq!(manifest.setup.len(), 1);
+        assert!(manifest.setup["windows-x86_64"].url.ends_with(".exe"));
+
+        // E restano fuori gli indirizzi non sicuri.
+        let insicuro = raw.replace(
+            "https://example.test/VanzaKart-Setup",
+            "http://example.test/VanzaKart-Setup",
+        );
+        assert!(ReleaseManifest::parse(&insicuro).is_err());
+    }
+
+    #[test]
+    fn a_manifest_without_the_setup_section_is_still_valid() {
+        // I manifest già pubblicati non hanno quella sezione: devono
+        // continuare a funzionare.
+        let manifest = ReleaseManifest::parse(SAMPLE).expect("manifest");
+        assert!(manifest.setup.is_empty());
     }
 
     #[test]

@@ -178,7 +178,7 @@ pub async fn setup_bootstrap(state: State<'_, Arc<SetupState>>) -> SetupResult<B
         legacy_install_dir: discovery::legacy_install(),
         release,
         release_error,
-        download_page_url: state.download_page_url().to_string(),
+        download_page_url: state.download_page_url().await,
     })
 }
 
@@ -302,17 +302,18 @@ pub async fn setup_uninstall_run(
 
 /// Apre la pagina dei download nel browser di sistema.
 ///
-/// L'indirizzo lo decide il backend: il frontend chiede "apri la pagina", non
-/// "apri questo URL".
+/// L'indirizzo lo decide il backend leggendolo da `endpoints.json`: il
+/// frontend chiede "apri la pagina", non "apri questo URL" (§D-005).
 #[tauri::command]
-pub fn setup_open_download_page(
+pub async fn setup_open_download_page(
     app: AppHandle,
     state: State<'_, Arc<SetupState>>,
 ) -> SetupResult<()> {
     use tauri_plugin_opener::OpenerExt;
 
+    let pagina = state.download_page_url().await;
     app.opener()
-        .open_url(state.download_page_url(), None::<&str>)
+        .open_url(pagina, None::<&str>)
         .map_err(|error| SetupError::new("opener", error.to_string()))
 }
 

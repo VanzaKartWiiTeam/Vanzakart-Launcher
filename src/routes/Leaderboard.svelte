@@ -5,13 +5,21 @@
    * Ricalca il `LeaderboardView` del WPF: podio a tre gradini con i gradienti
    * oro/argento/bronzo, ricerca, tabella con POS/VR/WINS/GAMES e pannello di
    * dettaglio del giocatore selezionato.
+   *
+   * Come nel legacy ogni riga porta la faccia del giocatore: il server manda
+   * il Mii insieme alla classifica, e senza faccia una classifica di nomi
+   * corti è illeggibile. La classifica arriva a pagine da cento (§D-058).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import { formatRelative } from '$lib/stores/app.svelte';
   import type { LeaderboardEntry } from '$lib/api/types';
 
   let entries = $state<LeaderboardEntry[]>([]);
   let loading = $state(true);
+  let loadingMore = $state(false);
+  let hasMore = $state(false);
   let error = $state('');
   let query = $state('');
   let selected = $state<LeaderboardEntry | null>(null);
@@ -27,8 +35,9 @@
     })
   );
 
+  const searching = $derived(query.trim() !== '');
   const podium = $derived(entries.slice(0, 3));
-  const rest = $derived(filtered.filter((entry) => entry.position > 3 || query.trim() !== ''));
+  const rest = $derived(filtered.filter((entry) => entry.position > 3 || searching));
 
   $effect(() => {
     void load();
@@ -37,18 +46,42 @@
   async function load() {
     loading = true;
     try {
-      entries = await api.fetchLeaderboard(0);
+      const page = await api.fetchLeaderboard(0);
+      entries = page.entries;
+      hasMore = page.hasMore;
       error = '';
     } catch (caught) {
       error = api.errorMessage(caught);
       entries = [];
+      hasMore = false;
     } finally {
       loading = false;
     }
   }
 
+  /** Aggiunge la pagina successiva senza perdere quella già mostrata. */
+  async function loadMore() {
+    loadingMore = true;
+    try {
+      const page = await api.fetchLeaderboard(entries.length);
+      const known = new Set(entries.map((entry) => entry.position));
+      entries = [...entries, ...page.entries.filter((entry) => !known.has(entry.position))];
+      hasMore = page.hasMore && page.entries.length > 0;
+      error = '';
+    } catch (caught) {
+      error = api.errorMessage(caught);
+      hasMore = false;
+    } finally {
+      loadingMore = false;
+    }
+  }
+
   function medal(position: number): string {
     return position === 1 ? 'podium-1' : position === 2 ? 'podium-2' : 'podium-3';
+  }
+
+  function gain(value: number): string {
+    return value > 0 ? `+${value}` : `${value}`;
   }
 </script>
 
@@ -74,17 +107,25 @@
       <p>Nessun giocatore in classifica.</p>
     </div>
   {:else}
-    {#if query.trim() === '' && podium.length > 0}
+    {#if !searching && podium.length > 0}
       <section class="podium">
         {#each podium as entry (entry.friendCode || entry.position)}
           <button class="step {medal(entry.position)}" onclick={() => (selected = entry)}>
             <span class="rank">#{entry.position}</span>
-            {#if entry.rankImage}
-              <img class="rank-image" src={entry.rankImage} alt="" />
-            {/if}
+            <MiiAvatar
+              studioData={entry.studioData}
+              initial={entry.avatarInitial}
+              accent={entry.accentColor}
+              name={entry.name}
+              size={entry.position === 1 ? 68 : 56}
+              shape="rounded"
+            />
             <span class="name">{entry.name}</span>
             <span class="points">{entry.points.toLocaleString('it-IT')} VR</span>
             <span class="vk-faint sub">{entry.wins} vittorie · {entry.winrate.toFixed(1)}%</span>
+            {#if entry.rankImage}
+              <img class="rank-image" src={entry.rankImage} alt="" />
+            {/if}
           </button>
         {/each}
       </section>
@@ -95,6 +136,7 @@
         <span>Pos</span>
         <span>Giocatore</span>
         <span class="num">VR</span>
+        <span class="num">24 h</span>
         <span class="num">Vittorie</span>
         <span class="num">Gare</span>
       </div>
@@ -104,29 +146,67 @@
           <button
             class="row entry"
             class:suspicious={entry.isSuspicious}
-            onclick={() => (selected = entry)}
+            class:selected={selected === entry}
+            onclick={() => (selected = selected === entry ? null : entry)}
           >
             <span class="pos">{entry.position}</span>
             <span class="player">
-              {#if entry.rankImage}<img class="rank-mini" src={entry.rankImage} alt="" />{/if}
+              <MiiAvatar
+                studioData={entry.studioData}
+                initial={entry.avatarInitial}
+                accent={entry.accentColor}
+                name={entry.name}
+                size={30}
+              />
               <span class="player-name">{entry.name}</span>
+              {#if entry.rankImage}<img class="rank-mini" src={entry.rankImage} alt="" />{/if}
               {#if entry.isSuspicious}
                 <span class="vk-badge vk-badge--warning">Sospetto</span>
               {/if}
             </span>
             <span class="num strong">{entry.points.toLocaleString('it-IT')}</span>
+            <span
+              class="num gain"
+              class:up={entry.vrLast24Hours > 0}
+              class:down={entry.vrLast24Hours < 0}
+            >
+              {entry.vrLast24Hours === 0 ? '—' : gain(entry.vrLast24Hours)}
+            </span>
             <span class="num">{entry.wins}</span>
             <span class="num">{entry.games}</span>
           </button>
+        {:else}
+          <p class="vk-faint no-match">Nessun giocatore corrisponde alla ricerca.</p>
         {/each}
       </div>
+
+      <footer class="table-foot">
+        <span class="vk-faint">
+          {searching
+            ? `${rest.length} ${rest.length === 1 ? 'risultato' : 'risultati'}`
+            : `${entries.length} giocatori`}
+        </span>
+        {#if hasMore && !searching}
+          <button class="vk-btn" onclick={loadMore} disabled={loadingMore}>
+            {loadingMore ? 'Carico…' : 'Carica altri'}
+          </button>
+        {/if}
+      </footer>
     </section>
   {/if}
 
   {#if selected}
     <aside class="vk-card details vk-rainbow-top">
       <header class="details-head">
-        <div>
+        <MiiAvatar
+          studioData={selected.studioData}
+          initial={selected.avatarInitial}
+          accent={selected.accentColor}
+          name={selected.name}
+          size={56}
+          shape="rounded"
+        />
+        <div class="details-id">
           <p class="vk-eyebrow">Dettagli giocatore</p>
           <h3 class="details-name">{selected.name}</h3>
         </div>
@@ -151,9 +231,20 @@
         <div>
           <span class="vk-faint">Win rate</span><strong>{selected.winrate.toFixed(1)}%</strong>
         </div>
-        <div><span class="vk-faint">VR 24 h</span><strong>{selected.vrLast24Hours}</strong></div>
-        <div><span class="vk-faint">VR settimana</span><strong>{selected.vrLastWeek}</strong></div>
-        <div><span class="vk-faint">VR mese</span><strong>{selected.vrLastMonth}</strong></div>
+        <div>
+          <span class="vk-faint">Online</span><strong
+            >{formatRelative(selected.lastSeen) || '—'}</strong
+          >
+        </div>
+        <div>
+          <span class="vk-faint">VR 24 h</span><strong>{gain(selected.vrLast24Hours)}</strong>
+        </div>
+        <div>
+          <span class="vk-faint">VR settimana</span><strong>{gain(selected.vrLastWeek)}</strong>
+        </div>
+        <div>
+          <span class="vk-faint">VR mese</span><strong>{gain(selected.vrLastMonth)}</strong>
+        </div>
       </div>
     </aside>
   {/if}
@@ -190,7 +281,7 @@
     flex-direction: column;
     align-items: center;
     gap: 6px;
-    padding: 20px 16px;
+    padding: 18px 16px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-card);
     text-align: center;
@@ -200,17 +291,17 @@
   .podium .step:nth-child(1) {
     order: 2;
     background: var(--vk-podium-1);
-    min-height: 210px;
+    min-height: 244px;
   }
   .podium .step:nth-child(2) {
     order: 1;
     background: var(--vk-podium-2);
-    min-height: 178px;
+    min-height: 216px;
   }
   .podium .step:nth-child(3) {
     order: 3;
     background: var(--vk-podium-3);
-    min-height: 166px;
+    min-height: 198px;
   }
 
   .podium .step:nth-child(1) {
@@ -225,8 +316,8 @@
   }
 
   .rank-image {
-    width: 42px;
-    height: 42px;
+    width: 34px;
+    height: 34px;
     object-fit: contain;
   }
 
@@ -254,11 +345,11 @@
 
   .row {
     display: grid;
-    grid-template-columns: 56px 1fr 96px 84px 84px;
+    grid-template-columns: 52px 1fr 92px 72px 78px 72px;
     align-items: center;
     gap: 12px;
     width: 100%;
-    padding: 10px 18px;
+    padding: 8px 18px;
     text-align: left;
     background: transparent;
     border: none;
@@ -284,6 +375,10 @@
     background: rgb(255 255 255 / 0.04);
   }
 
+  .entry.selected {
+    background: rgb(0 242 255 / 0.08);
+  }
+
   .entry.suspicious {
     background: rgb(255 209 102 / 0.06);
   }
@@ -291,6 +386,7 @@
   .pos {
     font-weight: 900;
     color: var(--vk-text-secondary);
+    font-variant-numeric: tabular-nums;
   }
 
   .player {
@@ -304,6 +400,7 @@
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 700;
   }
 
   .rank-mini {
@@ -323,6 +420,36 @@
     color: var(--vk-cyan-soft);
   }
 
+  .gain {
+    font-size: var(--vk-fs-micro);
+    color: var(--vk-text-faint);
+  }
+
+  .gain.up {
+    color: var(--vk-success);
+  }
+
+  .gain.down {
+    color: var(--vk-danger);
+  }
+
+  .no-match {
+    padding: 18px;
+    margin: 0;
+    text-align: center;
+    font-size: var(--vk-fs-small);
+  }
+
+  .table-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 18px;
+    border-top: 1px solid var(--vk-stroke);
+    font-size: var(--vk-fs-micro);
+  }
+
   /* --- Dettagli --- */
 
   .details {
@@ -332,14 +459,18 @@
 
   .details-head {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
+    align-items: center;
+    gap: 14px;
     margin-bottom: 14px;
   }
 
+  .details-id {
+    min-width: 0;
+    margin-right: auto;
+  }
+
   .details-name {
-    margin: 4px 0 0;
+    margin: 2px 0 0;
     font-size: 22px;
     font-weight: 900;
   }
@@ -374,10 +505,10 @@
       min-height: 0 !important;
     }
     .row {
-      grid-template-columns: 44px 1fr 80px;
+      grid-template-columns: 40px 1fr 80px 64px;
     }
-    .row > :nth-child(4),
-    .row > :nth-child(5) {
+    .row > :nth-child(5),
+    .row > :nth-child(6) {
       display: none;
     }
   }

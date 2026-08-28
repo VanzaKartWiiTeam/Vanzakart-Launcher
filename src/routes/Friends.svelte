@@ -7,6 +7,10 @@
    *
    * Le scritture passano dal backend, che copia e verifica il salvataggio
    * prima di toccarlo e rifiuta di scrivere mentre Dolphin è aperto.
+   *
+   * La pagina è tutta qui dentro: una barra con la licenza attiva e il suo
+   * friend code, e sotto la lista. Le licenze in più sono pastiglie, non card:
+   * chi ne ha una sola — quasi tutti — non deve scegliere niente (§D-059).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
@@ -15,19 +19,24 @@
   import { app } from '$lib/stores/app.svelte';
   import type { FriendView, LicenseView } from '$lib/api/types';
 
+  /** Posti disponibili nella lista amici di una licenza. */
+  const SLOTS = 30;
+
   let licenses = $state<LicenseView[]>([]);
   let friends = $state<FriendView[]>([]);
   let selected = $state<LicenseView | null>(null);
   let loading = $state(true);
   let busy = $state(false);
-  let copied = $state('');
+  let copied = $state(false);
   let newCode = $state('');
   let error = $state('');
   let pendingRemoval = $state<FriendView | null>(null);
 
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined;
+
   const withCode = $derived(licenses.filter((license) => !license.isEmpty && license.friendCode));
   const canWrite = $derived(app.status?.saveWritesEnabled ?? false);
-  const full = $derived(friends.length >= 30);
+  const full = $derived(friends.length >= SLOTS);
 
   $effect(() => {
     void load();
@@ -60,12 +69,18 @@
     }
   }
 
+  function isSelected(license: LicenseView): boolean {
+    return selected?.saveIndex === license.saveIndex && selected?.slot === license.slot;
+  }
+
   async function copy(code: string) {
     try {
       await navigator.clipboard.writeText(code);
-      copied = code;
+      copied = true;
+      clearTimeout(copiedTimer);
+      copiedTimer = setTimeout(() => (copied = false), 1600);
     } catch {
-      copied = '';
+      copied = false;
     }
   }
 
@@ -110,20 +125,6 @@
 </script>
 
 <div class="page">
-  <section class="vk-card intro vk-rainbow-top">
-    <div>
-      <p class="vk-eyebrow">Il tuo friend code</p>
-      <p class="vk-subtitle">
-        Condividi questo codice per farti aggiungere. Chi aggiungi da qui resta una richiesta finché
-        non vi incontrate online: è il gioco a confermarla.
-      </p>
-    </div>
-    <button class="vk-btn" onclick={load} disabled={loading || busy}>
-      <Icon name="refresh" size={14} />
-      Ricarica
-    </button>
-  </section>
-
   {#if loading}
     <div class="vk-card"><div class="vk-skeleton skeleton"></div></div>
   {:else if withCode.length === 0}
@@ -137,88 +138,88 @@
         Vai a Mii &amp; Licenses
       </button>
     </div>
-  {:else}
-    <div class="codes">
-      {#each withCode as license (`${license.saveIndex}-${license.slot}`)}
-        <article
-          class="vk-card code-card"
-          class:selected={selected?.saveIndex === license.saveIndex &&
-            selected?.slot === license.slot}
-          style="--accent: {license.accentColor}"
-        >
-          <MiiAvatar
-            studioData={license.studioData}
-            initial={license.avatarInitial}
-            accent={license.accentColor}
-            name={license.miiName || license.name}
-            size={48}
-          />
-          <div>
-            <p class="owner">{license.name}</p>
-            <p class="vk-faint region">
-              {license.region} · Slot {license.slot + 1} · {license.friendCount} amici
-            </p>
-          </div>
-          <span class="vk-spacer"></span>
+  {:else if selected}
+    {@const license = selected}
+    <!-- Barra della licenza attiva: chi sei, il tuo codice, e nient'altro. -->
+    <section class="vk-card bar vk-rainbow-top" style="--accent: {license.accentColor}">
+      <MiiAvatar
+        studioData={license.studioData}
+        initial={license.avatarInitial}
+        accent={license.accentColor}
+        name={license.miiName || license.name}
+        size={44}
+      />
 
-          {#if withCode.length > 1}
-            <button
-              class="vk-btn"
-              onclick={() => select(license)}
-              disabled={busy ||
-                (selected?.saveIndex === license.saveIndex && selected?.slot === license.slot)}
-            >
-              Apri
-            </button>
-          {/if}
-
-          <button class="code" onclick={() => copy(license.friendCode)}>
-            <span class="vk-mono">{license.friendCode}</span>
-            <span class="vk-faint hint">
-              {copied === license.friendCode ? 'copiato' : 'copia'}
-            </span>
-          </button>
-        </article>
-      {/each}
-    </div>
-  {/if}
-
-  {#if selected}
-    <section class="vk-card">
-      <div class="section-head">
-        <div>
-          <p class="vk-eyebrow">Amici di {selected.name}</p>
-          <p class="vk-subtitle">
-            {friends.length} di 30 posizioni occupate.
-            {#if !canWrite}
-              Questa build è in sola lettura: la lista si può consultare, non modificare.
-            {/if}
-          </p>
-        </div>
+      <div class="who">
+        <p class="owner">{license.name}</p>
+        <p class="vk-faint region">{license.region} · Slot {license.slot + 1}</p>
       </div>
 
-      {#if canWrite}
-        <div class="add">
-          <input
-            class="vk-input"
-            placeholder="0000-0000-0000"
-            maxlength="14"
-            bind:value={newCode}
-            disabled={busy || full}
-          />
-          <button
-            class="vk-btn vk-btn--primary"
-            onclick={addFriend}
-            disabled={busy || full || newCode.trim().length === 0}
-          >
-            Aggiungi
-          </button>
+      <button
+        class="code"
+        onclick={() => copy(license.friendCode)}
+        title="Copia il tuo friend code"
+      >
+        <span class="vk-mono">{license.friendCode}</span>
+        <Icon name={copied ? 'check' : 'copy'} size={14} />
+        <span class="vk-visually-hidden">{copied ? 'Copiato' : 'Copia'}</span>
+      </button>
+
+      <button class="icon-btn" onclick={load} disabled={busy} title="Ricarica dal salvataggio">
+        <Icon name="refresh" size={15} />
+        <span class="vk-visually-hidden">Ricarica</span>
+      </button>
+
+      {#if withCode.length > 1}
+        <nav class="switch" aria-label="Licenze">
+          {#each withCode as option (`${option.saveIndex}-${option.slot}`)}
+            <button
+              class="pill"
+              class:active={isSelected(option)}
+              onclick={() => select(option)}
+              disabled={busy || isSelected(option)}
+              title={`${option.name} · ${option.friendCount} amici`}
+            >
+              {option.name}
+            </button>
+          {/each}
+        </nav>
+      {/if}
+    </section>
+
+    <section class="vk-card list-card">
+      <header class="list-head">
+        <div class="count">
+          <span class="value">{friends.length}<span class="of">/{SLOTS}</span></span>
+          <span class="vk-eyebrow">Amici salvati</span>
         </div>
-        {#if full}
-          <p class="vk-faint limit">
-            La lista è piena: rimuovi un amico prima di aggiungerne un altro.
-          </p>
+
+        {#if canWrite}
+          <div class="add">
+            <input
+              class="vk-input"
+              placeholder="0000-0000-0000"
+              maxlength="14"
+              bind:value={newCode}
+              disabled={busy || full}
+              onkeydown={(event) => event.key === 'Enter' && addFriend()}
+            />
+            <button
+              class="vk-btn vk-btn--primary"
+              onclick={addFriend}
+              disabled={busy || full || newCode.trim().length === 0}
+            >
+              <Icon name="plus" size={14} />
+              Aggiungi
+            </button>
+          </div>
+        {:else}
+          <span class="vk-badge">Sola lettura</span>
         {/if}
+      </header>
+
+      {#if full && canWrite}
+        <p class="vk-faint hint">Lista piena: rimuovi un amico prima di aggiungerne un altro.</p>
       {/if}
 
       {#if error}
@@ -236,27 +237,33 @@
                 initial={friend.avatarInitial}
                 accent={friend.accentColor}
                 name={friend.miiName}
-                size={38}
+                size={36}
               />
               <div class="friend-id">
+                <!--
+                  Niente badge "in attesa": nel salvataggio quasi ogni amico
+                  risulta tale finché non ci si incontra online, quindi il
+                  badge marcava come anomalo lo stato normale (§D-060).
+                -->
                 <p class="friend-name">{friend.miiName}</p>
                 <p class="vk-mono friend-code">{friend.friendCode}</p>
               </div>
+
               <div class="friend-stats vk-faint">
                 <span>VR {friend.raceRating}</span>
                 <span>BR {friend.battleRating}</span>
                 <span>{friend.wins}V / {friend.losses}S</span>
               </div>
-              {#if friend.isPending}
-                <span class="vk-badge vk-badge--warning">In attesa</span>
-              {/if}
+
               {#if canWrite}
                 <button
-                  class="vk-btn vk-btn--danger"
+                  class="icon-btn danger"
                   onclick={() => (pendingRemoval = friend)}
                   disabled={busy}
+                  title="Rimuovi {friend.miiName}"
                 >
-                  Rimuovi
+                  <Icon name="trash" size={15} />
+                  <span class="vk-visually-hidden">Rimuovi</span>
                 </button>
               {/if}
             </li>
@@ -265,15 +272,6 @@
       {/if}
     </section>
   {/if}
-
-  <section class="vk-card note">
-    <p class="vk-eyebrow">Come vengono protetti i salvataggi</p>
-    <p class="vk-subtitle">
-      Prima di ogni modifica <code>rksys.dat</code> viene copiato nei backup e la copia è verificata per
-      hash: se non coincide, il file originale non viene toccato. La scrittura è rifiutata mentre Dolphin
-      è aperto, perché all'uscita riscriverebbe il salvataggio dalla propria memoria.
-    </p>
-  </section>
 </div>
 
 <Modal
@@ -288,7 +286,7 @@
 >
   <p>
     <strong>{pendingRemoval?.miiName}</strong> ({pendingRemoval?.friendCode}) verrà tolto dalla
-    lista di questa licenza. Il salvataggio viene copiato prima della modifica.
+    lista di questa licenza. Il salvataggio viene copiato e verificato prima della modifica.
   </p>
 </Modal>
 
@@ -302,37 +300,30 @@
     padding-bottom: 12px;
   }
 
-  .intro {
+  /* --- Barra della licenza --- */
+
+  .bar {
     position: relative;
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 20px;
-    overflow: hidden;
-  }
-
-  .codes {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-
-  .code-card {
-    display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 14px;
-    border-color: color-mix(in srgb, var(--accent) 30%, var(--vk-stroke));
+    overflow: hidden;
+    border-color: color-mix(in srgb, var(--accent) 26%, var(--vk-stroke));
   }
 
-  .code-card.selected {
-    border-color: var(--vk-cyan);
-    box-shadow: 0 0 18px rgb(0 242 255 / 0.18);
+  .who {
+    min-width: 0;
+    margin-right: auto;
   }
 
   .owner {
     margin: 0;
     font-size: var(--vk-fs-body);
     font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .region {
@@ -340,48 +331,138 @@
     font-size: var(--vk-fs-micro);
   }
 
+  /* Il friend code è l'unica cosa che si copia da questa pagina. */
   .code {
     display: flex;
     align-items: center;
     gap: 10px;
-    padding: 8px 14px;
+    padding: 9px 14px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
     background: var(--vk-input);
+    color: inherit;
     font-size: var(--vk-fs-body);
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    transition:
+      border-color var(--vk-dur-fast) var(--vk-ease),
+      color var(--vk-dur-fast) var(--vk-ease);
   }
 
   .code:hover {
     border-color: var(--vk-cyan);
+    color: var(--vk-cyan-soft);
   }
 
-  .hint {
-    font-size: var(--vk-fs-eyebrow);
-    text-transform: uppercase;
+  .icon-btn {
+    display: grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    flex: none;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-badge);
+    background: transparent;
+    color: var(--vk-text-secondary);
+    transition:
+      border-color var(--vk-dur-fast) var(--vk-ease),
+      color var(--vk-dur-fast) var(--vk-ease);
   }
 
-  .section-head {
+  .icon-btn:hover:not(:disabled) {
+    border-color: var(--vk-cyan);
+    color: var(--vk-cyan-soft);
+  }
+
+  .icon-btn.danger:hover:not(:disabled) {
+    border-color: var(--vk-danger);
+    color: var(--vk-danger);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.45;
+  }
+
+  /* Le licenze in più stanno su una riga sola, sotto la barra. */
+  .switch {
     display: flex;
-    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 6px;
+    flex-basis: 100%;
+    order: 1;
+  }
+
+  .pill {
+    padding: 5px 12px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-pill);
+    background: transparent;
+    color: var(--vk-text-secondary);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 700;
+    max-width: 180px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .pill:hover:not(:disabled) {
+    border-color: #3a4c74;
+    color: var(--vk-text);
+  }
+
+  .pill.active {
+    background: var(--vk-tab-active);
+    border-color: var(--vk-cyan);
+    color: var(--vk-text);
+    opacity: 1;
+  }
+
+  /* --- Lista --- */
+
+  .list-head {
+    display: flex;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
+  }
+
+  .count {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+  }
+
+  .count .value {
+    font-size: 22px;
+    font-weight: 900;
+    line-height: 1;
+  }
+
+  .count .of {
+    font-size: 14px;
+    color: var(--vk-text-faint);
   }
 
   .add {
     display: flex;
-    gap: 10px;
-    margin-bottom: 10px;
+    gap: 8px;
   }
 
   .add .vk-input {
-    max-width: 220px;
+    width: 170px;
     font-family: var(--vk-font-mono);
   }
 
-  .limit,
+  .hint,
   .empty-list {
+    margin: 0 0 10px;
     font-size: var(--vk-fs-micro);
+  }
+
+  .empty-list {
+    margin: 6px 0 0;
   }
 
   .inline {
@@ -393,7 +474,7 @@
   .friends {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
     margin: 0;
     padding: 0;
     list-style: none;
@@ -403,10 +484,15 @@
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 10px 12px;
-    border: 1px solid var(--vk-stroke);
+    padding: 8px 12px;
+    border: 1px solid transparent;
     border-radius: var(--vk-radius-badge);
     background: var(--vk-panel-soft);
+    transition: border-color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .friend:hover {
+    border-color: color-mix(in srgb, var(--accent) 40%, var(--vk-stroke));
   }
 
   .friend-id {
@@ -416,10 +502,14 @@
   .friend-name {
     margin: 0;
     font-weight: 800;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .friend-code {
     margin: 2px 0 0;
+    font-size: var(--vk-fs-micro);
     color: var(--vk-text-secondary);
   }
 
@@ -428,20 +518,7 @@
     gap: 12px;
     margin-left: auto;
     font-size: var(--vk-fs-micro);
-  }
-
-  .friend .vk-btn {
-    padding: 7px 11px;
-    font-size: var(--vk-fs-micro);
-  }
-
-  .note code {
-    padding: 1px 5px;
-    border-radius: 4px;
-    background: var(--vk-input);
-    color: var(--vk-cyan-soft);
-    font-family: var(--vk-font-mono);
-    font-size: 0.92em;
+    font-variant-numeric: tabular-nums;
   }
 
   .skeleton {
@@ -449,6 +526,30 @@
   }
 
   @media (max-width: 760px) {
+    .bar {
+      flex-wrap: wrap;
+    }
+
+    .code {
+      order: 2;
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .switch {
+      order: 3;
+    }
+
+    .list-head {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .add .vk-input {
+      flex: 1;
+      width: auto;
+    }
+
     .friend-stats {
       display: none;
     }

@@ -8,6 +8,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
+use vk_core::endpoints::EndpointsInfo;
 use vk_core::progress::CancelToken;
 use vk_install::release::ReleaseManifest;
 use vk_install::{InstallError, InstallResult, Installer};
@@ -15,13 +16,14 @@ use vk_install::{InstallError, InstallResult, Installer};
 /// Versione dell'installer, dal `Cargo.toml`.
 pub const SETUP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
-/// Manifest dei pacchetti d'installazione.
-const INSTALL_MANIFEST_URL: &str = "https://sitodaking.it:8443/Launcher/install.json";
-
-/// `endpoints.json`: può spostare il manifest altrove senza rifare l'installer.
+/// L'unico indirizzo che l'installer deve conoscere per forza: da qui legge
+/// tutti gli altri. È l'elenco degli indirizzi del progetto, lo stesso che
+/// usa il launcher.
 const ENDPOINTS_URL: &str = "https://sitodaking.it:8443/Launcher/endpoints.json";
 
-/// Pagina da aprire quando il manifest non è raggiungibile.
+/// Ricadute, usate solo quando `endpoints.json` non risponde o non dichiara
+/// la chiave. Devono restare allineate al file sul server.
+const INSTALL_MANIFEST_URL: &str = "https://sitodaking.it:8443/Launcher/install.json";
 const DOWNLOAD_PAGE_URL: &str = "https://vwfc.sitodaking.it/";
 
 /// In quale veste è stato avviato il programma.
@@ -72,6 +74,7 @@ pub struct SetupState {
     pub mode: Mode,
     pub installer: Installer,
     manifest: Mutex<Option<ReleaseManifest>>,
+    endpoints: Mutex<Option<EndpointsInfo>>,
     cancel: Mutex<CancelToken>,
     busy: AtomicBool,
 }
@@ -82,41 +85,63 @@ impl SetupState {
             mode,
             installer: build_installer(icon)?,
             manifest: Mutex::new(None),
+            endpoints: Mutex::new(None),
             cancel: Mutex::new(CancelToken::new()),
             busy: AtomicBool::new(false),
         })
     }
 
-    /// Indirizzi da cui leggere il manifest, in ordine di tentativo.
-    pub async fn manifest_urls(&self) -> Vec<String> {
-        let mut urls = vec![INSTALL_MANIFEST_URL.to_string()];
-
-        // `endpoints.json` è la sorgente autorevole: se dichiara un altro
-        // indirizzo, quello vince. Se non risponde, resta il predefinito.
-        if let Ok(raw) = self
-            .installer
-            .downloader()
-            .get_string(&format!("{ENDPOINTS_URL}?t={}", vk_core::now_millis()))
-            .await
-        {
-            if let Ok(endpoints) = serde_json::from_str::<vk_core::endpoints::EndpointsInfo>(
-                vk_core::json::strip_leading_noise(&raw),
-            ) {
-                let declared = std::iter::once(endpoints.launcher_install_url.clone())
-                    .chain(endpoints.launcher_install_mirrors.clone())
-                    .map(|url| url.trim().to_string())
-                    .filter(|url| url.to_ascii_lowercase().starts_with("https://"));
-                let mut ordered: Vec<String> = declared.collect();
-                ordered.extend(urls);
-                urls = ordered;
-            }
+    /// `endpoints.json`, letto una volta sola e tenuto da parte.
+    ///
+    /// È l'elenco degli indirizzi del progetto: tenerli lì invece che dentro
+    /// l'installer vuol dire poter spostare un file sul server senza dover
+    /// ricompilare e ridistribuire l'installer a chi lo ha già scaricato.
+    /// Se il file non risponde si va avanti con le ricadute compilate.
+    async fn endpoints(&self) -> EndpointsInfo {
+        if let Some(gia_letto) = self.endpoints.lock().ok().and_then(|slot| slot.clone()) {
+            return gia_letto;
         }
+
+        let indirizzo = format!("{ENDPOINTS_URL}?t={}", vk_core::now_millis());
+        let letti = match self.installer.downloader().get_string(&indirizzo).await {
+            Ok(raw) => serde_json::from_str::<EndpointsInfo>(vk_core::json::strip_leading_noise(
+                &raw,
+            ))
+            .unwrap_or_else(|error| {
+                tracing::warn!(%error, "endpoints.json illeggibile: uso gli indirizzi compilati");
+                EndpointsInfo::default()
+            }),
+            Err(error) => {
+                tracing::warn!(%error, "endpoints.json non raggiungibile: uso gli indirizzi compilati");
+                EndpointsInfo::default()
+            }
+        };
+
+        if let Ok(mut slot) = self.endpoints.lock() {
+            *slot = Some(letti.clone());
+        }
+        letti
+    }
+
+    /// Indirizzi da cui leggere il manifest, in ordine di tentativo.
+    ///
+    /// Prima quelli dichiarati dal server, poi la ricaduta compilata: se il
+    /// manifest trasloca, basta aggiornare `endpoints.json`.
+    pub async fn manifest_urls(&self) -> Vec<String> {
+        let endpoints = self.endpoints().await;
+        let mut urls: Vec<String> = std::iter::once(endpoints.launcher_install_url.clone())
+            .chain(endpoints.launcher_install_mirrors.clone())
+            .filter_map(solo_https)
+            .collect();
+        urls.push(INSTALL_MANIFEST_URL.to_string());
 
         vk_core::net::dedupe_urls(&urls)
     }
 
-    pub const fn download_page_url(&self) -> &'static str {
-        DOWNLOAD_PAGE_URL
+    /// Pagina dei download del sito, da `endpoints.json`.
+    pub async fn download_page_url(&self) -> String {
+        solo_https(self.endpoints().await.download_page_url.clone())
+            .unwrap_or_else(|| DOWNLOAD_PAGE_URL.to_string())
     }
 
     /// Manifest già scaricato, se c'è.
@@ -198,6 +223,16 @@ fn build_installer(icon: Option<PathBuf>) -> InstallResult<Installer> {
     }
 
     Ok(installer)
+}
+
+/// Accetta un indirizzo solo se è `https` (§D-004): un `endpoints.json`
+/// manomesso non deve poter dirottare l'installer su http.
+fn solo_https(url: String) -> Option<String> {
+    let pulito = url.trim().to_string();
+    pulito
+        .to_ascii_lowercase()
+        .starts_with("https://")
+        .then_some(pulito)
 }
 
 /// Errore da restituire quando manca il manifest e non c'è rete.

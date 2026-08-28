@@ -357,11 +357,29 @@ per esempio:
 "@
 }
 
+# Gli installer: non servono all'installer stesso, servono al sito, che cosi
+# legge un file solo invece di avere tre link scritti a mano.
+$installer = [ordered]@{}
+Get-ChildItem -Path $releaseDir -File |
+    Where-Object { $_.Name -like "VanzaKart-Setup_${version}_*" -and $_.Extension -ne '.sig' } |
+    Sort-Object Name |
+    ForEach-Object {
+        if ($_.Name -match "^VanzaKart-Setup_${version}_(?<target>[a-z0-9]+-[a-z0-9_]+)\.[A-Za-z]+$") {
+            $installer[$Matches['target']] = [ordered]@{
+                url    = "$($BaseUrl.TrimEnd('/'))/$version/$($_.Name)"
+                sha256 = (Get-FileHash -Algorithm SHA256 -Path $_.FullName).Hash.ToLowerInvariant()
+                size   = $_.Length
+            }
+            Write-Host "  installer $($Matches['target']) → $($_.Name)"
+        }
+    }
+
 $manifest = [ordered]@{
     version   = $version
     notes     = $Notes
     pub_date  = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
     platforms = $platforms
+    setup     = $installer
 }
 
 $manifestPath = Join-Path $OutputDir 'install.json'

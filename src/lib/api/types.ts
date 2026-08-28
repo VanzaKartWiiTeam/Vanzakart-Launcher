@@ -136,6 +136,18 @@ export interface NewsItem {
   mediaKind: 'image' | 'video' | 'link' | null;
 }
 
+export interface RoomPlayerView {
+  name: string;
+  friendCode: string;
+  vr: number;
+  br: number;
+  isHost: boolean;
+  /** Payload di render del Mii; vuoto quando il server non lo manda. */
+  studioData: string;
+  avatarInitial: string;
+  accentColor: string;
+}
+
 export interface RoomView {
   id: string;
   name: string;
@@ -146,6 +158,7 @@ export interface RoomView {
   track: string;
   region: string;
   status: string;
+  players: RoomPlayerView[];
 }
 
 export interface RoomsSummary {
@@ -153,7 +166,12 @@ export interface RoomsSummary {
   totalRooms: number;
   publicRooms: number;
   privateRooms: number;
+  /** Istante dello snapshot in RFC 3339, vuoto se il server non lo manda. */
   lastUpdated: string;
+  /** Stato dichiarato dal server: "Online", "Online (Demo)", ... */
+  status: string;
+  /** Avviso del server, presente quando risponde con dati dimostrativi. */
+  notice: string;
   rooms: RoomView[];
 }
 
@@ -172,6 +190,22 @@ export interface LeaderboardEntry {
   vrLastWeek: number;
   vrLastMonth: number;
   rankImage: string | null;
+  /** Payload di render del Mii; vuoto quando il server non ne manda uno valido. */
+  studioData: string;
+  avatarInitial: string;
+  accentColor: string;
+}
+
+/**
+ * Una pagina di classifica.
+ *
+ * Il server ne manda al massimo cento righe per volta: `hasMore` dice se vale
+ * la pena chiedere la pagina successiva.
+ */
+export interface LeaderboardPage {
+  entries: LeaderboardEntry[];
+  offset: number;
+  hasMore: boolean;
 }
 
 export interface BetaStatus {

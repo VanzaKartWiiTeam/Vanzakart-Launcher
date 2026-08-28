@@ -352,4 +352,11 @@ fn the_manifest_written_by_the_publish_script_is_readable() {
 
     // Ogni piattaforma su cui gira questo test trova il proprio pacchetto.
     assert!(manifest.select(vk_install::Target::current()).is_ok());
+
+    // E il sito trova l'installer da far scaricare, per tutte e tre.
+    assert_eq!(manifest.setup.len(), 3);
+    for (chiave, download) in &manifest.setup {
+        assert!(download.url.starts_with("https://"), "{chiave}");
+        assert!(vk_core::hash::is_valid_sha256(&download.sha256), "{chiave}");
+    }
 }

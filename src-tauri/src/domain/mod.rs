@@ -142,6 +142,24 @@ pub struct NewsItem {
     pub media_kind: Option<String>,
 }
 
+/// Giocatore dentro una stanza.
+///
+/// Il server manda l'elenco insieme alla stanza: senza di esso una stanza è
+/// solo un contatore, ed è chi c'è dentro che interessa a chi guarda.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct RoomPlayerView {
+    pub name: String,
+    pub friend_code: String,
+    pub vr: i32,
+    pub br: i32,
+    pub is_host: bool,
+    /// Payload di render del Mii, vuoto quando il server non lo manda.
+    pub studio_data: String,
+    pub avatar_initial: String,
+    pub accent_color: String,
+}
+
 /// Stanza online.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -155,6 +173,7 @@ pub struct RoomView {
     pub track: String,
     pub region: String,
     pub status: String,
+    pub players: Vec<RoomPlayerView>,
 }
 
 /// Statistiche aggregate delle stanze.
@@ -165,7 +184,15 @@ pub struct RoomsSummary {
     pub total_rooms: u32,
     pub public_rooms: u32,
     pub private_rooms: u32,
+    /// Istante dello snapshot in RFC 3339, vuoto se il server non lo manda.
+    ///
+    /// Non è un dettaglio: lo snapshot lo scrive il server di gioco, e se
+    /// smette di scriverlo l'elenco resta fermo senza sembrarlo (§D-057).
     pub last_updated: String,
+    /// Stato dichiarato dal server ("Online", "Online (Demo)", …).
+    pub status: String,
+    /// Avviso del server, presente quando risponde con dati dimostrativi.
+    pub notice: String,
     pub rooms: Vec<RoomView>,
 }
 
@@ -188,6 +215,24 @@ pub struct LeaderboardEntry {
     pub vr_last_month: i32,
     /// Percorso locale dell'immagine del rank, se già in cache.
     pub rank_image: Option<String>,
+    /// Payload di render del Mii del giocatore, vuoto quando il server non
+    /// manda un blocco Mii valido.
+    pub studio_data: String,
+    pub avatar_initial: String,
+    pub accent_color: String,
+}
+
+/// Una pagina di classifica.
+///
+/// La classifica non sta in una risposta sola: il server ne manda al massimo
+/// cento righe per volta, e la UI deve sapere se chiederne altre.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LeaderboardPage {
+    pub entries: Vec<LeaderboardEntry>,
+    pub offset: u32,
+    /// `true` quando la pagina è piena: il server potrebbe averne un'altra.
+    pub has_more: bool,
 }
 
 /// Licenza letta da `rksys.dat`.

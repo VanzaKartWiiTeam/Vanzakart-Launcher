@@ -192,6 +192,35 @@ export function formatDate(iso: string | null): string {
   return Number.isNaN(timestamp) ? 'Mai' : DATE_FORMAT.format(timestamp);
 }
 
+/**
+ * Distanza da adesso in forma breve: "3 min fa", "2 g fa".
+ *
+ * Serve dove conta *quanto è vecchio* un dato e non quando è stato prodotto —
+ * lo snapshot delle stanze, l'ultima volta che un giocatore è stato visto.
+ * Oltre il mese torna alla data piena, che a quel punto dice di più.
+ */
+export function formatRelative(iso: string | null): string {
+  if (!iso) return '';
+
+  const timestamp = Date.parse(iso);
+  if (Number.isNaN(timestamp)) return '';
+
+  const seconds = Math.round((Date.now() - timestamp) / 1000);
+  if (seconds < 60) return 'adesso';
+
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes} min fa`;
+
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} h fa`;
+
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'ieri';
+  if (days < 30) return `${days} g fa`;
+
+  return formatDate(iso);
+}
+
 /** Byte in forma leggibile, con le stesse unità del backend. */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';

@@ -1,57 +1,180 @@
 //! Rooms e Leaderboard.
 //!
 //! Porta `ViewModels/RoomsViewModel.cs` e `ViewModels/LeaderboardViewModel.cs`.
-//! I payload del server sono preservati con tutti i loro alias di campo: il
-//! server può inviare `prestigeRank`, `prestige_rank`, `pr` o `rank` per la
-//! stessa informazione.
+//!
+//! I payload del server portano la stessa informazione sotto più chiavi **nello
+//! stesso oggetto**: la classifica manda `prestigeRank` e `rank`, e insieme
+//! `vr_gain_24h`, `vr_last_24_hours` e `vrLast24Hours`. Con `#[serde(alias)]`
+//! serde vede lo stesso campo due volte e rifiuta l'intero documento con
+//! `duplicate field`, che è il modo esatto in cui la pagina si rompeva. Qui i
+//! campi si leggono da un `serde_json::Value`, dove le chiavi ripetute sono
+//! semplicemente sinonimi e vince la prima non nulla (§D-056).
 
+use std::path::Path;
 use std::sync::Arc;
 
-use serde::Deserialize;
+use serde_json::Value;
 
-use crate::domain::{LeaderboardEntry, RoomView, RoomsSummary};
+use crate::domain::{LeaderboardEntry, LeaderboardPage, RoomPlayerView, RoomView, RoomsSummary};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
-const LEADERBOARD_PAGE_SIZE: u32 = 200;
+/// Il server tronca `limit` a 100: chiederne di più restituisce comunque 100
+/// righe e farebbe credere alla UI di avere già tutta la classifica.
+const LEADERBOARD_PAGE_SIZE: u32 = 100;
+
+/// Colori di ripiego per chi non ha un Mii: gli stessi degli amici.
+const ACCENTS: [&str; 6] = [
+    "#39E7FF", "#FF3B7A", "#FFD166", "#4DFFB0", "#9D5CFF", "#FF8800",
+];
+
+// ---------------------------------------------------------------------------
+// Lettura tollerante dei payload
+// ---------------------------------------------------------------------------
+
+mod loose {
+    use serde_json::Value;
+
+    /// Primo valore non nullo fra le chiavi indicate.
+    pub fn pick<'a>(value: &'a Value, keys: &[&str]) -> Option<&'a Value> {
+        keys.iter()
+            .filter_map(|key| value.get(*key))
+            .find(|found| !found.is_null())
+    }
+
+    pub fn text(value: &Value, keys: &[&str]) -> String {
+        match pick(value, keys) {
+            Some(Value::String(text)) => text.trim().to_string(),
+            Some(Value::Number(number)) => number.to_string(),
+            _ => String::new(),
+        }
+    }
+
+    /// Numero nella forma in cui il server lo manda: intero, decimale o
+    /// stringa. Il backend .NET le ha già mandate tutte e tre.
+    pub fn float(value: &Value, keys: &[&str]) -> f64 {
+        match pick(value, keys) {
+            Some(Value::Number(number)) => number.as_f64().unwrap_or(0.0),
+            Some(Value::String(text)) => text.trim().replace(',', ".").parse().unwrap_or(0.0),
+            Some(Value::Bool(flag)) => f64::from(u8::from(*flag)),
+            _ => 0.0,
+        }
+    }
+
+    pub fn int(value: &Value, keys: &[&str]) -> i32 {
+        let number = float(value, keys);
+        if number.is_finite() {
+            number
+                .round()
+                .clamp(f64::from(i32::MIN), f64::from(i32::MAX)) as i32
+        } else {
+            0
+        }
+    }
+
+    pub fn count(value: &Value, keys: &[&str]) -> u32 {
+        int(value, keys).max(0) as u32
+    }
+
+    pub fn flag(value: &Value, keys: &[&str]) -> bool {
+        match pick(value, keys) {
+            Some(Value::Bool(flag)) => *flag,
+            Some(Value::Number(number)) => number.as_f64().unwrap_or(0.0) != 0.0,
+            Some(Value::String(text)) => matches!(
+                text.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes"
+            ),
+            _ => false,
+        }
+    }
+
+    pub fn array<'a>(value: &'a Value, keys: &[&str]) -> &'a [Value] {
+        match pick(value, keys) {
+            Some(Value::Array(items)) => items.as_slice(),
+            _ => &[],
+        }
+    }
+}
+
+/// Faccia di un giocatore ricavata dal Mii che manda il server.
+struct Face {
+    studio_data: String,
+    avatar_initial: String,
+    accent_color: String,
+}
+
+/// Converte il Mii del server in ciò che serve alla UI per disegnarlo.
+///
+/// Il server manda il blocco Wii da 74 byte in base64 — lo stesso che sta nel
+/// salvataggio — mentre il renderer accetta solo la "studio data": la
+/// conversione è quella che `saves.rs` fa per gli amici. Un blocco assente o
+/// non valido non è un errore: resta l'iniziale sul colore di ripiego.
+fn face(mii_data: &str, name: &str, seed: usize) -> Face {
+    let block = vk_save::mii::base64_decode(mii_data.trim())
+        .filter(|block| vk_save::mii::looks_like_wii_mii(block));
+
+    Face {
+        studio_data: block
+            .as_deref()
+            .map(vk_save::mii::studio_data)
+            .unwrap_or_default(),
+        avatar_initial: initial(name),
+        accent_color: block
+            .as_deref()
+            .and_then(|block| vk_save::mii::parse_block(block).ok())
+            .map_or_else(
+                || ACCENTS[seed % ACCENTS.len()].to_string(),
+                |mii| mii.favorite_color().to_string(),
+            ),
+    }
+}
+
+fn initial(name: &str) -> String {
+    name.trim()
+        .chars()
+        .next()
+        .map(|character| character.to_uppercase().to_string())
+        .unwrap_or_else(|| "?".into())
+}
+
+/// Porta l'istante del server in RFC 3339, l'unico formato che il frontend sa
+/// leggere senza indovinare.
+///
+/// PostgreSQL lo serializza come `2026-08-25 11:33:49.459785+00`: spazio al
+/// posto della `T` e fuso orario senza minuti.
+fn rfc3339(raw: &str) -> String {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return String::new();
+    }
+
+    let mut value = trimmed.replacen(' ', "T", 1);
+
+    let bytes = value.as_bytes();
+    if bytes.len() >= 3 {
+        let sign = bytes[bytes.len() - 3];
+        let hour_only = (sign == b'+' || sign == b'-')
+            && bytes[bytes.len() - 2].is_ascii_digit()
+            && bytes[bytes.len() - 1].is_ascii_digit();
+        if hour_only {
+            value.push_str(":00");
+        }
+    }
+
+    value
+}
+
+fn non_empty(value: String, fallback: &str) -> String {
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Rooms
 // ---------------------------------------------------------------------------
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct RoomsResponse {
-    success: bool,
-    meta: Option<RoomsMeta>,
-    rooms: Option<Vec<RoomPayload>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default, rename_all = "camelCase")]
-struct RoomsMeta {
-    total_players: u32,
-    total_rooms: u32,
-    public_rooms: u32,
-    private_rooms: u32,
-    last_updated: Option<String>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct RoomPayload {
-    id: String,
-    name: String,
-    host: String,
-    #[serde(alias = "player_count", alias = "playerCount")]
-    player_count: u32,
-    #[serde(alias = "max_players", alias = "maxPlayers")]
-    max_players: Option<u32>,
-    mode: Option<String>,
-    track: Option<String>,
-    region: Option<String>,
-    status: Option<String>,
-}
 
 /// Scarica l'elenco delle stanze.
 pub async fn rooms(state: &Arc<AppState>) -> AppResult<RoomsSummary> {
@@ -63,100 +186,119 @@ pub async fn rooms(state: &Arc<AppState>) -> AppResult<RoomsSummary> {
     }
 
     let raw = state.downloader.get_string(&url).await?;
-    let response: RoomsResponse = serde_json::from_str(vk_core::json::strip_leading_noise(&raw))
-        .map_err(|error| {
+    let payload: Value =
+        serde_json::from_str(vk_core::json::strip_leading_noise(&raw)).map_err(|error| {
             AppError::Internal(format!("risposta delle stanze non valida: {error}"))
         })?;
 
-    if !response.success && response.rooms.is_none() {
+    let listed = loose::pick(&payload, &["rooms"]).is_some();
+    if !loose::flag(&payload, &["success"]) && !listed {
         return Err(AppError::Internal(
             "il server ha restituito una risposta non valida".into(),
         ));
     }
 
-    let meta = response.meta.unwrap_or_default();
-    let rooms: Vec<RoomView> = response
-        .rooms
-        .unwrap_or_default()
-        .into_iter()
-        .map(|room| RoomView {
-            id: room.id,
-            name: room.name,
-            host: room.host,
-            player_count: room.player_count,
-            max_players: room.max_players.unwrap_or(12),
-            mode: room.mode.unwrap_or_else(|| "Versus".into()),
-            track: room.track.unwrap_or_else(|| "Choosing Track...".into()),
-            region: room.region.unwrap_or_else(|| "Worldwide".into()),
-            status: room.status.unwrap_or_else(|| "In Lobby".into()),
-        })
+    let meta = loose::pick(&payload, &["meta"])
+        .cloned()
+        .unwrap_or(Value::Null);
+    let rooms: Vec<RoomView> = loose::array(&payload, &["rooms"])
+        .iter()
+        .map(room)
         .collect();
 
+    let declared_players = loose::count(&meta, &["total_players", "totalPlayers"]);
+    let declared_rooms = loose::count(&meta, &["total_rooms", "totalRooms"]);
+
     Ok(RoomsSummary {
-        total_players: if meta.total_players > 0 {
-            meta.total_players
+        total_players: if declared_players > 0 {
+            declared_players
         } else {
             rooms.iter().map(|room| room.player_count).sum()
         },
-        total_rooms: if meta.total_rooms > 0 {
-            meta.total_rooms
+        total_rooms: if declared_rooms > 0 {
+            declared_rooms
         } else {
             rooms.len() as u32
         },
-        public_rooms: meta.public_rooms,
-        private_rooms: meta.private_rooms,
-        last_updated: meta.last_updated.unwrap_or_default(),
+        public_rooms: loose::count(&meta, &["public_rooms", "publicRooms"]),
+        private_rooms: loose::count(&meta, &["private_rooms", "privateRooms"]),
+        last_updated: rfc3339(&loose::text(&meta, &["last_updated", "lastUpdated"])),
+        status: loose::text(&meta, &["status"]),
+        notice: loose::text(&payload, &["info", "notice", "message"]),
         rooms,
     })
+}
+
+fn room(value: &Value) -> RoomView {
+    let players: Vec<RoomPlayerView> = loose::array(value, &["players", "Players"])
+        .iter()
+        .enumerate()
+        .map(|(index, player)| room_player(player, index))
+        .collect();
+
+    let host = loose::text(value, &["host", "Host"]);
+    let counted = loose::count(value, &["player_count", "playerCount"]);
+
+    RoomView {
+        id: loose::text(value, &["id", "Id"]),
+        name: loose::text(value, &["name", "Name"]),
+        host: if host.is_empty() {
+            players
+                .iter()
+                .find(|player| player.is_host)
+                .map(|player| player.name.clone())
+                .unwrap_or_default()
+        } else {
+            host
+        },
+        // L'elenco dei giocatori è la fonte più affidabile del contatore: è
+        // quello che l'utente vede scritto sotto la stanza.
+        player_count: if players.is_empty() {
+            counted
+        } else {
+            players.len() as u32
+        },
+        max_players: match loose::count(value, &["max_players", "maxPlayers"]) {
+            0 => 12,
+            declared => declared,
+        },
+        mode: non_empty(loose::text(value, &["mode", "Mode"]), "Versus"),
+        track: non_empty(loose::text(value, &["track", "Track"]), "Choosing Track..."),
+        region: non_empty(loose::text(value, &["region", "Region"]), "Worldwide"),
+        status: non_empty(loose::text(value, &["status", "Status"]), "In Lobby"),
+        players,
+    }
+}
+
+fn room_player(value: &Value, index: usize) -> RoomPlayerView {
+    let name = non_empty(loose::text(value, &["name", "Name"]), "Player");
+    let face = face(
+        &loose::text(value, &["mii_data", "miiData", "mii", "Mii"]),
+        &name,
+        index,
+    );
+
+    RoomPlayerView {
+        friend_code: loose::text(value, &["friend_code", "friendCode", "fc"]),
+        vr: loose::int(value, &["vr", "VR", "race_rating"]),
+        br: loose::int(value, &["br", "BR", "battle_rating"]),
+        is_host: loose::flag(value, &["is_host", "isHost", "IsOpenHost"]),
+        name,
+        studio_data: face.studio_data,
+        avatar_initial: face.avatar_initial,
+        accent_color: face.accent_color,
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Leaderboard
 // ---------------------------------------------------------------------------
 
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct LeaderboardResponse {
-    players: Option<Vec<PlayerPayload>>,
-}
-
-#[derive(Debug, Deserialize, Default)]
-#[serde(default)]
-struct PlayerPayload {
-    position: i32,
-    name: String,
-    points: i32,
-    #[serde(alias = "fc", alias = "friendCode", alias = "friend_code")]
-    friend_code: String,
-    #[serde(
-        alias = "prestigeRank",
-        alias = "prestige_rank",
-        alias = "pr",
-        alias = "rank"
-    )]
-    prestige_rank: i32,
-    wins: i32,
-    races: i32,
-    games: i32,
-    winrate: f64,
-    #[serde(alias = "last_seen", alias = "lastSeen")]
-    last_seen: Option<String>,
-    #[serde(alias = "is_suspicious", alias = "isSuspicious")]
-    is_suspicious: bool,
-    #[serde(
-        alias = "vr_last_24_hours",
-        alias = "vr_gain_24h",
-        alias = "vrLast24Hours"
-    )]
-    vr_last_24_hours: i32,
-    #[serde(alias = "vr_gain_week", alias = "vrLastWeek")]
-    vr_last_week: i32,
-    #[serde(alias = "vr_gain_month", alias = "vrLastMonth")]
-    vr_last_month: i32,
-}
-
-/// Scarica la classifica.
-pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Vec<LeaderboardEntry>> {
+/// Scarica una pagina di classifica.
+///
+/// Le posizioni le numera il server sull'intera classifica, non sulla pagina:
+/// `offset` scorre e i numeri restano quelli veri.
+pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<LeaderboardPage> {
     let base = state.endpoints.read().await.leaderboard_api_url.clone();
     if base.trim().is_empty() {
         return Err(AppError::Configuration(
@@ -168,59 +310,77 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Vec<Le
     let url = format!("{base}{separator}limit={LEADERBOARD_PAGE_SIZE}&offset={offset}");
 
     let raw = state.downloader.get_string(&url).await?;
-    let response: LeaderboardResponse =
+    let payload: Value =
         serde_json::from_str(vk_core::json::strip_leading_noise(&raw)).map_err(|error| {
             AppError::Internal(format!("risposta della classifica non valida: {error}"))
         })?;
 
     let rank_cache = state.paths.rank_images_dir();
 
-    Ok(response
-        .players
-        .unwrap_or_default()
-        .into_iter()
+    let entries: Vec<LeaderboardEntry> = loose::array(&payload, &["players"])
+        .iter()
         .enumerate()
-        .map(|(index, player)| {
-            let games = if player.games > 0 {
-                player.games
-            } else {
-                player.races
-            };
-            let winrate = if player.winrate > 0.0 {
-                player.winrate
-            } else if games > 0 {
-                f64::from(player.wins) / f64::from(games) * 100.0
-            } else {
-                0.0
-            };
+        .map(|(index, player)| entry(player, index, offset, &rank_cache))
+        .collect();
 
-            let rank_image = (player.prestige_rank >= 1)
-                .then(|| rank_cache.join(format!("rank-{}.png", player.prestige_rank)))
-                .filter(|path| path.is_file())
-                .map(|path| path.to_string_lossy().to_string());
+    Ok(LeaderboardPage {
+        // Una pagina piena non prova che ce ne sia un'altra, ma è l'unico
+        // indizio che il server dà: `meta.count` conta solo questa.
+        has_more: entries.len() as u32 >= LEADERBOARD_PAGE_SIZE,
+        offset,
+        entries,
+    })
+}
 
-            LeaderboardEntry {
-                position: if player.position > 0 {
-                    player.position
-                } else {
-                    offset as i32 + index as i32 + 1
-                },
-                name: player.name,
-                points: player.points,
-                friend_code: player.friend_code,
-                prestige_rank: player.prestige_rank,
-                wins: player.wins,
-                games,
-                winrate,
-                last_seen: player.last_seen,
-                is_suspicious: player.is_suspicious,
-                vr_last_24_hours: player.vr_last_24_hours,
-                vr_last_week: player.vr_last_week,
-                vr_last_month: player.vr_last_month,
-                rank_image,
-            }
-        })
-        .collect())
+fn entry(value: &Value, index: usize, offset: u32, rank_cache: &Path) -> LeaderboardEntry {
+    let position = match loose::int(value, &["position", "pos"]) {
+        declared if declared > 0 => declared,
+        _ => offset as i32 + index as i32 + 1,
+    };
+
+    let games = loose::int(value, &["games", "races"]);
+    let wins = loose::int(value, &["wins"]);
+    let winrate = match loose::float(value, &["winrate", "win_rate", "winRate"]) {
+        rate if rate > 0.0 => rate,
+        _ if games > 0 => f64::from(wins) / f64::from(games) * 100.0,
+        _ => 0.0,
+    };
+
+    let prestige_rank = loose::int(value, &["prestigeRank", "prestige_rank", "pr", "rank"]);
+    let rank_image = (prestige_rank >= 1)
+        .then(|| rank_cache.join(format!("rank-{prestige_rank}.png")))
+        .filter(|path| path.is_file())
+        .map(|path| path.to_string_lossy().to_string());
+
+    let name = loose::text(value, &["name", "player"]);
+    let face = face(
+        &loose::text(value, &["mii_data", "miiData", "mii"]),
+        &name,
+        index,
+    );
+
+    LeaderboardEntry {
+        position,
+        points: loose::int(value, &["points", "vr", "ev"]),
+        friend_code: loose::text(value, &["fc", "friendCode", "friend_code"]),
+        prestige_rank,
+        wins,
+        games,
+        winrate,
+        last_seen: match loose::text(value, &["last_seen", "lastSeen"]) {
+            seen if seen.is_empty() => None,
+            seen => Some(rfc3339(&seen)),
+        },
+        is_suspicious: loose::flag(value, &["is_suspicious", "isSuspicious"]),
+        vr_last_24_hours: loose::int(value, &["vr_last_24_hours", "vr_gain_24h", "vrLast24Hours"]),
+        vr_last_week: loose::int(value, &["vr_gain_week", "vrLastWeek", "vr_last_week"]),
+        vr_last_month: loose::int(value, &["vr_gain_month", "vrLastMonth", "vr_last_month"]),
+        rank_image,
+        name,
+        studio_data: face.studio_data,
+        avatar_initial: face.avatar_initial,
+        accent_color: face.accent_color,
+    }
 }
 
 /// Scarica in cache le immagini dei rank citate dalla classifica.
@@ -279,16 +439,42 @@ pub async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResul
 mod tests {
     use super::*;
 
-    #[test]
-    fn the_rooms_payload_tolerates_missing_fields() {
-        let response: RoomsResponse = serde_json::from_str(
-            r#"{"success":true,"rooms":[{"id":"1","name":"Sala","host":"a","player_count":4}]}"#,
-        )
-        .unwrap();
+    fn json(raw: &str) -> Value {
+        serde_json::from_str(raw).unwrap()
+    }
 
-        let room = &response.rooms.unwrap()[0];
-        assert_eq!(room.player_count, 4);
-        assert_eq!(room.max_players, None);
+    fn player(raw: &str) -> LeaderboardEntry {
+        entry(&json(raw), 0, 0, Path::new("/nessuna/cache"))
+    }
+
+    /// La classifica reale manda `prestigeRank` **e** `rank` nello stesso
+    /// oggetto: con gli alias di serde questo payload faceva fallire l'intera
+    /// pagina con `duplicate field`.
+    #[test]
+    fn the_repeated_keys_of_the_server_are_synonyms_not_a_conflict() {
+        let entry = player(
+            r#"{
+                "position": 1,
+                "name": "lacly",
+                "points": 15088,
+                "fc": "0000-0002-0202",
+                "prestigeRank": 3,
+                "rank": 3,
+                "wins": 151,
+                "races": 259,
+                "games": 259,
+                "winrate": 58.3,
+                "vr_gain_24h": 6817,
+                "vr_last_24_hours": 6817,
+                "vrLast24Hours": 6817
+            }"#,
+        );
+
+        assert_eq!(entry.position, 1);
+        assert_eq!(entry.name, "lacly");
+        assert_eq!(entry.prestige_rank, 3);
+        assert_eq!(entry.vr_last_24_hours, 6817);
+        assert_eq!(entry.games, 259);
     }
 
     #[test]
@@ -299,8 +485,7 @@ mod tests {
             r#"{"pr":7}"#,
             r#"{"rank":7}"#,
         ] {
-            let player: PlayerPayload = serde_json::from_str(payload).unwrap();
-            assert_eq!(player.prestige_rank, 7, "{payload}");
+            assert_eq!(player(payload).prestige_rank, 7, "{payload}");
         }
 
         for payload in [
@@ -308,21 +493,127 @@ mod tests {
             r#"{"vr_gain_24h":10}"#,
             r#"{"vrLast24Hours":10}"#,
         ] {
-            let player: PlayerPayload = serde_json::from_str(payload).unwrap();
-            assert_eq!(player.vr_last_24_hours, 10, "{payload}");
+            assert_eq!(player(payload).vr_last_24_hours, 10, "{payload}");
         }
     }
 
     #[test]
     fn the_friend_code_accepts_the_short_key() {
-        let player: PlayerPayload = serde_json::from_str(r#"{"fc":"0000-1111-2222"}"#).unwrap();
-        assert_eq!(player.friend_code, "0000-1111-2222");
+        assert_eq!(
+            player(r#"{"fc":"0000-1111-2222"}"#).friend_code,
+            "0000-1111-2222"
+        );
     }
 
     #[test]
     fn unknown_fields_do_not_break_parsing() {
-        let player: PlayerPayload =
-            serde_json::from_str(r#"{"name":"a","campo_nuovo":{"x":1}}"#).unwrap();
-        assert_eq!(player.name, "a");
+        assert_eq!(player(r#"{"name":"a","campo_nuovo":{"x":1}}"#).name, "a");
+    }
+
+    #[test]
+    fn a_null_alias_does_not_hide_the_one_that_carries_the_value() {
+        assert_eq!(player(r#"{"prestigeRank":null,"rank":4}"#).prestige_rank, 4);
+    }
+
+    #[test]
+    fn numbers_sent_as_strings_are_still_numbers() {
+        let entry = player(r#"{"points":"15088","wins":"10","races":"20"}"#);
+        assert_eq!(entry.points, 15088);
+        assert_eq!(entry.wins, 10);
+        assert_eq!(entry.games, 20);
+    }
+
+    #[test]
+    fn the_winrate_is_computed_when_the_server_omits_it() {
+        assert!((player(r#"{"wins":5,"races":20}"#).winrate - 25.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn the_position_falls_back_to_the_page_offset() {
+        let entry = entry(
+            &json(r#"{"name":"a"}"#),
+            2,
+            100,
+            Path::new("/nessuna/cache"),
+        );
+        assert_eq!(entry.position, 103);
+    }
+
+    #[test]
+    fn a_player_without_a_valid_mii_keeps_the_initial() {
+        let entry = player(r#"{"name":"sossio","mii_data":"non-un-mii"}"#);
+        assert!(entry.studio_data.is_empty());
+        assert_eq!(entry.avatar_initial, "S");
+        assert!(entry.accent_color.starts_with('#'));
+    }
+
+    #[test]
+    fn a_real_mii_block_becomes_studio_data() {
+        // Blocchi presi dalla risposta vera di `vk_leaderboard.php`: 74 byte
+        // in base64, gli stessi che stanno nel salvataggio.
+        for payload in [
+            r#"{"name":"sossio","mii_data":"gAAAcwBvAHMAcwBpAG8AAAAAAAAAAEBAgAAAAAAAAAAAFVRAic4ookSMCFgUTbCNAIoAiiUEAAAAAAAAAAAAAAAAAAAAAAAAAAA="}"#,
+            r#"{"name":"lacly","mii_data":"wBYAbABhAGMAbAB5AAAAAAAAAAAAAG4AgAAAAAAAAAAgTH/gkQQQjFxyDHgAdUAPcMQAigSaAAAAAAAAAAAAAAAAAAAAAAAAAAA="}"#,
+        ] {
+            let entry = player(payload);
+            assert!(!entry.studio_data.is_empty(), "{payload}");
+            assert!(entry.accent_color.starts_with('#'));
+        }
+    }
+
+    #[test]
+    fn the_rooms_payload_tolerates_missing_fields() {
+        let view = room(&json(
+            r#"{"id":"1","name":"Sala","host":"a","player_count":4}"#,
+        ));
+
+        assert_eq!(view.player_count, 4);
+        assert_eq!(view.max_players, 12);
+        assert_eq!(view.mode, "Versus");
+        assert!(view.players.is_empty());
+    }
+
+    #[test]
+    fn the_players_of_a_room_reach_the_frontend() {
+        let view = room(&json(
+            r#"{
+                "id": "TQHUTZ",
+                "name": "Stanza di sossio",
+                "player_count": 2,
+                "players": [
+                    {"name":"sossio","friend_code":"5078-0614-0949","vr":6100,"br":5000,"is_host":true},
+                    {"name":"lacly","friend_code":"0000-0002-0202","vr":5400,"br":5000,"is_host":false}
+                ]
+            }"#,
+        ));
+
+        assert_eq!(view.players.len(), 2);
+        assert_eq!(view.player_count, 2);
+        assert!(view.players[0].is_host);
+        assert_eq!(view.players[0].vr, 6100);
+        // Il nome dell'host manca dalla stanza: lo dà l'elenco.
+        assert_eq!(view.host, "sossio");
+        assert_eq!(view.players[1].avatar_initial, "L");
+    }
+
+    #[test]
+    fn the_room_count_follows_the_listed_players() {
+        let view = room(&json(
+            r#"{"player_count":0,"players":[{"name":"a"},{"name":"b"}]}"#,
+        ));
+        assert_eq!(view.player_count, 2);
+    }
+
+    #[test]
+    fn the_snapshot_timestamp_becomes_rfc3339() {
+        assert_eq!(
+            rfc3339("2026-08-25 11:33:49.459785+00"),
+            "2026-08-25T11:33:49.459785+00:00"
+        );
+        assert_eq!(
+            rfc3339("2026-08-24T21:37:06+00:00"),
+            "2026-08-24T21:37:06+00:00"
+        );
+        assert_eq!(rfc3339("  "), "");
     }
 }

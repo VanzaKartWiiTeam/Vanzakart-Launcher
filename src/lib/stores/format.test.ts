@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatBytes, formatDate, formatPlayTime, PAGE_META, ROUTES } from './app.svelte';
+import {
+  formatBytes,
+  formatDate,
+  formatPlayTime,
+  formatRelative,
+  PAGE_META,
+  ROUTES
+} from './app.svelte';
 
 describe('formatPlayTime', () => {
   it('mostra i minuti sotto l’ora', () => {
@@ -33,6 +40,28 @@ describe('formatDate', () => {
     expect(formatDate(null)).toBe('Mai');
     expect(formatDate('')).toBe('Mai');
     expect(formatDate('non una data')).toBe('Mai');
+  });
+});
+
+describe('formatRelative', () => {
+  const minutes = (value: number) => new Date(Date.now() - value * 60_000).toISOString();
+
+  it('usa la scala giusta a seconda della distanza', () => {
+    expect(formatRelative(minutes(0.2))).toBe('adesso');
+    expect(formatRelative(minutes(5))).toBe('5 min fa');
+    expect(formatRelative(minutes(150))).toBe('2 h fa');
+    expect(formatRelative(minutes(60 * 24))).toBe('ieri');
+    expect(formatRelative(minutes(60 * 24 * 3))).toBe('3 g fa');
+  });
+
+  it('oltre il mese torna alla data piena', () => {
+    expect(formatRelative(minutes(60 * 24 * 60))).toContain('20');
+  });
+
+  it('restituisce una stringa vuota per valori assenti o non validi', () => {
+    expect(formatRelative(null)).toBe('');
+    expect(formatRelative('')).toBe('');
+    expect(formatRelative('non una data')).toBe('');
   });
 });
 

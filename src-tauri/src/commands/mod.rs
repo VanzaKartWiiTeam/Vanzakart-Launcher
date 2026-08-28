@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, State};
 use vk_core::progress::{ProgressSink, ProgressUpdate};
 
 use crate::domain::{
-    ConflictView, DiagnosticEntry, InstallOutcome, LauncherStatus, LeaderboardEntry, ModStatus,
+    ConflictView, DiagnosticEntry, InstallOutcome, LauncherStatus, LeaderboardPage, ModStatus,
     NewsItem, PlayStatsView, RoomsSummary, SettingsView,
 };
 use crate::error::{AppError, AppResult};
@@ -474,14 +474,18 @@ pub async fn rooms_fetch(state: Shared<'_>) -> AppResult<RoomsSummary> {
 pub async fn leaderboard_fetch(
     state: Shared<'_>,
     offset: Option<u32>,
-) -> AppResult<Vec<LeaderboardEntry>> {
+) -> AppResult<LeaderboardPage> {
     let state = state.inner().clone();
-    let entries = services::community::leaderboard(&state, offset.unwrap_or(0)).await?;
+    let page = services::community::leaderboard(&state, offset.unwrap_or(0)).await?;
 
-    let ranks: Vec<i32> = entries.iter().map(|entry| entry.prestige_rank).collect();
+    let ranks: Vec<i32> = page
+        .entries
+        .iter()
+        .map(|entry| entry.prestige_rank)
+        .collect();
     let _ = services::community::cache_rank_images(&state, &ranks).await;
 
-    Ok(entries)
+    Ok(page)
 }
 
 // ---------------------------------------------------------------------------
