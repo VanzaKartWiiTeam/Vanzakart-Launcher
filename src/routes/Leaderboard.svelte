@@ -9,6 +9,10 @@
    * Come nel legacy ogni riga porta la faccia del giocatore: il server manda
    * il Mii insieme alla classifica, e senza faccia una classifica di nomi
    * corti è illeggibile. La classifica arriva a pagine da cento (§D-058).
+   *
+   * Il dettaglio sta **accanto** alla tabella, non sotto: sotto lo si trovava
+   * solo scorrendo, e chi cliccava una riga non vedeva succedere niente
+   * (§D-066).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
@@ -76,14 +80,21 @@
     }
   }
 
+  /** Oro, argento e bronzo: la classe porta il colore a tutto il gradino. */
   function medal(position: number): string {
-    return position === 1 ? 'podium-1' : position === 2 ? 'podium-2' : 'podium-3';
+    return position === 1 ? 'gold' : position === 2 ? 'silver' : 'bronze';
   }
 
   function gain(value: number): string {
     return value > 0 ? `+${value}` : `${value}`;
   }
+
+  function onKeydown(event: KeyboardEvent) {
+    if (event.key === 'Escape' && selected) selected = null;
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="page">
   <div class="toolbar">
@@ -110,143 +121,191 @@
     {#if !searching && podium.length > 0}
       <section class="podium">
         {#each podium as entry (entry.friendCode || entry.position)}
-          <button class="step {medal(entry.position)}" onclick={() => (selected = entry)}>
-            <span class="rank">#{entry.position}</span>
-            <MiiAvatar
-              studioData={entry.studioData}
-              initial={entry.avatarInitial}
-              accent={entry.accentColor}
-              name={entry.name}
-              size={entry.position === 1 ? 68 : 56}
-              shape="rounded"
-            />
+          <button
+            class="step {medal(entry.position)}"
+            class:selected={selected === entry}
+            onclick={() => (selected = selected === entry ? null : entry)}
+          >
+            <span class="place">#{entry.position}</span>
+
+            <span class="face">
+              <MiiAvatar
+                studioData={entry.studioData}
+                initial={entry.avatarInitial}
+                accent={entry.accentColor}
+                name={entry.name}
+                size={entry.position === 1 ? 96 : 76}
+                shape="rounded"
+              />
+            </span>
+
             <span class="name">{entry.name}</span>
             <span class="points">{entry.points.toLocaleString('it-IT')} VR</span>
             <span class="vk-faint sub">{entry.wins} vittorie · {entry.winrate.toFixed(1)}%</span>
+
             {#if entry.rankImage}
-              <img class="rank-image" src={entry.rankImage} alt="" />
+              <img
+                class="rank-image"
+                src={entry.rankImage}
+                alt="Grado {entry.prestigeRank}"
+                title="Grado {entry.prestigeRank}"
+              />
             {/if}
           </button>
         {/each}
       </section>
     {/if}
 
-    <section class="vk-card table-card">
-      <div class="row head">
-        <span>Pos</span>
-        <span>Giocatore</span>
-        <span class="num">VR</span>
-        <span class="num">24 h</span>
-        <span class="num">Vittorie</span>
-        <span class="num">Gare</span>
-      </div>
+    <div class="board" class:with-details={selected !== null}>
+      <section class="vk-card table-card">
+        <div class="row head">
+          <span>Pos</span>
+          <span>Giocatore</span>
+          <span class="num">VR</span>
+          <span class="num">24 h</span>
+          <span class="num">Vittorie</span>
+          <span class="num">Gare</span>
+        </div>
 
-      <div class="rows">
-        {#each rest as entry (entry.friendCode || entry.position)}
-          <button
-            class="row entry"
-            class:suspicious={entry.isSuspicious}
-            class:selected={selected === entry}
-            onclick={() => (selected = selected === entry ? null : entry)}
-          >
-            <span class="pos">{entry.position}</span>
-            <span class="player">
-              <MiiAvatar
-                studioData={entry.studioData}
-                initial={entry.avatarInitial}
-                accent={entry.accentColor}
-                name={entry.name}
-                size={30}
-              />
-              <span class="player-name">{entry.name}</span>
-              {#if entry.rankImage}<img class="rank-mini" src={entry.rankImage} alt="" />{/if}
-              {#if entry.isSuspicious}
-                <span class="vk-badge vk-badge--warning">Sospetto</span>
-              {/if}
-            </span>
-            <span class="num strong">{entry.points.toLocaleString('it-IT')}</span>
-            <span
-              class="num gain"
-              class:up={entry.vrLast24Hours > 0}
-              class:down={entry.vrLast24Hours < 0}
+        <div class="rows">
+          {#each rest as entry (entry.friendCode || entry.position)}
+            <button
+              class="row entry"
+              class:suspicious={entry.isSuspicious}
+              class:selected={selected === entry}
+              onclick={() => (selected = selected === entry ? null : entry)}
             >
-              {entry.vrLast24Hours === 0 ? '—' : gain(entry.vrLast24Hours)}
-            </span>
-            <span class="num">{entry.wins}</span>
-            <span class="num">{entry.games}</span>
-          </button>
-        {:else}
-          <p class="vk-faint no-match">Nessun giocatore corrisponde alla ricerca.</p>
-        {/each}
-      </div>
+              <span class="pos">{entry.position}</span>
+              <span class="player">
+                <MiiAvatar
+                  studioData={entry.studioData}
+                  initial={entry.avatarInitial}
+                  accent={entry.accentColor}
+                  name={entry.name}
+                  size={30}
+                />
+                {#if entry.rankImage}
+                  <img
+                    class="rank-mini"
+                    src={entry.rankImage}
+                    alt="Grado {entry.prestigeRank}"
+                    title="Grado {entry.prestigeRank}"
+                  />
+                {/if}
+                <span class="player-name">{entry.name}</span>
+                {#if entry.isSuspicious}
+                  <span class="vk-badge vk-badge--warning">Sospetto</span>
+                {/if}
+              </span>
+              <span class="num strong">{entry.points.toLocaleString('it-IT')}</span>
+              <span
+                class="num gain"
+                class:up={entry.vrLast24Hours > 0}
+                class:down={entry.vrLast24Hours < 0}
+              >
+                {entry.vrLast24Hours === 0 ? '—' : gain(entry.vrLast24Hours)}
+              </span>
+              <span class="num">{entry.wins}</span>
+              <span class="num">{entry.games}</span>
+            </button>
+          {:else}
+            <p class="vk-faint no-match">Nessun giocatore corrisponde alla ricerca.</p>
+          {/each}
+        </div>
 
-      <footer class="table-foot">
-        <span class="vk-faint">
-          {searching
-            ? `${rest.length} ${rest.length === 1 ? 'risultato' : 'risultati'}`
-            : `${entries.length} giocatori`}
-        </span>
-        {#if hasMore && !searching}
-          <button class="vk-btn" onclick={loadMore} disabled={loadingMore}>
-            {loadingMore ? 'Carico…' : 'Carica altri'}
-          </button>
-        {/if}
-      </footer>
-    </section>
-  {/if}
+        <footer class="table-foot">
+          <span class="vk-faint">
+            {searching
+              ? `${rest.length} ${rest.length === 1 ? 'risultato' : 'risultati'}`
+              : `${entries.length} giocatori`}
+          </span>
+          {#if hasMore && !searching}
+            <button class="vk-btn" onclick={loadMore} disabled={loadingMore}>
+              {loadingMore ? 'Carico…' : 'Carica altri'}
+            </button>
+          {/if}
+        </footer>
+      </section>
 
-  {#if selected}
-    <aside class="vk-card details vk-rainbow-top">
-      <header class="details-head">
-        <MiiAvatar
-          studioData={selected.studioData}
-          initial={selected.avatarInitial}
-          accent={selected.accentColor}
-          name={selected.name}
-          size={56}
-          shape="rounded"
-        />
-        <div class="details-id">
-          <p class="vk-eyebrow">Dettagli giocatore</p>
-          <h3 class="details-name">{selected.name}</h3>
-        </div>
-        <button class="vk-btn vk-btn--ghost" onclick={() => (selected = null)}>Chiudi</button>
-      </header>
+      {#if selected}
+        {@const player = selected}
+        <aside class="vk-card details vk-rainbow-top">
+          <header class="details-head">
+            <MiiAvatar
+              studioData={player.studioData}
+              initial={player.avatarInitial}
+              accent={player.accentColor}
+              name={player.name}
+              size={64}
+              shape="rounded"
+            />
+            <div class="details-id">
+              <p class="vk-eyebrow">#{player.position} in classifica</p>
+              <h3 class="details-name">{player.name}</h3>
+              {#if player.rankImage}
+                <p class="details-rank">
+                  <img src={player.rankImage} alt="" />
+                  Grado {player.prestigeRank}
+                </p>
+              {/if}
+            </div>
+            <button
+              class="close"
+              onclick={() => (selected = null)}
+              title="Chiudi i dettagli (Esc)"
+              aria-label="Chiudi i dettagli"
+            >
+              <Icon name="close" size={14} />
+            </button>
+          </header>
 
-      <div class="details-grid">
-        <div><span class="vk-faint">Posizione</span><strong>#{selected.position}</strong></div>
-        <div>
-          <span class="vk-faint">VR</span><strong>{selected.points.toLocaleString('it-IT')}</strong>
-        </div>
-        <div>
-          <span class="vk-faint">Prestigio</span><strong>{selected.prestigeRank || '—'}</strong>
-        </div>
-        <div>
-          <span class="vk-faint">Friend code</span><strong class="vk-mono"
-            >{selected.friendCode || '—'}</strong
-          >
-        </div>
-        <div><span class="vk-faint">Vittorie</span><strong>{selected.wins}</strong></div>
-        <div><span class="vk-faint">Gare</span><strong>{selected.games}</strong></div>
-        <div>
-          <span class="vk-faint">Win rate</span><strong>{selected.winrate.toFixed(1)}%</strong>
-        </div>
-        <div>
-          <span class="vk-faint">Online</span><strong
-            >{formatRelative(selected.lastSeen) || '—'}</strong
-          >
-        </div>
-        <div>
-          <span class="vk-faint">VR 24 h</span><strong>{gain(selected.vrLast24Hours)}</strong>
-        </div>
-        <div>
-          <span class="vk-faint">VR settimana</span><strong>{gain(selected.vrLastWeek)}</strong>
-        </div>
-        <div>
-          <span class="vk-faint">VR mese</span><strong>{gain(selected.vrLastMonth)}</strong>
-        </div>
-      </div>
-    </aside>
+          <p class="headline">{player.points.toLocaleString('it-IT')} <span>VR</span></p>
+
+          <div class="details-grid">
+            <div><span class="vk-faint">Vittorie</span><strong>{player.wins}</strong></div>
+            <div><span class="vk-faint">Gare</span><strong>{player.games}</strong></div>
+            <div>
+              <span class="vk-faint">Win rate</span><strong>{player.winrate.toFixed(1)}%</strong>
+            </div>
+            <div>
+              <span class="vk-faint">Online</span>
+              <strong>{formatRelative(player.lastSeen) || '—'}</strong>
+            </div>
+          </div>
+
+          <div class="trend">
+            <p class="vk-eyebrow">Andamento VR</p>
+            <div class="trend-row">
+              <span class="vk-faint">24 ore</span>
+              <strong class:up={player.vrLast24Hours > 0} class:down={player.vrLast24Hours < 0}>
+                {gain(player.vrLast24Hours)}
+              </strong>
+            </div>
+            <div class="trend-row">
+              <span class="vk-faint">Settimana</span>
+              <strong class:up={player.vrLastWeek > 0} class:down={player.vrLastWeek < 0}>
+                {gain(player.vrLastWeek)}
+              </strong>
+            </div>
+            <div class="trend-row">
+              <span class="vk-faint">Mese</span>
+              <strong class:up={player.vrLastMonth > 0} class:down={player.vrLastMonth < 0}>
+                {gain(player.vrLastMonth)}
+              </strong>
+            </div>
+          </div>
+
+          <p class="fc">
+            <span class="vk-faint">Friend code</span>
+            <span class="vk-mono">{player.friendCode || '—'}</span>
+          </p>
+
+          {#if player.isSuspicious}
+            <p class="vk-badge vk-badge--warning flagged">Segnalato come sospetto</p>
+          {/if}
+        </aside>
+      {/if}
+    </div>
   {/if}
 </div>
 
@@ -280,63 +339,111 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
     padding: 18px 16px;
-    border: 1px solid var(--vk-stroke);
+    border: 1px solid color-mix(in srgb, var(--medal) 42%, var(--vk-stroke));
     border-radius: var(--vk-radius-card);
     text-align: center;
+    transition:
+      transform var(--vk-dur-fast) var(--vk-ease),
+      box-shadow var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .step:hover {
+    transform: translateY(-2px);
+  }
+
+  .step.selected {
+    box-shadow: 0 0 0 1px var(--medal) inset;
+  }
+
+  /* Oro, argento e bronzo: un colore solo per gradino, ripreso da cornice,
+     posizione, nome e alone. */
+  .gold {
+    --medal: #ffd166;
+  }
+  .silver {
+    --medal: #d6e0f0;
+  }
+  .bronze {
+    --medal: #e08a4b;
   }
 
   /* L'ordine visuale è 2° · 1° · 3°, come nel WPF. */
   .podium .step:nth-child(1) {
     order: 2;
     background: var(--vk-podium-1);
-    min-height: 244px;
+    min-height: 330px;
+    box-shadow: var(--vk-glow-gold);
   }
   .podium .step:nth-child(2) {
     order: 1;
     background: var(--vk-podium-2);
-    min-height: 216px;
+    min-height: 300px;
   }
   .podium .step:nth-child(3) {
     order: 3;
     background: var(--vk-podium-3);
-    min-height: 198px;
+    min-height: 276px;
   }
 
-  .podium .step:nth-child(1) {
-    border-color: rgb(255 209 102 / 0.55);
-    box-shadow: var(--vk-glow-gold);
-  }
-
-  .rank {
+  .place {
     font-size: var(--vk-fs-eyebrow);
     font-weight: 900;
-    color: var(--vk-text-secondary);
+    letter-spacing: 0.06em;
+    color: var(--medal);
   }
 
-  .rank-image {
-    width: 34px;
-    height: 34px;
-    object-fit: contain;
+  /* Cornice della medaglia attorno alla faccia. */
+  .face {
+    display: inline-flex;
+    padding: 3px;
+    border-radius: 22px;
+    background: linear-gradient(
+      150deg,
+      var(--medal),
+      color-mix(in srgb, var(--medal) 25%, #0b1020)
+    );
+    box-shadow: 0 0 18px color-mix(in srgb, var(--medal) 40%, transparent);
   }
 
   .name {
     font-size: 17px;
     font-weight: 900;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .points {
-    font-size: 15px;
-    font-weight: 800;
-    color: var(--vk-cyan-soft);
+    font-size: 16px;
+    font-weight: 900;
+    color: var(--medal);
   }
 
   .sub {
     font-size: var(--vk-fs-micro);
   }
 
-  /* --- Tabella --- */
+  .rank-image {
+    width: 40px;
+    height: 40px;
+    object-fit: contain;
+  }
+
+  /* --- Tabella e dettagli --- */
+
+  .board {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    align-items: start;
+  }
+
+  .board.with-details {
+    grid-template-columns: minmax(0, 1fr) 340px;
+  }
 
   .table-card {
     padding: 0;
@@ -376,7 +483,8 @@
   }
 
   .entry.selected {
-    background: rgb(0 242 255 / 0.08);
+    background: rgb(0 242 255 / 0.1);
+    box-shadow: inset 2px 0 0 var(--vk-cyan);
   }
 
   .entry.suspicious {
@@ -404,8 +512,8 @@
   }
 
   .rank-mini {
-    width: 20px;
-    height: 20px;
+    width: 22px;
+    height: 22px;
     object-fit: contain;
     flex: none;
   }
@@ -425,11 +533,13 @@
     color: var(--vk-text-faint);
   }
 
-  .gain.up {
+  .gain.up,
+  .trend strong.up {
     color: var(--vk-success);
   }
 
-  .gain.down {
+  .gain.down,
+  .trend strong.down {
     color: var(--vk-danger);
   }
 
@@ -453,15 +563,19 @@
   /* --- Dettagli --- */
 
   .details {
-    position: relative;
-    overflow: hidden;
+    position: sticky;
+    top: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    max-height: calc(100vh - var(--vk-header-h) - var(--vk-titlebar-h) - 40px);
+    overflow: hidden auto;
   }
 
   .details-head {
     display: flex;
-    align-items: center;
-    gap: 14px;
-    margin-bottom: 14px;
+    align-items: flex-start;
+    gap: 12px;
   }
 
   .details-id {
@@ -471,14 +585,62 @@
 
   .details-name {
     margin: 2px 0 0;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .details-rank {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 0;
+    font-size: var(--vk-fs-micro);
+    color: var(--vk-text-secondary);
+  }
+
+  .details-rank img {
+    width: 22px;
+    height: 22px;
+    object-fit: contain;
+  }
+
+  .close {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    flex: none;
+    border: 1px solid var(--vk-stroke);
+    border-radius: 9px;
+    background: transparent;
+    color: var(--vk-text-secondary);
+  }
+
+  .close:hover {
+    border-color: var(--vk-danger);
+    color: var(--vk-danger);
+  }
+
+  .headline {
+    margin: 0;
+    font-size: 30px;
+    font-weight: 900;
+    line-height: 1;
+    color: var(--vk-cyan-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .headline span {
+    font-size: 14px;
+    color: var(--vk-text-secondary);
   }
 
   .details-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-    gap: 12px;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
   }
 
   .details-grid div {
@@ -492,8 +654,56 @@
     font-size: var(--vk-fs-eyebrow);
   }
 
+  .trend {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px 12px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-badge);
+    background: var(--vk-panel-soft);
+  }
+
+  .trend-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    font-size: var(--vk-fs-small);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .fc {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 0;
+    font-size: var(--vk-fs-small);
+  }
+
+  .fc .vk-faint {
+    font-size: var(--vk-fs-eyebrow);
+  }
+
+  .flagged {
+    align-self: flex-start;
+  }
+
   .skeleton {
     height: 220px;
+  }
+
+  /* Sotto i 1200 px la colonna non ci sta: il dettaglio torna in linea, ma
+     sopra la tabella, dove si vede senza scorrere. */
+  @media (max-width: 1200px) {
+    .board.with-details {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .details {
+      position: static;
+      order: -1;
+      max-height: none;
+    }
   }
 
   @media (max-width: 900px) {

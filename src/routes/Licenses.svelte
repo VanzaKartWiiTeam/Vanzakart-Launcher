@@ -373,14 +373,18 @@
                 </div>
 
                 {#if canWrite}
+                  <!--
+                    L'icona da sola non diceva a cosa serviva: la scritta sì
+                    (§D-061).
+                  -->
                   <button
-                    class="ghost-btn"
-                    title="Cambia il Mii di questa licenza"
-                    aria-label="Cambia il Mii di questa licenza"
+                    class="swap-btn"
+                    title="Assegna a questa licenza un altro Mii del database di Dolphin"
                     onclick={() => (miiTarget = license)}
                     disabled={miis.length === 0 || applyingMii !== ''}
                   >
-                    <Icon name="swap" size={15} />
+                    <Icon name="swap" size={14} />
+                    Cambia Mii
                   </button>
                 {/if}
               </header>
@@ -845,26 +849,32 @@
     text-overflow: ellipsis;
   }
 
-  .ghost-btn {
-    display: grid;
-    place-items: center;
-    width: 30px;
-    height: 30px;
+  .swap-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex: none;
+    padding: 7px 11px;
     border: 1px solid var(--vk-stroke);
-    border-radius: 9px;
+    border-radius: var(--vk-radius-pill);
     background: transparent;
     color: var(--vk-text-secondary);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    white-space: nowrap;
     transition:
       border-color var(--vk-dur-fast) var(--vk-ease),
+      background var(--vk-dur-fast) var(--vk-ease),
       color var(--vk-dur-fast) var(--vk-ease);
   }
 
-  .ghost-btn:hover:not(:disabled) {
+  .swap-btn:hover:not(:disabled) {
     border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 14%, transparent);
     color: var(--vk-text);
   }
 
-  .ghost-btn:disabled {
+  .swap-btn:disabled {
     opacity: 0.4;
     cursor: not-allowed;
   }

@@ -1,7 +1,7 @@
 //! # vk-save
 //!
-//! Formati binari di Mario Kart Wii e della Wii: `rksys.dat`, `RFL_DB.dat` e i
-//! blocchi Mii da 74 byte.
+//! Formati binari di Mario Kart Wii e della Wii: `rksys.dat`, `RFL_DB.dat`, i
+//! blocchi Mii da 74 byte e `VKRating.pul`, dove la modpack tiene i punteggi.
 //!
 //! Le scritture sui formati di salvataggio esistono e sono testate contro
 //! fixture binarie **reali** e anonimizzate, in `fixtures/` (vedi
@@ -22,6 +22,7 @@ pub mod error;
 pub mod friend_code;
 pub mod mii;
 pub mod miidb;
+pub mod pulsar;
 pub mod rksys;
 
 pub use error::{SaveError, SaveResult};

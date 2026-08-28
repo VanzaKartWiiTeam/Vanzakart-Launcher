@@ -90,9 +90,23 @@
       // Un istante perché si legga "installato" prima che la finestra sparisca.
       setTimeout(() => void relaunch(), 900);
     } catch (err) {
-      error = err instanceof Error ? err.message : String(err);
+      error = explain(err instanceof Error ? err.message : String(err));
       stage = 'ready';
     }
+  }
+
+  /**
+   * Su Linux l'updater di Tauri sa aggiornare solo l'AppImage: chi ha
+   * installato il `.deb` o l'`.rpm` riceve un errore che parla di formati, non
+   * di cosa deve fare (§D-069).
+   */
+  function explain(message: string): string {
+    const packaged = /appimage|not supported|unsupported/i.test(message);
+    if (!packaged) return message;
+
+    return `${message}
+
+L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pacchetto .deb o .rpm, aggiorna dal gestore di pacchetti o riscarica il launcher dal sito.`;
   }
 </script>
 

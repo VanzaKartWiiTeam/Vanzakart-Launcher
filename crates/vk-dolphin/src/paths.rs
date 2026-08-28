@@ -36,6 +36,18 @@ pub fn executable_names() -> &'static [&'static str] {
     }
 }
 
+/// `true` se il nome è quello di un AppImage di Dolphin.
+///
+/// Su Linux Dolphin si distribuisce anche come AppImage, e il nome porta
+/// versione e architettura — `Dolphin_Emulator-2503-x86_64.AppImage` — quindi
+/// un confronto con un elenco di nomi fissi non lo troverebbe mai. Il nome
+/// arriva già in minuscolo da chi chiama.
+fn is_dolphin_appimage(lowercase_name: &str) -> bool {
+    cfg!(all(unix, not(target_os = "macos")))
+        && lowercase_name.ends_with(".appimage")
+        && lowercase_name.contains("dolphin")
+}
+
 /// Cartelle `User` candidate, in ordine di priorità.
 ///
 /// Ordine legacy conservato: installazione portable accanto all'eseguibile,
@@ -229,9 +241,10 @@ pub fn executable_candidates(probe: &PathProbe) -> Vec<PathBuf> {
             let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
 
             if path.is_file()
-                && executable_names()
+                && (executable_names()
                     .iter()
                     .any(|n| n.eq_ignore_ascii_case(&name))
+                    || is_dolphin_appimage(&name))
             {
                 out.push(path);
             } else if path.is_dir() && name.contains("dolphin") {
@@ -301,6 +314,20 @@ fn normalize(path: &Path) -> PathBuf {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_dolphin_appimage_is_recognised_by_its_name() {
+        // Vale solo su Linux: altrove un .AppImage non è un eseguibile.
+        let expected = cfg!(all(unix, not(target_os = "macos")));
+
+        assert_eq!(
+            super::is_dolphin_appimage("dolphin_emulator-2503-x86_64.appimage"),
+            expected
+        );
+        assert_eq!(super::is_dolphin_appimage("dolphin.appimage"), expected);
+        assert!(!super::is_dolphin_appimage("krita-5.2.2-x86_64.appimage"));
+        assert!(!super::is_dolphin_appimage("dolphin-emu"));
+    }
+
     use super::*;
 
     #[test]

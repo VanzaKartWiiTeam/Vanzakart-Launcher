@@ -5,6 +5,16 @@ use std::path::PathBuf;
 use winreg::enums::HKEY_CURRENT_USER;
 use winreg::RegKey;
 
+/// Su Windows non c'è niente da controllare prima di aprire la finestra: la
+/// webview è quella di sistema e non dipende da un server grafico esterno.
+pub fn preflight() -> Result<(), String> {
+    Ok(())
+}
+
+/// Nessun accorgimento sul rendering: WebView2 non ha il problema DMA-BUF di
+/// WebKitGTK.
+pub fn prepare_graphics() {}
+
 /// `HKCU\Software\Dolphin Emulator\UserConfigPath`, se presente.
 ///
 /// È lo stesso valore che leggeva `DolphinPathResolverService`.

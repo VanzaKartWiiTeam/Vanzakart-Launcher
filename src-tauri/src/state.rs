@@ -51,6 +51,15 @@ pub struct AppState {
     /// Serve alla ricerca per nome: `Mod/Index` non accetta un filtro
     /// testuale, quindi la corrispondenza si fa in locale sui nomi.
     pub gamebanana_catalog: RwLock<Option<crate::services::gamebanana::Catalog>>,
+    /// Classifica indicizzata per friend code, con il momento in cui è stata
+    /// presa: serve alla lista amici, che altrimenti la richiederebbe a ogni
+    /// apertura (§D-064).
+    pub leaderboard_index: RwLock<
+        Option<(
+            std::time::Instant,
+            std::sync::Arc<crate::services::community::PlayerIndex>,
+        )>,
+    >,
 }
 
 /// Sessione di gioco in corso.
@@ -111,6 +120,7 @@ impl AppState {
             cancel: RwLock::new(CancelToken::new()),
             game_session: RwLock::new(None),
             gamebanana_catalog: RwLock::new(None),
+            leaderboard_index: RwLock::new(None),
         }))
     }
 

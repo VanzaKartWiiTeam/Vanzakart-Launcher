@@ -79,6 +79,23 @@ pub async fn preflight(state: &Arc<AppState>) -> AppResult<Option<LaunchBlocker>
         }));
     }
 
+    // Su Linux e macOS un binario o un AppImage appena scaricato arriva senza
+    // il bit di esecuzione: senza questo controllo l'unico segnale sarebbe un
+    // "Permission denied" all'avvio (§D-068).
+    let executable = vk_dolphin::paths::resolve_launch_executable(&settings.dolphin());
+    if !crate::platform::is_executable_file(&executable) {
+        return Ok(Some(LaunchBlocker {
+            code: "dolphin-not-executable".into(),
+            message: format!(
+                "Il file di Dolphin non ha il permesso di esecuzione. Dallo con:
+
+                     chmod +x {}",
+                executable.display()
+            ),
+            navigate_to: "settings".into(),
+        }));
+    }
+
     if crate::platform::is_executable_running(&settings.dolphin()) {
         return Ok(Some(LaunchBlocker {
             code: "dolphin-running".into(),

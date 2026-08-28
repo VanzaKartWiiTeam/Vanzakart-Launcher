@@ -27,6 +27,24 @@ pub use error::{AppError, AppResult};
 
 /// Punto d'ingresso condiviso fra il binario e i test.
 pub fn run() {
+    // Prima di tutto il resto: se la finestra non può aprirsi lo si dice qui,
+    // in italiano, invece di lasciare che sia GTK a morire con un panic
+    // (§D-067). Va prima anche della cartella dati, così un avvio da root non
+    // lascia file di root in giro.
+    if let Err(reason) = platform::preflight() {
+        eprintln!(
+            "
+VanzaKart Launcher non può avviarsi.
+
+{reason}
+"
+        );
+        std::process::exit(1);
+    }
+
+    install_panic_hook();
+    platform::prepare_graphics();
+
     let paths = match storage::paths::AppPaths::discover() {
         Ok(paths) => paths,
         Err(error) => {
@@ -165,6 +183,47 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::addons_remove,
             commands::addons_conflicts,
         ])
+}
+
+/// Fa in modo che un panic della finestra dica qualcosa di utile.
+///
+/// Quando GTK non parte, `tao` va in panic dentro `gtk::rt::init` con un
+/// messaggio che parla di un `BoolError` in un file del registry di cargo: chi
+/// lo legge non ha modo di capire che gli manca un display o che ha usato
+/// `sudo`. Il messaggio originale resta — serve a chi apre una segnalazione —
+/// ma sotto ci si aggiunge cosa fare (§D-067).
+fn install_panic_hook() {
+    let previous = std::panic::take_hook();
+
+    std::panic::set_hook(Box::new(move |info| {
+        previous(info);
+
+        let payload = info
+            .payload()
+            .downcast_ref::<&str>()
+            .map(|text| (*text).to_string())
+            .or_else(|| info.payload().downcast_ref::<String>().cloned())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+
+        if payload.contains("gtk") || payload.contains("display") {
+            eprintln!(
+                "
+La finestra non si è aperta. Le cause abituali sono due:
+                 
+  · il launcher è stato avviato con sudo, e il server grafico rifiuta                 
+    la connessione a root: riavvialo senza sudo;
+                 
+  · mancano le librerie di sistema di WebKitGTK. Su Debian e Ubuntu:                 
+      sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0                 
+    su Fedora:                 
+      sudo dnf install webkit2gtk4.1 gtk3                 
+    su Arch:                 
+      sudo pacman -S webkit2gtk-4.1 gtk3
+"
+            );
+        }
+    }));
 }
 
 /// Inizializza `tracing` con rotazione giornaliera.

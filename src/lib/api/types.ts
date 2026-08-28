@@ -285,6 +285,25 @@ export interface LauncherUpdateStatus {
 }
 
 /** Un amico salvato dentro una licenza. */
+/**
+ * Come va un giocatore secondo il server: le stesse righe della classifica.
+ *
+ * I numeri che `rksys.dat` tiene accanto a un amico li aggiorna il gioco solo
+ * quando lo incontra online, quindi sono fermi all'ultimo incontro.
+ */
+export interface PlayerStatsView {
+  position: number;
+  name: string;
+  points: number;
+  wins: number;
+  games: number;
+  winrate: number;
+  prestigeRank: number;
+  /** Immagine del rank come data URI, quando esiste. */
+  rankImage: string | null;
+  lastSeen: string | null;
+}
+
 export interface FriendView {
   slot: number;
   friendCode: string;
@@ -299,6 +318,8 @@ export interface FriendView {
   isPending: boolean;
   avatarInitial: string;
   accentColor: string;
+  /** `null` se non è in classifica o se il server non risponde. */
+  stats: PlayerStatsView | null;
 }
 
 export interface SaveOverview {

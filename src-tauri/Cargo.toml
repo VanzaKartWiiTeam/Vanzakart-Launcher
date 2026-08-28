@@ -48,6 +48,12 @@ tauri-plugin-updater = "2"
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"
 
+# Serve solo ad avviare GTK **prima** di Tauri, per poter raccontare un
+# fallimento invece di lasciarlo diventare un panic dentro `tao` (§D-070).
+# È la stessa versione che `tao` usa già: non aggiunge niente al grafo.
+[target.'cfg(all(unix, not(target_os = "macos")))'.dependencies]
+gtk = "0.18"
+
 [dev-dependencies]
 tempfile.workspace = true
 

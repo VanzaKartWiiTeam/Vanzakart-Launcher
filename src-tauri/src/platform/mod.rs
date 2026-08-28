@@ -21,6 +21,45 @@ pub use linux::*;
 
 use std::path::Path;
 
+/// `true` se il processo gira da root, con l'utente che non ha chiesto di
+/// forzare.
+///
+/// Serve solo a dirlo all'utente, non a impedire qualcosa: un'applicazione
+/// grafica avviata con `sudo` non riesce a parlare con il server grafico, e
+/// scriverebbe impostazioni e salvataggi nella cartella di root.
+///
+/// L'UID effettivo si legge da `/proc/self/status`, che è l'unico modo di
+/// saperlo senza `unsafe` (`geteuid` è una chiamata C). Dove `/proc` non c'è —
+/// macOS — resta la variabile che `sudo` imposta sempre.
+#[cfg(unix)]
+pub(crate) fn launched_as_root() -> bool {
+    if std::env::var_os("VK_ALLOW_ROOT").is_some() {
+        return false;
+    }
+
+    // Dove l'UID effettivo si può leggere quella è la risposta esatta: la
+    // variabile di `sudo` da sola direbbe di sì anche a `sudo -u altroutente`,
+    // che di root non ha niente.
+    match effective_uid() {
+        Some(uid) => uid == 0,
+        None => std::env::var_os("SUDO_USER").is_some(),
+    }
+}
+
+#[cfg(unix)]
+fn effective_uid() -> Option<u32> {
+    let status = std::fs::read_to_string("/proc/self/status").ok()?;
+
+    // `Uid:	<reale>	<effettivo>	<salvato>	<filesystem>`
+    status
+        .lines()
+        .find(|line| line.starts_with("Uid:"))?
+        .split_whitespace()
+        .nth(2)?
+        .parse()
+        .ok()
+}
+
 /// Nome della piattaforma, mostrato nella pagina Debug.
 pub const fn platform_name() -> &'static str {
     if cfg!(windows) {
@@ -95,6 +134,38 @@ fn matches_process_name(process_name: &str, expected: &str) -> bool {
         && expected[..COMM_LIMIT].eq_ignore_ascii_case(process_name)
 }
 
+/// `true` se il file può essere eseguito.
+///
+/// Su Unix un AppImage o un binario appena scaricato arriva spesso senza il
+/// bit di esecuzione, e l'unico segnale sarebbe un "Permission denied" al
+/// momento dell'avvio: meglio dirlo prima, con il comando da dare (§D-068).
+/// Su Windows il concetto non esiste e basta che il file ci sia.
+pub fn is_executable_file(path: &Path) -> bool {
+    !path.as_os_str().is_empty() && has_execute_permission(path)
+}
+
+/// Il bit di esecuzione, per chiunque lo abbia.
+///
+/// Un bundle `.app` di macOS è una directory: eseguibile è ciò che sta dentro,
+/// e il chiamante risolve il percorso prima di chiedere. La directory di per
+/// sé passa, così un percorso risolto male non blocca l'avvio da solo.
+#[cfg(unix)]
+fn has_execute_permission(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+
+    match std::fs::metadata(path) {
+        Ok(metadata) if metadata.is_file() => metadata.permissions().mode() & 0o111 != 0,
+        Ok(metadata) => metadata.is_dir(),
+        Err(_) => false,
+    }
+}
+
+/// Su Windows il permesso di esecuzione non esiste: basta che il file ci sia.
+#[cfg(not(unix))]
+fn has_execute_permission(path: &Path) -> bool {
+    path.is_file()
+}
+
 /// Radici in cui cercare installazioni portable di Dolphin.
 pub fn dolphin_search_roots() -> Vec<std::path::PathBuf> {
     let mut roots = Vec::new();
@@ -156,9 +227,32 @@ pub fn path_probe() -> vk_dolphin::paths::PathProbe {
 mod tests {
     use super::*;
 
+    #[cfg(unix)]
+    #[test]
+    fn forcing_root_is_always_possible() {
+        // La variabile è la via d'uscita documentata nel messaggio d'errore.
+        std::env::set_var("VK_ALLOW_ROOT", "1");
+        assert!(!launched_as_root());
+        std::env::remove_var("VK_ALLOW_ROOT");
+    }
+
     #[test]
     fn the_platform_is_named() {
         assert!(["Windows", "macOS", "Linux"].contains(&platform_name()));
+    }
+
+    #[test]
+    fn a_missing_file_cannot_be_executed() {
+        assert!(!is_executable_file(Path::new("")));
+        assert!(!is_executable_file(Path::new(
+            "/percorso/inesistente/QuestoNonEsisteDavvero"
+        )));
+    }
+
+    #[test]
+    fn the_current_executable_can_be_executed() {
+        let current = std::env::current_exe().expect("eseguibile corrente");
+        assert!(is_executable_file(&current));
     }
 
     #[test]

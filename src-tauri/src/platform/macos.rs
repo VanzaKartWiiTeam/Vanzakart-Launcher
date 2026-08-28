@@ -2,6 +2,32 @@
 
 use std::path::PathBuf;
 
+/// Controlli d'ambiente prima di aprire la finestra.
+///
+/// Anche qui l'unico caso che si può riconoscere in anticipo è l'avvio con
+/// `sudo`: il processo non riesce a parlare con WindowServer e muore con un
+/// errore che parla di connessioni, non di permessi (§D-067).
+pub fn preflight() -> Result<(), String> {
+    if super::launched_as_root() {
+        return Err("Il launcher è stato avviato come root (sudo).
+
+Un'applicazione grafica avviata con sudo non riesce a collegarsi a WindowServer
+e non apre nessuna finestra; in più impostazioni e salvataggi finirebbero nella
+cartella di root invece che nella tua.
+
+Riavvialo normalmente, con un doppio clic o con \"open -a\". Il launcher non ha
+bisogno di privilegi di amministratore. Se vuoi comunque proseguire, imposta
+VK_ALLOW_ROOT=1."
+            .into());
+    }
+
+    Ok(())
+}
+
+/// Su macOS non serve nessun accorgimento sul rendering: WKWebView è di
+/// sistema e non ha il problema DMA-BUF di WebKitGTK.
+pub fn prepare_graphics() {}
+
 /// Su macOS Dolphin non usa il registro: nessun percorso da leggere.
 pub fn dolphin_registry_user_path() -> Option<String> {
     None
@@ -29,6 +55,14 @@ mod tests {
     fn there_is_nothing_to_read_from_a_registry() {
         assert!(dolphin_registry_user_path().is_none());
         assert!(legacy_install_dir().is_none());
+    }
+
+    #[test]
+    fn a_normal_user_can_start_the_launcher() {
+        // La suite non gira da root: il preflight non ha niente da dire.
+        if !super::launched_as_root() {
+            assert!(preflight().is_ok());
+        }
     }
 
     #[test]

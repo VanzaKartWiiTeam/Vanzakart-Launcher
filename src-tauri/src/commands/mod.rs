@@ -475,17 +475,7 @@ pub async fn leaderboard_fetch(
     state: Shared<'_>,
     offset: Option<u32>,
 ) -> AppResult<LeaderboardPage> {
-    let state = state.inner().clone();
-    let page = services::community::leaderboard(&state, offset.unwrap_or(0)).await?;
-
-    let ranks: Vec<i32> = page
-        .entries
-        .iter()
-        .map(|entry| entry.prestige_rank)
-        .collect();
-    let _ = services::community::cache_rank_images(&state, &ranks).await;
-
-    Ok(page)
+    services::community::leaderboard(&state.inner().clone(), offset.unwrap_or(0)).await
 }
 
 // ---------------------------------------------------------------------------

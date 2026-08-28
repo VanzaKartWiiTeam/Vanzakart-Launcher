@@ -9,8 +9,13 @@
    * prima di toccarlo e rifiuta di scrivere mentre Dolphin è aperto.
    *
    * La pagina è tutta qui dentro: una barra con la licenza attiva e il suo
-   * friend code, e sotto la lista. Le licenze in più sono pastiglie, non card:
-   * chi ne ha una sola — quasi tutti — non deve scegliere niente (§D-059).
+   * friend code, e sotto la lista. Le licenze in più sono linguette dentro la
+   * barra, non card: chi ne ha una sola — quasi tutti — non sceglie niente
+   * (§D-059, §D-062).
+   *
+   * I numeri accanto a ogni amico vengono dal server, non dal salvataggio:
+   * quelli nel salvataggio sono fermi all'ultima volta che vi siete incontrati
+   * online (§D-064).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
@@ -171,16 +176,32 @@
       </button>
 
       {#if withCode.length > 1}
-        <nav class="switch" aria-label="Licenze">
+        <!--
+          Con più licenze la scelta è l'azione principale della barra: pastiglie
+          da 11 px non lo dicevano. Ogni licenza è una linguetta con la sua
+          faccia e i suoi amici, e la attiva si vede (§D-062).
+        -->
+        <nav class="switch" aria-label="Licenze del salvataggio">
+          <span class="vk-eyebrow switch-label">Mostra gli amici di</span>
+
           {#each withCode as option (`${option.saveIndex}-${option.slot}`)}
             <button
-              class="pill"
+              class="lic-tab"
               class:active={isSelected(option)}
-              onclick={() => select(option)}
-              disabled={busy || isSelected(option)}
-              title={`${option.name} · ${option.friendCount} amici`}
+              aria-current={isSelected(option) ? 'true' : undefined}
+              onclick={() => !isSelected(option) && select(option)}
+              disabled={busy}
+              style="--accent: {option.accentColor}"
             >
-              {option.name}
+              <MiiAvatar
+                studioData={option.studioData}
+                initial={option.avatarInitial}
+                accent={option.accentColor}
+                name={option.miiName || option.name}
+                size={24}
+              />
+              <span class="lic-tab-name">{option.name}</span>
+              <span class="lic-tab-count">{option.friendCount}</span>
             </button>
           {/each}
         </nav>
@@ -245,15 +266,30 @@
                   risulta tale finché non ci si incontra online, quindi il
                   badge marcava come anomalo lo stato normale (§D-060).
                 -->
-                <p class="friend-name">{friend.miiName}</p>
+                <p class="friend-name">
+                  {#if friend.stats?.rankImage}
+                    <img
+                      class="rank-mini"
+                      src={friend.stats.rankImage}
+                      alt="Grado {friend.stats.prestigeRank}"
+                      title="Grado {friend.stats.prestigeRank}"
+                    />
+                  {/if}
+                  {friend.miiName}
+                </p>
                 <p class="vk-mono friend-code">{friend.friendCode}</p>
               </div>
 
-              <div class="friend-stats vk-faint">
-                <span>VR {friend.raceRating}</span>
-                <span>BR {friend.battleRating}</span>
-                <span>{friend.wins}V / {friend.losses}S</span>
-              </div>
+              {#if friend.stats}
+                {@const stats = friend.stats}
+                <div class="friend-stats">
+                  <span class="stat-vr">{stats.points.toLocaleString('it-IT')} VR</span>
+                  <span class="vk-faint">{stats.wins} V su {stats.games}</span>
+                  <span class="vk-faint">{stats.winrate.toFixed(0)}%</span>
+                </div>
+              {:else}
+                <span class="vk-faint friend-unranked">Non in classifica</span>
+              {/if}
 
               {#if canWrite}
                 <button
@@ -387,34 +423,75 @@
   .switch {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px;
+    align-items: center;
+    gap: 8px;
     flex-basis: 100%;
     order: 1;
+    padding-top: 12px;
+    border-top: 1px solid var(--vk-stroke);
   }
 
-  .pill {
-    padding: 5px 12px;
+  .switch-label {
+    margin-right: 2px;
+  }
+
+  .lic-tab {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px 6px 8px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-pill);
-    background: transparent;
+    background: var(--vk-input);
     color: var(--vk-text-secondary);
-    font-size: var(--vk-fs-eyebrow);
+    font-size: var(--vk-fs-small);
     font-weight: 700;
-    max-width: 180px;
+    max-width: 230px;
+    transition:
+      border-color var(--vk-dur-fast) var(--vk-ease),
+      background var(--vk-dur-fast) var(--vk-ease),
+      color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .lic-tab-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .pill:hover:not(:disabled) {
-    border-color: #3a4c74;
+  /* Il numero di amici: dice cosa cambia premendo. */
+  .lic-tab-count {
+    padding: 1px 7px;
+    border-radius: var(--vk-radius-pill);
+    background: rgb(255 255 255 / 0.07);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lic-tab:hover:not(:disabled) {
+    border-color: color-mix(in srgb, var(--accent) 55%, var(--vk-stroke));
     color: var(--vk-text);
   }
 
-  .pill.active {
+  .lic-tab.active {
     background: var(--vk-tab-active);
     border-color: var(--vk-cyan);
     color: var(--vk-text);
+    box-shadow: 0 0 14px rgb(0 242 255 / 0.16);
+    cursor: default;
+  }
+
+  .lic-tab.active .lic-tab-count {
+    background: rgb(0 242 255 / 0.18);
+    color: var(--vk-cyan-soft);
+  }
+
+  .lic-tab:disabled {
+    opacity: 0.55;
+  }
+
+  .lic-tab.active:disabled {
     opacity: 1;
   }
 
@@ -500,11 +577,21 @@
   }
 
   .friend-name {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     margin: 0;
     font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .rank-mini {
+    width: 18px;
+    height: 18px;
+    flex: none;
+    object-fit: contain;
   }
 
   .friend-code {
@@ -515,10 +602,21 @@
 
   .friend-stats {
     display: flex;
+    align-items: baseline;
     gap: 12px;
     margin-left: auto;
     font-size: var(--vk-fs-micro);
     font-variant-numeric: tabular-nums;
+  }
+
+  .stat-vr {
+    font-weight: 800;
+    color: var(--vk-cyan-soft);
+  }
+
+  .friend-unranked {
+    margin-left: auto;
+    font-size: var(--vk-fs-micro);
   }
 
   .skeleton {
@@ -550,7 +648,8 @@
       width: auto;
     }
 
-    .friend-stats {
+    .friend-stats,
+    .friend-unranked {
       display: none;
     }
   }

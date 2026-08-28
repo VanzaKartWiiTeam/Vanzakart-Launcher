@@ -80,6 +80,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
     }
 
     let mii_database = read_mii_database(&user_folder).await;
+    let ratings = mod_ratings(state).await;
     let mut out = Vec::new();
 
     for (save_index, save_path) in save_files(state).await.into_iter().enumerate() {
@@ -99,6 +100,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
 
         for card in cards {
             let mii = mii_database.get(&card.mii_id);
+            let rating = ratings.get(&digits(&card.friend_code));
 
             out.push(LicenseView {
                 save_index,
@@ -123,8 +125,11 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
                 friend_count: vk_save::rksys::read_friends(&bytes, card.slot).len(),
                 name: card.name,
                 friend_code: card.friend_code,
-                vr: u32::from(card.vr),
-                br: u32::from(card.br),
+                // Il VR della licenza è quello vanilla: la modpack ripristina
+                // i valori originali prima di riscrivere `rksys.dat`, e il
+                // punteggio vero sta in `VKRating.pul` (§D-063).
+                vr: rating.map_or_else(|| u32::from(card.vr), |rating| rating.vr),
+                br: rating.map_or_else(|| u32::from(card.br), |rating| rating.br),
                 races: card.races,
                 wins: card.wins,
                 source_label: "Dolphin save".into(),
@@ -135,6 +140,42 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
     }
 
     Ok(out)
+}
+
+/// Punteggi della modpack, indicizzati per friend code.
+///
+/// Se il file non c'è — modpack mai avviata, o avviata da un'altra macchina —
+/// restano i valori della licenza, che è quanto di meglio si abbia.
+async fn mod_ratings(
+    state: &Arc<AppState>,
+) -> std::collections::HashMap<String, vk_save::pulsar::Rating> {
+    let user_folder = state.settings.read().await.user_folder();
+    let layout = state.layout(state.channel().await).await;
+
+    let files = vk_save::pulsar::find_rating_files(
+        &user_folder,
+        &layout.mod_root(),
+        layout.directory_name(),
+    );
+
+    let mut out = std::collections::HashMap::new();
+    // I file arrivano con quello della modpack in uso per primo: `or_insert`
+    // fa sì che un altro pack Pulsar non ne sovrascriva i punteggi.
+    for path in files {
+        let Ok(bytes) = tokio::fs::read(&path).await else {
+            continue;
+        };
+        for rating in vk_save::pulsar::read_ratings(&bytes) {
+            out.entry(digits(&rating.friend_code)).or_insert(rating);
+        }
+    }
+
+    out
+}
+
+/// Le sole cifre di un friend code, per confrontarlo comunque sia scritto.
+fn digits(friend_code: &str) -> String {
+    friend_code.chars().filter(char::is_ascii_digit).collect()
 }
 
 /// Database Mii di Dolphin, indicizzato per Mii id.
@@ -204,7 +245,11 @@ pub async fn list_friends(
         .await
         .map_err(|error| AppError::io(&path, error))?;
 
-    Ok(to_views(vk_save::rksys::read_friends(&bytes, license)))
+    let index = crate::services::community::player_index(state).await;
+    Ok(to_views(
+        vk_save::rksys::read_friends(&bytes, license),
+        &index,
+    ))
 }
 
 /// Aggiunge un amico a una licenza a partire dal suo friend code.
@@ -224,7 +269,11 @@ pub async fn add_friend(
     write_save(state, &path, &bytes).await?;
 
     tracing::info!(license, slot, "amico aggiunto alla licenza");
-    Ok(to_views(vk_save::rksys::read_friends(&bytes, license)))
+    let index = crate::services::community::player_index(state).await;
+    Ok(to_views(
+        vk_save::rksys::read_friends(&bytes, license),
+        &index,
+    ))
 }
 
 /// Rimuove l'amico che occupa uno slot.
@@ -243,7 +292,11 @@ pub async fn remove_friend(
     write_save(state, &path, &bytes).await?;
 
     tracing::info!(license, slot, "amico rimosso dalla licenza");
-    Ok(to_views(vk_save::rksys::read_friends(&bytes, license)))
+    let index = crate::services::community::player_index(state).await;
+    Ok(to_views(
+        vk_save::rksys::read_friends(&bytes, license),
+        &index,
+    ))
 }
 
 // ---------------------------------------------------------------------------
@@ -277,12 +330,21 @@ pub async fn set_license_mii(
     list_licenses(state).await
 }
 
-fn to_views(friends: Vec<vk_save::rksys::SaveFriend>) -> Vec<FriendView> {
+/// Traduce gli amici del salvataggio, con accanto le statistiche del server.
+///
+/// I numeri dentro `rksys.dat` li aggiorna il gioco solo quando incontra
+/// quell'amico online: sono fermi all'ultima volta che vi siete visti. Quelli
+/// del server sono gli stessi della classifica (§D-064).
+fn to_views(
+    friends: Vec<vk_save::rksys::SaveFriend>,
+    index: &crate::services::community::PlayerIndex,
+) -> Vec<FriendView> {
     friends
         .into_iter()
         .map(|friend| FriendView {
             avatar_initial: initial(&friend.mii_name),
             accent_color: ACCENTS[friend.slot % ACCENTS.len()].to_string(),
+            stats: index.get(&friend.friend_code).cloned(),
             slot: friend.slot,
             friend_code: friend.friend_code,
             mii_name: friend.mii_name,

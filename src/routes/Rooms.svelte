@@ -6,24 +6,18 @@
    * statistiche globali, poi l'elenco delle stanze con skeleton, stato vuoto
    * e stato di errore distinti.
    *
-   * Due cose che il WPF non mostrava e che qui servono: **chi c'è dentro** una
-   * stanza (il server manda l'elenco, prima veniva buttato) e **quanto è
-   * vecchio lo snapshot**, perché se il server di gioco smette di scriverlo
-   * l'elenco resta fermo senza che si veda (§D-057).
+   * Una cosa che il WPF non mostrava e che qui serve: **chi c'è dentro** una
+   * stanza. Il server manda l'elenco insieme alla stanza, prima veniva buttato.
    */
   import { onDestroy } from 'svelte';
 
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
-  import { formatRelative } from '$lib/stores/app.svelte';
   import type { RoomsSummary, RoomView } from '$lib/api/types';
 
   /** Lo stesso intervallo di auto-refresh del launcher legacy. */
   const REFRESH_MS = 30_000;
-
-  /** Oltre questa età lo snapshot non descrive più "adesso". */
-  const STALE_MS = 5 * 60_000;
 
   let summary = $state<RoomsSummary | null>(null);
   let loading = $state(true);
@@ -32,10 +26,6 @@
   let expanded = $state<string[]>([]);
 
   let timer: ReturnType<typeof setInterval> | undefined;
-
-  const updatedAt = $derived(summary?.lastUpdated ? Date.parse(summary.lastUpdated) : Number.NaN);
-  const stale = $derived(Number.isFinite(updatedAt) && Date.now() - updatedAt > STALE_MS);
-  const updatedLabel = $derived(formatRelative(summary?.lastUpdated ?? null));
 
   $effect(() => {
     void load(true);
@@ -92,19 +82,10 @@
       </div>
     </div>
 
-    <div class="hero-side">
-      <button class="vk-btn" onclick={() => load(false)} disabled={refreshing}>
-        <Icon name="refresh" size={14} />
-        {refreshing ? 'Aggiorno…' : 'Aggiorna'}
-      </button>
-
-      {#if updatedLabel}
-        <span class="updated" class:warn={stale}>
-          {#if stale}<Icon name="warning" size={12} />{/if}
-          Snapshot del server: {updatedLabel}
-        </span>
-      {/if}
-    </div>
+    <button class="vk-btn refresh" onclick={() => load(false)} disabled={refreshing}>
+      <Icon name="refresh" size={14} />
+      {refreshing ? 'Aggiorno…' : 'Aggiorna'}
+    </button>
   </section>
 
   {#if summary?.notice}
@@ -124,14 +105,7 @@
     <div class="vk-card vk-empty">
       <Icon name="rooms" size={28} />
       <p>Nessuna stanza attiva in questo momento.</p>
-      <p class="vk-faint">
-        {#if stale}
-          L'ultimo elenco che il server ha pubblicato risale a {updatedLabel}: finché non ne
-          pubblica uno nuovo questa pagina resta vuota.
-        {:else}
-          L'elenco si aggiorna da solo ogni 30 secondi.
-        {/if}
-      </p>
+      <p class="vk-faint">L'elenco si aggiorna da solo ogni 30 secondi.</p>
     </div>
   {:else}
     <div class="rooms">
@@ -266,23 +240,8 @@
     color: transparent;
   }
 
-  .hero-side {
-    display: flex;
-    flex-direction: column;
-    align-items: flex-end;
-    gap: 8px;
-  }
-
-  .updated {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: var(--vk-fs-micro);
-    color: var(--vk-text-faint);
-  }
-
-  .updated.warn {
-    color: var(--vk-warning);
+  .refresh {
+    flex: none;
   }
 
   .notice {
@@ -492,10 +451,6 @@
 
     .stats {
       gap: 24px;
-    }
-
-    .hero-side {
-      align-items: flex-start;
     }
   }
 </style>

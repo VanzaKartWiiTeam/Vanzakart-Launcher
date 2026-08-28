@@ -95,6 +95,40 @@ Sono le stesse che gira la CI (`.github/workflows/ci.yml`).
 
 ---
 
+## Avvio su Linux e macOS
+
+**Non serve `sudo`, e con `sudo` non parte.** Un'applicazione grafica avviata
+come root non ha il cookie di autorizzazione del server grafico dell'utente:
+GTK non riesce ad aprire nessuna finestra e il processo muore. Il launcher se
+ne accorge da solo e lo dice, invece di lasciar morire GTK con un panic.
+
+```bash
+chmod +x VanzaKart-Launcher_*_linux-x86_64.AppImage
+./VanzaKart-Launcher_*_linux-x86_64.AppImage
+```
+
+Su Ubuntu 24.04 e su altre distribuzioni recenti gli AppImage hanno bisogno di
+FUSE 2, che non è più preinstallato: `sudo apt install libfuse2t64`, oppure si
+avvia con `--appimage-extract-and-run` senza installare niente.
+
+Se manca qualche libreria di sistema, il messaggio d'errore indica il pacchetto
+da installare (`libwebkit2gtk-4.1-0` e `libgtk-3-0` su Debian e Ubuntu,
+`webkit2gtk4.1` e `gtk3` su Fedora, `webkit2gtk-4.1` e `gtk3` su Arch). Con i
+driver proprietari NVIDIA il launcher disattiva da solo il rendering DMA-BUF di
+WebKit, che su quelle schede disegna una finestra bianca.
+
+Su **macOS** il pacchetto non è notarizzato: al primo avvio il sistema lo
+blocca. Si apre con il tasto destro → *Apri*, oppure togliendo la quarantena:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/VanzaKart Launcher.app"
+```
+
+Anche qui niente `sudo`: servirebbe solo a far fallire la connessione a
+WindowServer.
+
+---
+
 ## Dove finiscono i dati
 
 | OS | Cartella |

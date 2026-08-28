@@ -10,18 +10,28 @@
 //! campi si leggono da un `serde_json::Value`, dove le chiavi ripetute sono
 //! semplicemente sinonimi e vince la prima non nulla (§D-056).
 
-use std::path::Path;
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
-use crate::domain::{LeaderboardEntry, LeaderboardPage, RoomPlayerView, RoomView, RoomsSummary};
+use crate::domain::{
+    LeaderboardEntry, LeaderboardPage, PlayerStatsView, RoomPlayerView, RoomView, RoomsSummary,
+};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
 
 /// Il server tronca `limit` a 100: chiederne di più restituisce comunque 100
 /// righe e farebbe credere alla UI di avere già tutta la classifica.
 const LEADERBOARD_PAGE_SIZE: u32 = 100;
+
+/// Pagine che si scorrono al massimo per costruire l'indice dei giocatori.
+/// Cinquecento nomi sono più di quanti ne abbia mai avuti il server.
+const INDEX_MAX_PAGES: u32 = 5;
+
+/// Per quanto l'indice dei giocatori resta valido senza richiederlo.
+const INDEX_TTL: Duration = Duration::from_secs(120);
 
 /// Colori di ripiego per chi non ha un Mii: gli stessi degli amici.
 const ACCENTS: [&str; 6] = [
@@ -315,13 +325,13 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
             AppError::Internal(format!("risposta della classifica non valida: {error}"))
         })?;
 
-    let rank_cache = state.paths.rank_images_dir();
-
-    let entries: Vec<LeaderboardEntry> = loose::array(&payload, &["players"])
+    let mut entries: Vec<LeaderboardEntry> = loose::array(&payload, &["players"])
         .iter()
         .enumerate()
-        .map(|(index, player)| entry(player, index, offset, &rank_cache))
+        .map(|(index, player)| entry(player, index, offset))
         .collect();
+
+    attach_rank_images(state, &mut entries).await;
 
     Ok(LeaderboardPage {
         // Una pagina piena non prova che ce ne sia un'altra, ma è l'unico
@@ -332,7 +342,7 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
     })
 }
 
-fn entry(value: &Value, index: usize, offset: u32, rank_cache: &Path) -> LeaderboardEntry {
+fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
     let position = match loose::int(value, &["position", "pos"]) {
         declared if declared > 0 => declared,
         _ => offset as i32 + index as i32 + 1,
@@ -347,10 +357,6 @@ fn entry(value: &Value, index: usize, offset: u32, rank_cache: &Path) -> Leaderb
     };
 
     let prestige_rank = loose::int(value, &["prestigeRank", "prestige_rank", "pr", "rank"]);
-    let rank_image = (prestige_rank >= 1)
-        .then(|| rank_cache.join(format!("rank-{prestige_rank}.png")))
-        .filter(|path| path.is_file())
-        .map(|path| path.to_string_lossy().to_string());
 
     let name = loose::text(value, &["name", "player"]);
     let face = face(
@@ -375,7 +381,8 @@ fn entry(value: &Value, index: usize, offset: u32, rank_cache: &Path) -> Leaderb
         vr_last_24_hours: loose::int(value, &["vr_last_24_hours", "vr_gain_24h", "vrLast24Hours"]),
         vr_last_week: loose::int(value, &["vr_gain_week", "vrLastWeek", "vr_last_week"]),
         vr_last_month: loose::int(value, &["vr_gain_month", "vrLastMonth", "vr_last_month"]),
-        rank_image,
+        // La riempie `attach_rank_images`, che prima deve scaricare il file.
+        rank_image: None,
         name,
         studio_data: face.studio_data,
         avatar_initial: face.avatar_initial,
@@ -383,11 +390,70 @@ fn entry(value: &Value, index: usize, offset: u32, rank_cache: &Path) -> Leaderb
     }
 }
 
+// ---------------------------------------------------------------------------
+// Immagini dei rank
+// ---------------------------------------------------------------------------
+
+/// Mette in ogni riga l'immagine del proprio rank.
+///
+/// Il percorso su disco non serviva a niente: la webview non apre file locali,
+/// e la riga mostrava il numero anche quando l'immagine c'era. Viaggia come
+/// data URI, come già fanno le facce dei Mii (§D-065). Il download avviene
+/// **prima** di comporre le righe, altrimenti al primo avvio — quando la cache
+/// è vuota — nessuna riga avrebbe la sua immagine.
+async fn attach_rank_images(state: &Arc<AppState>, entries: &mut [LeaderboardEntry]) {
+    let ranks: Vec<i32> = entries.iter().map(|entry| entry.prestige_rank).collect();
+    let images = rank_images(state, &ranks).await;
+
+    for entry in entries {
+        entry.rank_image = images.get(&entry.prestige_rank).cloned();
+    }
+}
+
+/// Immagini dei rank citati, come data URI, scaricando quelle che mancano.
+async fn rank_images(state: &Arc<AppState>, ranks: &[i32]) -> HashMap<i32, String> {
+    let wanted = distinct_ranks(ranks);
+    if wanted.is_empty() {
+        return HashMap::new();
+    }
+
+    let _ = cache_rank_images(state, &wanted).await;
+
+    let directory = state.paths.rank_images_dir();
+    let mut images = HashMap::new();
+
+    for rank in wanted {
+        let path = directory.join(format!("rank-{rank}.png"));
+        match tokio::fs::read(&path).await {
+            Ok(bytes) if !bytes.is_empty() => {
+                images.insert(
+                    rank,
+                    format!(
+                        "data:image/png;base64,{}",
+                        vk_save::mii::base64_encode(&bytes)
+                    ),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    images
+}
+
+/// Rank rankati, una volta sola ciascuno.
+fn distinct_ranks(ranks: &[i32]) -> Vec<i32> {
+    let mut wanted: Vec<i32> = ranks.iter().copied().filter(|rank| *rank >= 1).collect();
+    wanted.sort_unstable();
+    wanted.dedup();
+    wanted
+}
+
 /// Scarica in cache le immagini dei rank citate dalla classifica.
 ///
 /// Non è un errore se una singola immagine manca: il rank viene mostrato con
 /// il solo numero.
-pub async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResult<usize> {
+async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResult<usize> {
     let base = state.endpoints.read().await.rank_images_base_url.clone();
     if base.trim().is_empty() {
         return Ok(0);
@@ -399,11 +465,8 @@ pub async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResul
         .map_err(|error| AppError::io(&directory, error))?;
 
     let mut cached = 0usize;
-    let mut wanted: Vec<i32> = ranks.iter().copied().filter(|rank| *rank >= 1).collect();
-    wanted.sort_unstable();
-    wanted.dedup();
 
-    for rank in wanted {
+    for &rank in ranks {
         let destination = directory.join(format!("rank-{rank}.png"));
         if destination.is_file() {
             continue;
@@ -435,6 +498,105 @@ pub async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResul
     Ok(cached)
 }
 
+// ---------------------------------------------------------------------------
+// Indice dei giocatori
+// ---------------------------------------------------------------------------
+
+/// La classifica indicizzata per friend code.
+#[derive(Debug, Default)]
+pub struct PlayerIndex {
+    players: HashMap<String, PlayerStatsView>,
+}
+
+impl PlayerIndex {
+    /// Statistiche di un friend code, comunque sia scritto.
+    pub fn get(&self, friend_code: &str) -> Option<&PlayerStatsView> {
+        self.players.get(&digits(friend_code))
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.players.is_empty()
+    }
+}
+
+/// Statistiche dei giocatori dal server, per friend code.
+///
+/// I numeri che `rksys.dat` tiene accanto a un amico li aggiorna il gioco solo
+/// quando lo incontra online, quindi restano fermi a mesi fa; quelli del
+/// server sono gli stessi della classifica, cioè quelli veri (§D-064).
+///
+/// L'indice vale due minuti: una lista amici si apre e si richiude spesso, e
+/// rifare due richieste HTTP a ogni apertura non aggiungerebbe niente.
+pub async fn player_index(state: &Arc<AppState>) -> Arc<PlayerIndex> {
+    // Il guard si chiude qui dentro: sotto si scarica la classifica, e
+    // tenerlo aperto bloccherebbe ogni altro lettore per tutta la durata.
+    let cached = {
+        let guard = state.leaderboard_index.read().await;
+        guard.clone()
+    };
+    if let Some((fetched_at, index)) = cached {
+        if fetched_at.elapsed() < INDEX_TTL {
+            return index;
+        }
+    }
+
+    let index = Arc::new(build_player_index(state).await);
+
+    // Un indice vuoto — server irraggiungibile — non si mette in cache: il
+    // prossimo tentativo deve poter riuscire subito.
+    if !index.is_empty() {
+        *state.leaderboard_index.write().await = Some((Instant::now(), index.clone()));
+    }
+
+    index
+}
+
+async fn build_player_index(state: &Arc<AppState>) -> PlayerIndex {
+    let mut players = HashMap::new();
+    let mut offset = 0u32;
+
+    for _ in 0..INDEX_MAX_PAGES {
+        let Ok(page) = leaderboard(state, offset).await else {
+            break;
+        };
+
+        let fetched = page.entries.len() as u32;
+        for entry in page.entries {
+            let key = digits(&entry.friend_code);
+            if !key.is_empty() {
+                players.insert(key, stats_of(entry));
+            }
+        }
+
+        if !page.has_more || fetched == 0 {
+            break;
+        }
+        offset += fetched;
+    }
+
+    PlayerIndex { players }
+}
+
+fn stats_of(entry: LeaderboardEntry) -> PlayerStatsView {
+    PlayerStatsView {
+        position: entry.position,
+        name: entry.name,
+        points: entry.points,
+        wins: entry.wins,
+        games: entry.games,
+        winrate: entry.winrate,
+        prestige_rank: entry.prestige_rank,
+        rank_image: entry.rank_image,
+        last_seen: entry.last_seen,
+    }
+}
+
+/// Le sole cifre di un friend code: il salvataggio e il server lo scrivono
+/// con e senza trattini.
+fn digits(friend_code: &str) -> String {
+    friend_code.chars().filter(char::is_ascii_digit).collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -444,7 +606,7 @@ mod tests {
     }
 
     fn player(raw: &str) -> LeaderboardEntry {
-        entry(&json(raw), 0, 0, Path::new("/nessuna/cache"))
+        entry(&json(raw), 0, 0)
     }
 
     /// La classifica reale manda `prestigeRank` **e** `rank` nello stesso
@@ -530,12 +692,7 @@ mod tests {
 
     #[test]
     fn the_position_falls_back_to_the_page_offset() {
-        let entry = entry(
-            &json(r#"{"name":"a"}"#),
-            2,
-            100,
-            Path::new("/nessuna/cache"),
-        );
+        let entry = entry(&json(r#"{"name":"a"}"#), 2, 100);
         assert_eq!(entry.position, 103);
     }
 
@@ -559,6 +716,29 @@ mod tests {
             assert!(!entry.studio_data.is_empty(), "{payload}");
             assert!(entry.accent_color.starts_with('#'));
         }
+    }
+
+    #[test]
+    fn the_friend_code_is_matched_however_it_is_written() {
+        let mut players = HashMap::new();
+        players.insert(
+            digits("0000-0002-0202"),
+            PlayerStatsView {
+                points: 15088,
+                ..Default::default()
+            },
+        );
+        let index = PlayerIndex { players };
+
+        assert_eq!(index.get("0000-0002-0202").unwrap().points, 15088);
+        assert_eq!(index.get("000000020202").unwrap().points, 15088);
+        assert!(index.get("1111-2222-3333").is_none());
+    }
+
+    #[test]
+    fn only_ranked_players_ask_for_a_rank_image() {
+        assert_eq!(distinct_ranks(&[0, 3, 3, 1, 0, -2]), vec![1, 3]);
+        assert!(distinct_ranks(&[0, 0]).is_empty());
     }
 
     #[test]

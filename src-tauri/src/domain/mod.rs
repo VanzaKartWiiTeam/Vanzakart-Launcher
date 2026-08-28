@@ -267,6 +267,26 @@ pub struct LicenseView {
     pub friend_count: usize,
 }
 
+/// Statistiche di un giocatore secondo il server.
+///
+/// Sono le stesse righe della classifica, riusate dove serve sapere come va
+/// davvero un giocatore invece di come andava l'ultima volta che il
+/// salvataggio l'ha visto (§D-064).
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerStatsView {
+    pub position: i32,
+    pub name: String,
+    pub points: i32,
+    pub wins: i32,
+    pub games: i32,
+    pub winrate: f64,
+    pub prestige_rank: i32,
+    /// Immagine del rank come data URI, quando esiste.
+    pub rank_image: Option<String>,
+    pub last_seen: Option<String>,
+}
+
 /// Un amico salvato dentro una licenza.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -284,6 +304,9 @@ pub struct FriendView {
     pub is_pending: bool,
     pub avatar_initial: String,
     pub accent_color: String,
+    /// Come va questo giocatore secondo il server; `None` se non è in
+    /// classifica o se il server non risponde.
+    pub stats: Option<PlayerStatsView>,
 }
 
 /// Voce della pagina Debug.
