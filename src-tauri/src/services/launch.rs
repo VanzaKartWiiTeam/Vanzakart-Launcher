@@ -236,6 +236,18 @@ mod tests {
 
         let dolphin = dir.join("QuestoNonEUnProcessoReale.exe");
         std::fs::write(&dolphin, b"").unwrap();
+
+        // Su Unix un file appena scritto non è eseguibile, e il preflight lo
+        // blocca (§D-068): un Dolphin vero il permesso ce l'ha, e la finzione
+        // deve somigliargli almeno in questo.
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut permissions = std::fs::metadata(&dolphin).unwrap().permissions();
+            permissions.set_mode(permissions.mode() | 0o755);
+            std::fs::set_permissions(&dolphin, permissions).unwrap();
+        }
+
         let rom = dir.join("rom.wbfs");
         std::fs::write(&rom, b"").unwrap();
 
@@ -351,8 +363,9 @@ mod tests {
         let state = state_with(dir.path()).await;
         seed_ready_to_play(dir.path(), &state).await;
 
-        // L'avvio fallisce (il file non è eseguibile) ma il descrittore
-        // dev'essere già stato scritto e valido.
+        // L'avvio fallisce — il file ha il permesso di esecuzione ma dentro
+        // non c'è un programma — e il descrittore dev'essere già stato
+        // scritto e valido.
         let _ = launch(&state).await;
 
         let descriptor_path = state.paths.launcher_descriptor(Channel::Stable);
