@@ -65,6 +65,15 @@
   }
 
   /**
+   * La scheda Controller è nascosta finché il pannello non funziona come deve.
+   *
+   * Il pannello e la sua scheda restano dov'erano: rimettere `true` qui la
+   * riporta al suo posto, senza altro da toccare. Nel frattempo i controller
+   * si configurano da Dolphin, che è la modalità che il launcher già prevede.
+   */
+  const CONTROLLER_TAB_VISIBLE: boolean = false;
+
+  /**
    * Le liste di etichette sono derivate, non costanti: si ricostruiscono da
    * sole quando cambia la lingua, senza ricreare la pagina.
    */
@@ -72,7 +81,9 @@
     { id: 'paths', label: t('settings.tab.paths') },
     { id: 'video', label: t('settings.tab.video') },
     { id: 'audio', label: t('settings.tab.audio') },
-    { id: 'controller', label: t('settings.tab.controller') },
+    ...(CONTROLLER_TAB_VISIBLE
+      ? [{ id: 'controller' as const, label: t('settings.tab.controller') }]
+      : []),
     { id: 'wii', label: t('settings.tab.wii') },
     { id: 'performance', label: t('settings.tab.performance') },
     { id: 'advanced', label: t('settings.tab.advanced') },
