@@ -1,6 +1,6 @@
 {
   "name": "vanzakart-launcher",
-  "version": "2.0.0-beta.6",
+  "version": "2.0.0",
   "private": true,
   "type": "module",
   "description": "Frontend del launcher VanzaKart",
