@@ -12,10 +12,22 @@
   import Icon from '$lib/components/Icon.svelte';
   import Markdown from '$lib/components/Markdown.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { NewsItem } from '$lib/api/types';
 
-  const ALL = 'Tutte';
-  const PINNED = 'In evidenza';
+  /*
+   * I due filtri nostri sono sentinelle, non etichette: cambiando lingua il
+   * filtro attivo deve restare quello, non diventare una stringa che non
+   * corrisponde più a niente.
+   */
+  const ALL = '\u0000tutte';
+  const PINNED = '\u0000evidenza';
+
+  function filterLabel(value: string): string {
+    if (value === ALL) return t('news.all');
+    if (value === PINNED) return t('news.pinned');
+    return value;
+  }
 
   let items = $state<NewsItem[]>([]);
   let loading = $state(true);
@@ -54,7 +66,7 @@
       items = await api.fetchNews();
       if (!filters.includes(filter)) filter = ALL;
     } catch (error) {
-      app.toast('News non disponibili', api.errorMessage(error), 'warning');
+      app.toast(t('news.unavailable'), api.errorMessage(error), 'warning');
       items = [];
     } finally {
       loading = false;
@@ -68,19 +80,19 @@
 
 <div class="page">
   <div class="toolbar">
-    <input class="vk-input search" bind:value={query} placeholder="Cerca nelle news…" />
+    <input class="vk-input search" bind:value={query} placeholder={t('news.search')} />
 
     <div class="chips">
       {#each filters as item (item)}
         <button class="chip" class:active={filter === item} onclick={() => (filter = item)}>
-          {item}
+          {filterLabel(item)}
         </button>
       {/each}
     </div>
 
     <button class="vk-btn" onclick={load} disabled={loading}>
       <Icon name="refresh" size={14} />
-      {loading ? 'Aggiorno…' : 'Aggiorna'}
+      {loading ? t('common.refreshing') : t('common.refreshAction')}
     </button>
   </div>
 
@@ -91,9 +103,7 @@
     <div class="vk-card vk-empty">
       <Icon name="news" size={28} />
       <p>
-        {items.length === 0
-          ? 'Nessuna notizia disponibile.'
-          : 'Nessuna notizia corrisponde ai filtri.'}
+        {items.length === 0 ? t('news.empty') : t('news.noMatch')}
       </p>
     </div>
   {:else}
@@ -102,7 +112,9 @@
         <header class="news-head">
           <div class="labels">
             {#if item.category}<span class="vk-badge">{item.category}</span>{/if}
-            {#if item.isPinned}<span class="vk-badge vk-badge--warning">In evidenza</span>{/if}
+            {#if item.isPinned}
+              <span class="vk-badge vk-badge--warning">{t('news.pinned')}</span>
+            {/if}
             {#if item.version}<span class="vk-faint version">{item.version}</span>{/if}
           </div>
           {#if item.dateLabel}<span class="vk-faint date">{item.dateLabel}</span>{/if}

@@ -13,6 +13,7 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   interface Props {
     open: boolean;
@@ -34,7 +35,7 @@
     try {
       await api.cancelOperation();
     } catch (error) {
-      app.toast('Annullamento non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('download.cancelFailed'), api.errorMessage(error), 'warning');
     } finally {
       cancelling = false;
     }
@@ -70,7 +71,7 @@
 
       <div class="actions">
         <button class="vk-btn" onclick={cancel} disabled={cancelling}>
-          {cancelling ? 'Annullo…' : 'Annulla'}
+          {cancelling ? t('download.cancelling') : t('common.cancel')}
         </button>
       </div>
     </div>

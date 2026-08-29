@@ -13,6 +13,7 @@
   import TitleBar from '$lib/components/TitleBar.svelte';
   import Toasts from '$lib/components/Toasts.svelte';
   import UpdateNotice from '$lib/components/UpdateNotice.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import { app, PAGE_META } from '$lib/stores/app.svelte';
 
   import Debug from './Debug.svelte';
@@ -48,7 +49,7 @@
         // aggiunge il launcher, e l'avviso decide da sé se comparire.
         await app.refreshLauncherUpdate();
       } catch (error) {
-        app.toast('Avvio incompleto', api.errorMessage(error), 'warning');
+        app.toast(t('app.bootstrapFailed'), api.errorMessage(error), 'warning');
       }
     })();
 
@@ -63,8 +64,8 @@
     if (event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd') {
       app.debugUnlocked = !app.debugUnlocked;
       app.toast(
-        'Debug',
-        app.debugUnlocked ? 'Pagina di diagnostica visibile.' : 'Pagina di diagnostica nascosta.',
+        t('app.debug'),
+        app.debugUnlocked ? t('app.debugShown') : t('app.debugHidden'),
         'info'
       );
     }
@@ -82,8 +83,8 @@
 
     <main class="main">
       <header class="page-header">
-        <h1 class="page-title">{meta.title}</h1>
-        <p class="page-subtitle">{meta.subtitle}</p>
+        <h1 class="page-title">{t(meta.title)}</h1>
+        <p class="page-subtitle">{t(meta.subtitle)}</p>
       </header>
 
       <div class="content" id="vk-content">

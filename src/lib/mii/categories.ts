@@ -18,17 +18,18 @@
  * esca dai limiti del formato.
  */
 import type { MiiBooleanField, MiiNumericField } from '$lib/api/types';
+import type { TranslationKey } from '$lib/stores/i18n.svelte';
 
 export interface Slider {
   field: MiiNumericField;
-  label: string;
+  label: TranslationKey;
   min: number;
   max: number;
 }
 
 export interface Toggle {
   field: MiiBooleanField;
-  label: string;
+  label: TranslationKey;
 }
 
 /**
@@ -40,14 +41,24 @@ export interface Toggle {
  * `color` è la tavolozza del colore preferito, che non ha bisogno di un render.
  */
 export type OptionGroup =
-  | { kind: 'render'; label: string; field: MiiNumericField; min: number; max: number }
-  | { kind: 'switch'; label: string; field: MiiBooleanField; off: string; on: string }
-  | { kind: 'color'; label: string };
+  | { kind: 'render'; label: TranslationKey; field: MiiNumericField; min: number; max: number }
+  | {
+      kind: 'switch';
+      label: TranslationKey;
+      field: MiiBooleanField;
+      off: TranslationKey;
+      on: TranslationKey;
+    }
+  | { kind: 'color'; label: TranslationKey };
 
+/**
+ * Etichette e descrizioni sono **chiavi di traduzione**, non testo: la
+ * tabella è statica, la lingua no (vedi `stores/i18n.svelte.ts`).
+ */
 export interface Category {
   key: string;
-  label: string;
-  hint: string;
+  label: TranslationKey;
+  hint: TranslationKey;
   groups: OptionGroup[];
   toggles: Toggle[];
   sliders: Slider[];
@@ -59,134 +70,148 @@ export const OPTIONS_PER_PAGE = 6;
 export const CATEGORIES: [Category, ...Category[]] = [
   {
     key: 'base',
-    label: 'Base',
-    hint: 'Sesso, preferenze e proporzioni di base.',
-    groups: [{ kind: 'switch', label: 'Sesso', field: 'isFemale', off: 'Maschio', on: 'Femmina' }],
-    toggles: [{ field: 'isFavorite', label: 'Preferito' }],
+    label: 'miicat.base',
+    hint: 'miicat.base.hint',
+    groups: [
+      {
+        kind: 'switch',
+        label: 'miicat.sex',
+        field: 'isFemale',
+        off: 'miicat.male',
+        on: 'miicat.female'
+      }
+    ],
+    toggles: [{ field: 'isFavorite', label: 'miicat.favorite' }],
     sliders: [
-      { field: 'height', label: 'Altezza', min: 0, max: 127 },
-      { field: 'weight', label: 'Corporatura', min: 0, max: 127 },
-      { field: 'birthMonth', label: 'Mese di creazione', min: 1, max: 12 },
-      { field: 'birthDay', label: 'Giorno di creazione', min: 1, max: 31 }
+      { field: 'height', label: 'miicat.bodyHeight', min: 0, max: 127 },
+      { field: 'weight', label: 'miicat.build', min: 0, max: 127 },
+      { field: 'birthMonth', label: 'miicat.birthMonth', min: 1, max: 12 },
+      { field: 'birthDay', label: 'miicat.birthDay', min: 1, max: 31 }
     ]
   },
   {
     key: 'colors',
-    label: 'Colori',
-    hint: 'Il colore preferito del Mii.',
-    groups: [{ kind: 'color', label: 'Colore preferito' }],
+    label: 'miicat.colors',
+    hint: 'miicat.colors.hint',
+    groups: [{ kind: 'color', label: 'miicat.favoriteColor' }],
     toggles: [],
     sliders: []
   },
   {
     key: 'face',
-    label: 'Viso',
-    hint: 'Sfoglia le forme del viso, poi rifinisci incarnato e tratti.',
-    groups: [{ kind: 'render', label: 'Forme del viso', field: 'faceShape', min: 0, max: 7 }],
+    label: 'miicat.face',
+    hint: 'miicat.face.hint',
+    groups: [{ kind: 'render', label: 'miicat.faceShapes', field: 'faceShape', min: 0, max: 7 }],
     toggles: [],
     sliders: [
-      { field: 'skinColor', label: 'Incarnato', min: 0, max: 5 },
-      { field: 'facialFeature', label: 'Tratti', min: 0, max: 11 }
+      { field: 'skinColor', label: 'miicat.skin', min: 0, max: 5 },
+      { field: 'facialFeature', label: 'miicat.features', min: 0, max: 11 }
     ]
   },
   {
     key: 'hair',
-    label: 'Capelli',
-    hint: 'Sfoglia le acconciature; colore e specchiatura sono qui sotto.',
-    groups: [{ kind: 'render', label: 'Acconciature', field: 'hairType', min: 0, max: 71 }],
-    toggles: [{ field: 'hairFlipped', label: 'Specchia' }],
-    sliders: [{ field: 'hairColor', label: 'Colore', min: 0, max: 7 }]
+    label: 'miicat.hair',
+    hint: 'miicat.hair.hint',
+    groups: [{ kind: 'render', label: 'miicat.hairStyles', field: 'hairType', min: 0, max: 71 }],
+    toggles: [{ field: 'hairFlipped', label: 'miicat.mirror' }],
+    sliders: [{ field: 'hairColor', label: 'miicat.color', min: 0, max: 7 }]
   },
   {
     key: 'eyes',
-    label: 'Occhi',
-    hint: 'Scegli la forma; posizione e dimensione sono qui sotto.',
-    groups: [{ kind: 'render', label: 'Forme degli occhi', field: 'eyeType', min: 0, max: 47 }],
+    label: 'miicat.eyes',
+    hint: 'miicat.eyes.hint',
+    groups: [{ kind: 'render', label: 'miicat.eyeShapes', field: 'eyeType', min: 0, max: 47 }],
     toggles: [],
     sliders: [
-      { field: 'eyeRotation', label: 'Rotazione', min: 0, max: 7 },
-      { field: 'eyeColor', label: 'Colore', min: 0, max: 5 },
-      { field: 'eyeSize', label: 'Dimensione', min: 0, max: 7 },
-      { field: 'eyeSpacing', label: 'Distanza', min: 0, max: 12 },
-      { field: 'eyeVertical', label: 'Altezza', min: 0, max: 18 }
+      { field: 'eyeRotation', label: 'miicat.rotation', min: 0, max: 7 },
+      { field: 'eyeColor', label: 'miicat.color', min: 0, max: 5 },
+      { field: 'eyeSize', label: 'miicat.size', min: 0, max: 7 },
+      { field: 'eyeSpacing', label: 'miicat.spacing', min: 0, max: 12 },
+      { field: 'eyeVertical', label: 'miicat.vertical', min: 0, max: 18 }
     ]
   },
   {
     key: 'brows',
-    label: 'Sopracciglia',
-    hint: 'Scegli la forma, poi rotazione e distanza.',
-    groups: [
-      { kind: 'render', label: 'Forme delle sopracciglia', field: 'eyebrowType', min: 0, max: 23 }
-    ],
+    label: 'miicat.brows',
+    hint: 'miicat.brows.hint',
+    groups: [{ kind: 'render', label: 'miicat.browShapes', field: 'eyebrowType', min: 0, max: 23 }],
     toggles: [],
     sliders: [
-      { field: 'eyebrowRotation', label: 'Rotazione', min: 0, max: 11 },
-      { field: 'eyebrowColor', label: 'Colore', min: 0, max: 7 },
-      { field: 'eyebrowSize', label: 'Dimensione', min: 0, max: 8 },
-      { field: 'eyebrowSpacing', label: 'Distanza', min: 0, max: 12 },
-      { field: 'eyebrowVertical', label: 'Altezza', min: 3, max: 18 }
+      { field: 'eyebrowRotation', label: 'miicat.rotation', min: 0, max: 11 },
+      { field: 'eyebrowColor', label: 'miicat.color', min: 0, max: 7 },
+      { field: 'eyebrowSize', label: 'miicat.size', min: 0, max: 8 },
+      { field: 'eyebrowSpacing', label: 'miicat.spacing', min: 0, max: 12 },
+      { field: 'eyebrowVertical', label: 'miicat.vertical', min: 3, max: 18 }
     ]
   },
   {
     key: 'nose',
-    label: 'Naso',
-    hint: 'Scegli un naso e rifinisci dimensione e altezza.',
-    groups: [{ kind: 'render', label: 'Forme del naso', field: 'noseType', min: 0, max: 11 }],
+    label: 'miicat.nose',
+    hint: 'miicat.nose.hint',
+    groups: [{ kind: 'render', label: 'miicat.noseShapes', field: 'noseType', min: 0, max: 11 }],
     toggles: [],
     sliders: [
-      { field: 'noseSize', label: 'Dimensione', min: 0, max: 8 },
-      { field: 'noseVertical', label: 'Altezza', min: 0, max: 18 }
+      { field: 'noseSize', label: 'miicat.size', min: 0, max: 8 },
+      { field: 'noseVertical', label: 'miicat.vertical', min: 0, max: 18 }
     ]
   },
   {
     key: 'mouth',
-    label: 'Bocca',
-    hint: 'Scegli una bocca e rifinisci colore, dimensione e altezza.',
-    groups: [{ kind: 'render', label: 'Forme della bocca', field: 'mouthType', min: 0, max: 23 }],
+    label: 'miicat.mouth',
+    hint: 'miicat.mouth.hint',
+    groups: [{ kind: 'render', label: 'miicat.mouthShapes', field: 'mouthType', min: 0, max: 23 }],
     toggles: [],
     sliders: [
-      { field: 'mouthColor', label: 'Colore', min: 0, max: 2 },
-      { field: 'mouthSize', label: 'Dimensione', min: 0, max: 8 },
-      { field: 'mouthVertical', label: 'Altezza', min: 0, max: 18 }
+      { field: 'mouthColor', label: 'miicat.color', min: 0, max: 2 },
+      { field: 'mouthSize', label: 'miicat.size', min: 0, max: 8 },
+      { field: 'mouthVertical', label: 'miicat.vertical', min: 0, max: 18 }
     ]
   },
   {
     key: 'beard',
-    label: 'Barba',
-    hint: 'Baffi e barba, ognuno con le sue anteprime.',
+    label: 'miicat.beard',
+    hint: 'miicat.beard.hint',
     groups: [
-      { kind: 'render', label: 'Baffi', field: 'mustacheType', min: 0, max: 3 },
-      { kind: 'render', label: 'Barba', field: 'beardType', min: 0, max: 3 }
+      { kind: 'render', label: 'miicat.mustache', field: 'mustacheType', min: 0, max: 3 },
+      { kind: 'render', label: 'miicat.beard', field: 'beardType', min: 0, max: 3 }
     ],
     toggles: [],
     sliders: [
-      { field: 'facialHairColor', label: 'Colore', min: 0, max: 7 },
-      { field: 'mustacheSize', label: 'Dimensione dei baffi', min: 0, max: 8 },
-      { field: 'mustacheVertical', label: 'Altezza dei baffi', min: 0, max: 16 }
+      { field: 'facialHairColor', label: 'miicat.color', min: 0, max: 7 },
+      { field: 'mustacheSize', label: 'miicat.mustacheSize', min: 0, max: 8 },
+      { field: 'mustacheVertical', label: 'miicat.mustacheVertical', min: 0, max: 16 }
     ]
   },
   {
     key: 'glasses',
-    label: 'Occhiali',
-    hint: 'Scegli un modello, poi colore e posizione.',
-    groups: [{ kind: 'render', label: 'Occhiali', field: 'glassesType', min: 0, max: 8 }],
+    label: 'miicat.glasses',
+    hint: 'miicat.glasses.hint',
+    groups: [{ kind: 'render', label: 'miicat.glasses', field: 'glassesType', min: 0, max: 8 }],
     toggles: [],
     sliders: [
-      { field: 'glassesColor', label: 'Colore', min: 0, max: 5 },
-      { field: 'glassesSize', label: 'Dimensione', min: 0, max: 7 },
-      { field: 'glassesVertical', label: 'Altezza', min: 0, max: 20 }
+      { field: 'glassesColor', label: 'miicat.color', min: 0, max: 5 },
+      { field: 'glassesSize', label: 'miicat.size', min: 0, max: 7 },
+      { field: 'glassesVertical', label: 'miicat.vertical', min: 0, max: 20 }
     ]
   },
   {
     key: 'mole',
-    label: 'Neo',
-    hint: 'Attiva il neo e spostalo dove vuoi.',
-    groups: [{ kind: 'switch', label: 'Neo', field: 'moleEnabled', off: 'Senza', on: 'Con neo' }],
+    label: 'miicat.mole',
+    hint: 'miicat.mole.hint',
+    groups: [
+      {
+        kind: 'switch',
+        label: 'miicat.mole',
+        field: 'moleEnabled',
+        off: 'miicat.moleOff',
+        on: 'miicat.moleOn'
+      }
+    ],
     toggles: [],
     sliders: [
-      { field: 'moleSize', label: 'Dimensione', min: 0, max: 8 },
-      { field: 'moleVertical', label: 'Posizione verticale', min: 0, max: 18 },
-      { field: 'moleHorizontal', label: 'Posizione orizzontale', min: 0, max: 16 }
+      { field: 'moleSize', label: 'miicat.size', min: 0, max: 8 },
+      { field: 'moleVertical', label: 'miicat.moleVertical', min: 0, max: 18 },
+      { field: 'moleHorizontal', label: 'miicat.moleHorizontal', min: 0, max: 16 }
     ]
   }
 ];

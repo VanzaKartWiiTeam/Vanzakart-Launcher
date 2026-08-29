@@ -8,6 +8,7 @@
   import * as api from '$lib/api';
   import { parseMarkdown, type Block, type Span } from '$lib/markdown';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   interface Props {
     source: string;
@@ -21,7 +22,7 @@
     try {
       await api.openExternal(url);
     } catch (error) {
-      app.toast('Apertura non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('sidebar.openFailed'), api.errorMessage(error), 'warning');
     }
   }
 </script>

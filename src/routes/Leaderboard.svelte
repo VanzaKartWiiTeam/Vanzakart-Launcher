@@ -18,6 +18,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import { formatRelative } from '$lib/stores/app.svelte';
+  import { formatNumber, t } from '$lib/stores/i18n.svelte';
   import type { LeaderboardEntry } from '$lib/api/types';
 
   let entries = $state<LeaderboardEntry[]>([]);
@@ -98,10 +99,10 @@
 
 <div class="page">
   <div class="toolbar">
-    <input class="vk-input search" bind:value={query} placeholder="Cerca per nome o friend code…" />
+    <input class="vk-input search" bind:value={query} placeholder={t('board.search')} />
     <button class="vk-btn" onclick={load} disabled={loading}>
       <Icon name="refresh" size={14} />
-      {loading ? 'Aggiorno…' : 'Aggiorna'}
+      {loading ? t('common.refreshing') : t('common.refreshAction')}
     </button>
   </div>
 
@@ -109,13 +110,13 @@
     <div class="vk-card"><div class="vk-skeleton skeleton"></div></div>
   {:else if error}
     <div class="vk-error">
-      <strong>Classifica non disponibile.</strong>
+      <strong>{t('board.unavailable')}</strong>
       <p>{error}</p>
     </div>
   {:else if entries.length === 0}
     <div class="vk-card vk-empty">
       <Icon name="trophy" size={28} />
-      <p>Nessun giocatore in classifica.</p>
+      <p>{t('board.empty')}</p>
     </div>
   {:else}
     {#if !searching && podium.length > 0}
@@ -140,15 +141,17 @@
             </span>
 
             <span class="name">{entry.name}</span>
-            <span class="points">{entry.points.toLocaleString('it-IT')} VR</span>
-            <span class="vk-faint sub">{entry.wins} vittorie · {entry.winrate.toFixed(1)}%</span>
+            <span class="points">{t('board.vr', { points: formatNumber(entry.points) })}</span>
+            <span class="vk-faint sub">
+              {t('board.podiumSub', { wins: entry.wins, winrate: entry.winrate.toFixed(1) })}
+            </span>
 
             {#if entry.rankImage}
               <img
                 class="rank-image"
                 src={entry.rankImage}
-                alt="Grado {entry.prestigeRank}"
-                title="Grado {entry.prestigeRank}"
+                alt={t('board.rank', { rank: entry.prestigeRank })}
+                title={t('board.rank', { rank: entry.prestigeRank })}
               />
             {/if}
           </button>
@@ -159,12 +162,12 @@
     <div class="board" class:with-details={selected !== null}>
       <section class="vk-card table-card">
         <div class="row head">
-          <span>Pos</span>
-          <span>Giocatore</span>
-          <span class="num">VR</span>
-          <span class="num">24 h</span>
-          <span class="num">Vittorie</span>
-          <span class="num">Gare</span>
+          <span>{t('board.col.pos')}</span>
+          <span>{t('board.col.player')}</span>
+          <span class="num">{t('board.col.vr')}</span>
+          <span class="num">{t('board.col.day')}</span>
+          <span class="num">{t('board.col.wins')}</span>
+          <span class="num">{t('board.col.games')}</span>
         </div>
 
         <div class="rows">
@@ -188,40 +191,42 @@
                   <img
                     class="rank-mini"
                     src={entry.rankImage}
-                    alt="Grado {entry.prestigeRank}"
-                    title="Grado {entry.prestigeRank}"
+                    alt={t('board.rank', { rank: entry.prestigeRank })}
+                    title={t('board.rank', { rank: entry.prestigeRank })}
                   />
                 {/if}
                 <span class="player-name">{entry.name}</span>
                 {#if entry.isSuspicious}
-                  <span class="vk-badge vk-badge--warning">Sospetto</span>
+                  <span class="vk-badge vk-badge--warning">{t('board.suspicious')}</span>
                 {/if}
               </span>
-              <span class="num strong">{entry.points.toLocaleString('it-IT')}</span>
+              <span class="num strong">{formatNumber(entry.points)}</span>
               <span
                 class="num gain"
                 class:up={entry.vrLast24Hours > 0}
                 class:down={entry.vrLast24Hours < 0}
               >
-                {entry.vrLast24Hours === 0 ? '—' : gain(entry.vrLast24Hours)}
+                {entry.vrLast24Hours === 0 ? t('common.dash') : gain(entry.vrLast24Hours)}
               </span>
               <span class="num">{entry.wins}</span>
               <span class="num">{entry.games}</span>
             </button>
           {:else}
-            <p class="vk-faint no-match">Nessun giocatore corrisponde alla ricerca.</p>
+            <p class="vk-faint no-match">{t('board.noMatch')}</p>
           {/each}
         </div>
 
         <footer class="table-foot">
           <span class="vk-faint">
             {searching
-              ? `${rest.length} ${rest.length === 1 ? 'risultato' : 'risultati'}`
-              : `${entries.length} giocatori`}
+              ? rest.length === 1
+                ? t('board.resultOne', { count: rest.length })
+                : t('board.resultMany', { count: rest.length })
+              : t('board.playerCount', { count: entries.length })}
           </span>
           {#if hasMore && !searching}
             <button class="vk-btn" onclick={loadMore} disabled={loadingMore}>
-              {loadingMore ? 'Carico…' : 'Carica altri'}
+              {loadingMore ? t('board.loadingMore') : t('board.loadMore')}
             </button>
           {/if}
         </footer>
@@ -240,55 +245,60 @@
               shape="rounded"
             />
             <div class="details-id">
-              <p class="vk-eyebrow">#{player.position} in classifica</p>
+              <p class="vk-eyebrow">{t('board.position', { position: player.position })}</p>
               <h3 class="details-name">{player.name}</h3>
               {#if player.rankImage}
                 <p class="details-rank">
                   <img src={player.rankImage} alt="" />
-                  Grado {player.prestigeRank}
+                  {t('board.rankShort', { rank: player.prestigeRank })}
                 </p>
               {/if}
             </div>
             <button
               class="close"
               onclick={() => (selected = null)}
-              title="Chiudi i dettagli (Esc)"
-              aria-label="Chiudi i dettagli"
+              title={t('board.closeDetailsHint')}
+              aria-label={t('board.closeDetails')}
             >
               <Icon name="close" size={14} />
             </button>
           </header>
 
-          <p class="headline">{player.points.toLocaleString('it-IT')} <span>VR</span></p>
+          <p class="headline">{formatNumber(player.points)} <span>VR</span></p>
 
           <div class="details-grid">
-            <div><span class="vk-faint">Vittorie</span><strong>{player.wins}</strong></div>
-            <div><span class="vk-faint">Gare</span><strong>{player.games}</strong></div>
             <div>
-              <span class="vk-faint">Win rate</span><strong>{player.winrate.toFixed(1)}%</strong>
+              <span class="vk-faint">{t('board.wins')}</span><strong>{player.wins}</strong>
             </div>
             <div>
-              <span class="vk-faint">Online</span>
-              <strong>{formatRelative(player.lastSeen) || '—'}</strong>
+              <span class="vk-faint">{t('board.games')}</span><strong>{player.games}</strong>
+            </div>
+            <div>
+              <span class="vk-faint">{t('board.winRate')}</span>
+              <strong>{player.winrate.toFixed(1)}%</strong>
+            </div>
+            <div>
+              <span class="vk-faint">{t('board.online')}</span>
+              <strong>{formatRelative(player.lastSeen) || t('common.dash')}</strong>
             </div>
           </div>
 
           <div class="trend">
-            <p class="vk-eyebrow">Andamento VR</p>
+            <p class="vk-eyebrow">{t('board.trend')}</p>
             <div class="trend-row">
-              <span class="vk-faint">24 ore</span>
+              <span class="vk-faint">{t('board.trend24')}</span>
               <strong class:up={player.vrLast24Hours > 0} class:down={player.vrLast24Hours < 0}>
                 {gain(player.vrLast24Hours)}
               </strong>
             </div>
             <div class="trend-row">
-              <span class="vk-faint">Settimana</span>
+              <span class="vk-faint">{t('board.trendWeek')}</span>
               <strong class:up={player.vrLastWeek > 0} class:down={player.vrLastWeek < 0}>
                 {gain(player.vrLastWeek)}
               </strong>
             </div>
             <div class="trend-row">
-              <span class="vk-faint">Mese</span>
+              <span class="vk-faint">{t('board.trendMonth')}</span>
               <strong class:up={player.vrLastMonth > 0} class:down={player.vrLastMonth < 0}>
                 {gain(player.vrLastMonth)}
               </strong>
@@ -296,12 +306,12 @@
           </div>
 
           <p class="fc">
-            <span class="vk-faint">Friend code</span>
-            <span class="vk-mono">{player.friendCode || '—'}</span>
+            <span class="vk-faint">{t('board.friendCode')}</span>
+            <span class="vk-mono">{player.friendCode || t('common.dash')}</span>
           </p>
 
           {#if player.isSuspicious}
-            <p class="vk-badge vk-badge--warning flagged">Segnalato come sospetto</p>
+            <p class="vk-badge vk-badge--warning flagged">{t('board.flagged')}</p>
           {/if}
         </aside>
       {/if}

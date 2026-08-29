@@ -11,6 +11,7 @@
    * il selettore del Mii di una licenza: la faccia è sempre la stessa cosa.
    */
   import { renderStudio } from '$lib/mii/render';
+  import { t } from '$lib/stores/i18n.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import type { MiiRenderKind } from '$lib/api';
 
@@ -71,7 +72,7 @@
   class:rounded={shape === 'rounded'}
   style="--size: {size}px; --accent: {accent}"
   role="img"
-  aria-label={name ? `Mii di ${name}` : 'Mii'}
+  aria-label={name ? t('mii.avatarOf', { name }) : t('mii.avatar')}
 >
   {#if image}
     <img src={image} alt="" />

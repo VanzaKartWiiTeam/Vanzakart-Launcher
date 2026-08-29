@@ -6,6 +6,7 @@
  */
 
 import * as api from '$lib/api';
+import { i18n, t, type TranslationKey } from '$lib/stores/i18n.svelte';
 import type {
   Channel,
   LauncherStatus,
@@ -60,8 +61,23 @@ class AppStore {
 
   busy = $state(false);
   progress = $state<ProgressEvent>({ ...IDLE_PROGRESS });
-  statusLine = $state('Controllo dell’installazione locale…');
   statusTone = $state<'info' | 'success' | 'warning' | 'danger'>('info');
+
+  /**
+   * La riga di stato, tenuta come chiave finché è una frase nostra.
+   *
+   * Cambiando lingua deve cambiare anche quello che c'è scritto adesso, non
+   * solo il prossimo messaggio: perciò si conserva la chiave e si traduce
+   * quando la si legge. I testi che arrivano dal backend — il dettaglio di
+   * un progresso — restano come sono: per quelli non abbiamo una chiave.
+   */
+  private statusText = $state('');
+  private statusKey = $state<TranslationKey | null>('status.checking');
+  private statusParams = $state<Record<string, string | number>>({});
+
+  get statusLine(): string {
+    return this.statusKey === null ? this.statusText : t(this.statusKey, this.statusParams);
+  }
 
   toasts = $state<Toast[]>([]);
   private nextToastId = 1;
@@ -97,8 +113,21 @@ class AppStore {
     this.route = route;
   }
 
+  /** Riga di stato con un testo già pronto: arriva dal backend. */
   setStatusLine(text: string, tone: AppStore['statusTone'] = 'info'): void {
-    this.statusLine = text;
+    this.statusKey = null;
+    this.statusText = text;
+    this.statusTone = tone;
+  }
+
+  /** Riga di stato scritta da noi: si ritraduce se cambia la lingua. */
+  setStatusKey(
+    key: TranslationKey,
+    params: Record<string, string | number> = {},
+    tone: AppStore['statusTone'] = 'info'
+  ): void {
+    this.statusKey = key;
+    this.statusParams = params;
     this.statusTone = tone;
   }
 
@@ -143,35 +172,28 @@ class AppStore {
     const mod = status.modState;
 
     if (!status.settingsComplete) {
-      this.setStatusLine(
-        'Configura Dolphin, la cartella User e la ROM in Impostazioni.',
-        'warning'
-      );
+      this.setStatusKey('status.settingsIncomplete', {}, 'warning');
       return;
     }
     if (!mod.installed) {
-      this.setStatusLine(
-        `Modpack ${mod.channel} non installata. Aprila in Mods per installarla.`,
-        'warning'
-      );
+      this.setStatusKey('status.notInstalled', { channel: mod.channel }, 'warning');
       return;
     }
     if (mod.needsRepair) {
-      this.setStatusLine(
-        `Modpack ${mod.channel} da riparare: senza i suoi file Dolphin avvierebbe Mario Kart Wii originale.`,
-        'danger'
-      );
+      this.setStatusKey('status.needsRepair', { channel: mod.channel }, 'danger');
       return;
     }
     if (mod.updateAvailable) {
-      this.setStatusLine(
-        `Aggiornamento disponibile: ${mod.installedVersion || 'versione sconosciuta'} → ${mod.latestVersion}.`,
+      this.setStatusKey(
+        'status.updateAvailable',
+        { from: mod.installedVersion || t('status.unknownVersion'), to: mod.latestVersion },
         'warning'
       );
       return;
     }
-    this.setStatusLine(
-      `${mod.channel} ${mod.installedVersion || ''} pronta. Buona gara.`.trim(),
+    this.setStatusKey(
+      'status.ready',
+      { channel: mod.channel, version: mod.installedVersion || '' },
       'success'
     );
   }
@@ -179,46 +201,74 @@ class AppStore {
 
 export const app = new AppStore();
 
-/** Etichetta e sottotitolo di ogni pagina, come nell'header del WPF. */
-export const PAGE_META: Record<Route, { title: string; subtitle: string; icon: string }> = {
-  home: { title: 'Home / Play', subtitle: 'Pronto a correre su VanzaKart.', icon: 'play' },
-  news: { title: 'News', subtitle: 'Aggiornamenti dalla community.', icon: 'news' },
-  rooms: { title: 'Rooms', subtitle: 'Chi sta giocando adesso.', icon: 'rooms' },
-  leaderboard: { title: 'Leaderboard', subtitle: 'Classifica VR globale.', icon: 'trophy' },
-  friends: { title: 'Friends', subtitle: 'Amici salvati nella licenza.', icon: 'friends' },
-  mods: { title: 'Mods', subtitle: 'Modpack, music pack e addon.', icon: 'package' },
-  licenses: { title: 'Mii & Licenses', subtitle: 'Profili, Mii e salvataggi.', icon: 'license' },
-  settings: { title: 'Settings', subtitle: 'Dolphin, controller e canale.', icon: 'settings' },
-  debug: { title: 'Debug', subtitle: 'Diagnostica e log.', icon: 'debug' }
+/**
+ * I link del team, in un posto solo.
+ *
+ * Li usano la card Community della sidebar e la scheda Team delle
+ * impostazioni: due copie dello stesso indirizzo invecchiano in modo diverso.
+ */
+export const TEAM_LINKS = {
+  website: 'https://vwfc.sitodaking.it/',
+  discord: 'https://discord.gg/2UGhrCNV8t',
+  paypal: 'https://www.paypal.com/paypalme/SossioStorto'
+} as const;
+
+/**
+ * Titolo e sottotitolo di ogni pagina, come nell'header del WPF.
+ *
+ * Sono chiavi, non testo: l'header si riscrive quando cambia la lingua.
+ */
+export const PAGE_META: Record<
+  Route,
+  { title: TranslationKey; subtitle: TranslationKey; icon: string }
+> = {
+  home: { title: 'page.home.title', subtitle: 'page.home.subtitle', icon: 'play' },
+  news: { title: 'page.news.title', subtitle: 'page.news.subtitle', icon: 'news' },
+  rooms: { title: 'page.rooms.title', subtitle: 'page.rooms.subtitle', icon: 'rooms' },
+  leaderboard: {
+    title: 'page.leaderboard.title',
+    subtitle: 'page.leaderboard.subtitle',
+    icon: 'trophy'
+  },
+  friends: { title: 'page.friends.title', subtitle: 'page.friends.subtitle', icon: 'friends' },
+  mods: { title: 'page.mods.title', subtitle: 'page.mods.subtitle', icon: 'package' },
+  licenses: { title: 'page.licenses.title', subtitle: 'page.licenses.subtitle', icon: 'license' },
+  settings: { title: 'page.settings.title', subtitle: 'page.settings.subtitle', icon: 'settings' },
+  debug: { title: 'page.debug.title', subtitle: 'page.debug.subtitle', icon: 'debug' }
 };
 
 /** Formatta una durata in minuti come la mostrava il launcher legacy. */
 export function formatPlayTime(minutes: number): string {
-  if (!Number.isFinite(minutes) || minutes <= 0) return '0 min';
-  if (minutes < 60) return `${Math.round(minutes)} min`;
+  if (!Number.isFinite(minutes) || minutes <= 0) return t('time.zeroMinutes');
+  if (minutes < 60) return t('time.minutes', { count: Math.round(minutes) });
 
   const hours = Math.floor(minutes / 60);
   const rest = Math.round(minutes % 60);
-  return rest === 0 ? `${hours} h` : `${hours} h ${rest} min`;
+  return rest === 0
+    ? t('time.hours', { count: hours })
+    : t('time.hoursMinutes', { hours, minutes: rest });
 }
-
-const DATE_FORMAT = new Intl.DateTimeFormat('it-IT', {
-  day: '2-digit',
-  month: 'short',
-  year: 'numeric'
-});
 
 /**
  * Formatta una data ISO in forma breve, o "Mai".
+ *
+ * Il formattatore si costruisce a ogni chiamata perché dipende dalla lingua
+ * scelta: `Intl` costa poco, e così la data cambia insieme al resto.
  *
  * Usa `Date.parse` invece di costruire un `Date`: qui serve solo un timestamp
  * da formattare, non un oggetto data da tenere in stato.
  */
 export function formatDate(iso: string | null): string {
-  if (!iso) return 'Mai';
+  if (!iso) return t('common.never');
 
   const timestamp = Date.parse(iso);
-  return Number.isNaN(timestamp) ? 'Mai' : DATE_FORMAT.format(timestamp);
+  if (Number.isNaN(timestamp)) return t('common.never');
+
+  return new Intl.DateTimeFormat(i18n.tag, {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric'
+  }).format(timestamp);
 }
 
 /**
@@ -235,17 +285,17 @@ export function formatRelative(iso: string | null): string {
   if (Number.isNaN(timestamp)) return '';
 
   const seconds = Math.round((Date.now() - timestamp) / 1000);
-  if (seconds < 60) return 'adesso';
+  if (seconds < 60) return t('time.now');
 
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes} min fa`;
+  if (minutes < 60) return t('time.minutesAgo', { count: minutes });
 
   const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} h fa`;
+  if (hours < 24) return t('time.hoursAgo', { count: hours });
 
   const days = Math.floor(hours / 24);
-  if (days === 1) return 'ieri';
-  if (days < 30) return `${days} g fa`;
+  if (days === 1) return t('time.yesterday');
+  if (days < 30) return t('time.daysAgo', { count: days });
 
   return formatDate(iso);
 }

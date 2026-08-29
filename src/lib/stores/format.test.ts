@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { beforeAll, describe, expect, it } from 'vitest';
 
+import { i18n, t } from './i18n.svelte';
 import {
   formatBytes,
   formatDate,
@@ -8,6 +9,10 @@ import {
   PAGE_META,
   ROUTES
 } from './app.svelte';
+
+// Le stringhe attese sono quelle italiane: senza fissare la lingua il
+// risultato dipenderebbe da quella del sistema che esegue i test.
+beforeAll(() => i18n.set('it'));
 
 describe('formatPlayTime', () => {
   it('mostra i minuti sotto l’ora', () => {
@@ -98,8 +103,8 @@ describe('routing', () => {
   it('ha metadati per ogni pagina', () => {
     for (const route of ROUTES) {
       const meta = PAGE_META[route];
-      expect(meta.title.length).toBeGreaterThan(0);
-      expect(meta.subtitle.length).toBeGreaterThan(0);
+      expect(t(meta.title).length).toBeGreaterThan(0);
+      expect(t(meta.subtitle).length).toBeGreaterThan(0);
       expect(meta.icon.length).toBeGreaterThan(0);
     }
   });

@@ -14,6 +14,7 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { RoomsSummary, RoomView } from '$lib/api/types';
 
   /** Lo stesso intervallo di auto-refresh del launcher legacy. */
@@ -66,25 +67,25 @@
     <div class="stats">
       <div class="stat">
         <span class="value">{summary?.totalPlayers ?? 0}</span>
-        <span class="vk-eyebrow">Giocatori online</span>
+        <span class="vk-eyebrow">{t('rooms.playersOnline')}</span>
       </div>
       <div class="stat">
         <span class="value">{summary?.totalRooms ?? 0}</span>
-        <span class="vk-eyebrow">Stanze attive</span>
+        <span class="vk-eyebrow">{t('rooms.activeRooms')}</span>
       </div>
       <div class="stat">
         <span class="value">{summary?.publicRooms ?? 0}</span>
-        <span class="vk-eyebrow">Pubbliche</span>
+        <span class="vk-eyebrow">{t('rooms.public')}</span>
       </div>
       <div class="stat">
         <span class="value">{summary?.privateRooms ?? 0}</span>
-        <span class="vk-eyebrow">Private</span>
+        <span class="vk-eyebrow">{t('rooms.private')}</span>
       </div>
     </div>
 
     <button class="vk-btn refresh" onclick={() => load(false)} disabled={refreshing}>
       <Icon name="refresh" size={14} />
-      {refreshing ? 'Aggiorno…' : 'Aggiorna'}
+      {refreshing ? t('common.refreshing') : t('common.refreshAction')}
     </button>
   </section>
 
@@ -98,14 +99,14 @@
     {/each}
   {:else if error}
     <div class="vk-error">
-      <strong>Impossibile caricare le stanze.</strong>
+      <strong>{t('rooms.loadFailed')}</strong>
       <p>{error}</p>
     </div>
   {:else if !summary || summary.rooms.length === 0}
     <div class="vk-card vk-empty">
       <Icon name="rooms" size={28} />
-      <p>Nessuna stanza attiva in questo momento.</p>
-      <p class="vk-faint">L'elenco si aggiorna da solo ogni 30 secondi.</p>
+      <p>{t('rooms.empty')}</p>
+      <p class="vk-faint">{t('rooms.emptyHint')}</p>
     </div>
   {:else}
     <div class="rooms">
@@ -115,7 +116,9 @@
           <header class="room-head">
             <div class="room-id">
               <h3 class="room-name">{room.name}</h3>
-              <p class="vk-faint host">Host: {room.host || '—'}</p>
+              <p class="vk-faint host">
+                {t('rooms.host', { name: room.host || t('common.dash') })}
+              </p>
             </div>
             <span
               class="vk-badge {room.status.toLowerCase() === 'racing' ? 'vk-badge--success' : ''}"
@@ -157,7 +160,7 @@
                 {/if}
               </div>
               <span class="vk-faint toggle">
-                {open ? 'Nascondi' : 'Giocatori'}
+                {open ? t('common.hide') : t('rooms.players')}
                 <Icon name="chevron" size={12} />
               </span>
             </button>
@@ -176,13 +179,15 @@
                     <div class="roster-id">
                       <span class="roster-name">
                         {player.name}
-                        {#if player.isHost}<span class="vk-badge host-badge">Host</span>{/if}
+                        {#if player.isHost}
+                          <span class="vk-badge host-badge">{t('rooms.hostBadge')}</span>
+                        {/if}
                       </span>
                       {#if player.friendCode}
                         <span class="vk-mono vk-faint fc">{player.friendCode}</span>
                       {/if}
                     </div>
-                    <span class="vk-faint rating">VR {player.vr}</span>
+                    <span class="vk-faint rating">{t('rooms.vr', { points: player.vr })}</span>
                   </li>
                 {/each}
               </ul>

@@ -10,6 +10,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { BackupSummary, DiagnosticEntry } from '$lib/api/types';
 
   let entries = $state<DiagnosticEntry[]>([]);
@@ -33,7 +34,7 @@
         api.listBackups()
       ]);
     } catch (error) {
-      app.toast('Diagnostica non disponibile', api.errorMessage(error), 'warning');
+      app.toast(t('debug.unavailable'), api.errorMessage(error), 'warning');
     } finally {
       loading = false;
     }
@@ -43,9 +44,9 @@
     const report = entries.map((entry) => `${entry.label}: ${entry.value}`).join('\n');
     try {
       await navigator.clipboard.writeText(report);
-      app.toast('Copiato', 'Rapporto diagnostico negli appunti.', 'success');
+      app.toast(t('debug.copied'), t('debug.copiedBody'), 'success');
     } catch {
-      app.toast('Copia non riuscita', 'Gli appunti non sono accessibili.', 'warning');
+      app.toast(t('debug.copyFailed'), t('debug.copyFailedBody'), 'warning');
     }
   }
 
@@ -53,12 +54,12 @@
     purging = true;
     try {
       const removed = await api.purgeUserData(confirmation);
-      app.toast('Dati cancellati', `${removed.length} cartelle svuotate.`, 'success');
+      app.toast(t('debug.purged'), t('debug.purgedBody', { count: removed.length }), 'success');
       purgeOpen = false;
       confirmation = '';
       await load();
     } catch (error) {
-      app.toast('Cancellazione non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('debug.purgeFailed'), api.errorMessage(error), 'warning');
     } finally {
       purging = false;
     }
@@ -68,13 +69,13 @@
 <div class="page">
   <section class="vk-card">
     <div class="head">
-      <p class="vk-eyebrow">Stato dell'installazione</p>
+      <p class="vk-eyebrow">{t('debug.installState')}</p>
       <div class="vk-row">
         <button class="vk-btn" onclick={load} disabled={loading}>
           <Icon name="refresh" size={14} />
-          Aggiorna
+          {t('common.refreshAction')}
         </button>
-        <button class="vk-btn" onclick={copyReport}>Copia rapporto</button>
+        <button class="vk-btn" onclick={copyReport}>{t('debug.copyReport')}</button>
       </div>
     </div>
 
@@ -97,10 +98,10 @@
 
   <section class="vk-card">
     <div class="head">
-      <p class="vk-eyebrow">Log del launcher</p>
+      <p class="vk-eyebrow">{t('debug.log')}</p>
       <button class="vk-btn" onclick={() => api.openFolder('logs')}>
         <Icon name="folder" size={14} />
-        Apri cartella log
+        {t('settings.openLogs')}
       </button>
     </div>
     <pre class="log vk-mono">{log}</pre>
@@ -108,21 +109,21 @@
 
   <section class="vk-card">
     <div class="head">
-      <p class="vk-eyebrow">Backup dei dati utente</p>
+      <p class="vk-eyebrow">{t('debug.backups')}</p>
       <button class="vk-btn" onclick={() => api.openFolder('backups')}>
         <Icon name="folder" size={14} />
-        Apri cartella
+        {t('debug.openFolder')}
       </button>
     </div>
 
     {#if backups.length === 0}
-      <p class="vk-faint">Nessun backup: verrà creato al primo aggiornamento della modpack.</p>
+      <p class="vk-faint">{t('debug.noBackups')}</p>
     {:else}
       <ul class="backups">
         {#each backups as backup (backup.id)}
           <li>
             <span class="vk-mono">{backup.id}</span>
-            <span class="vk-faint">{backup.fileCount} file protetti</span>
+            <span class="vk-faint">{t('debug.protectedFiles', { count: backup.fileCount })}</span>
           </li>
         {/each}
       </ul>
@@ -131,23 +132,20 @@
 
   <section class="vk-card danger-zone">
     <div>
-      <p class="vk-eyebrow">Zona pericolosa</p>
-      <p class="vk-subtitle">
-        Svuota cache, download e log del launcher. Impostazioni, modpack installate e salvataggi di
-        Dolphin non vengono toccati.
-      </p>
+      <p class="vk-eyebrow">{t('debug.dangerZone')}</p>
+      <p class="vk-subtitle">{t('debug.dangerBody')}</p>
     </div>
     <button class="vk-btn vk-btn--danger" onclick={() => (purgeOpen = true)}>
       <Icon name="warning" size={14} />
-      Cancella dati temporanei
+      {t('debug.purgeAction')}
     </button>
   </section>
 </div>
 
 <Modal
   open={purgeOpen}
-  title="Cancellare i dati temporanei?"
-  confirmLabel="Cancella"
+  title={t('debug.purgeTitle')}
+  confirmLabel={t('debug.purgeConfirm')}
   danger
   busy={purging}
   onconfirm={purge}
@@ -156,8 +154,8 @@
     confirmation = '';
   }}
 >
-  <p>Verranno svuotate le cartelle cache, download e log.</p>
-  <p>Digita <strong>VanzaKart</strong> per confermare.</p>
+  <p>{t('debug.purgeBody')}</p>
+  <p>{t('debug.purgeType')}</p>
   <input class="vk-input" bind:value={confirmation} placeholder="VanzaKart" autocomplete="off" />
 </Modal>
 

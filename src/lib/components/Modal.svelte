@@ -7,6 +7,8 @@
    */
   import type { Snippet } from 'svelte';
 
+  import { t } from '$lib/stores/i18n.svelte';
+
   interface Props {
     open: boolean;
     title: string;
@@ -23,7 +25,7 @@
     open,
     title,
     confirmLabel,
-    cancelLabel = 'Chiudi',
+    cancelLabel,
     danger = false,
     busy = false,
     onconfirm,
@@ -40,14 +42,16 @@
 
 {#if open}
   <div class="overlay">
-    <button class="backdrop" aria-label="Chiudi la finestra" onclick={oncancel} disabled={busy}
+    <button class="backdrop" aria-label={t('common.closeWindow')} onclick={oncancel} disabled={busy}
     ></button>
 
     <div class="dialog" role="dialog" aria-modal="true" aria-label={title}>
       <h2 class="title">{title}</h2>
       <div class="content">{@render children()}</div>
       <div class="actions">
-        <button class="vk-btn" onclick={oncancel} disabled={busy}>{cancelLabel}</button>
+        <button class="vk-btn" onclick={oncancel} disabled={busy}>
+          {cancelLabel ?? t('common.close')}
+        </button>
         {#if onconfirm && confirmLabel}
           <button
             class="vk-btn {danger ? 'vk-btn--danger' : 'vk-btn--primary'}"

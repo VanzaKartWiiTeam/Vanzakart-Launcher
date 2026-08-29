@@ -7,18 +7,19 @@
   import * as api from '$lib/api';
   import Icon from './Icon.svelte';
   import type { IconName } from './Icon.svelte';
-  import { app, PAGE_META, type Route } from '$lib/stores/app.svelte';
+  import { app, PAGE_META, TEAM_LINKS, type Route } from '$lib/stores/app.svelte';
+  import { t, type TranslationKey } from '$lib/stores/i18n.svelte';
 
   interface Group {
-    label: string;
+    label: TranslationKey;
     routes: Route[];
   }
 
   const GROUPS: Group[] = [
-    { label: 'General', routes: ['home', 'news'] },
-    { label: 'Online', routes: ['rooms', 'leaderboard', 'friends'] },
-    { label: 'Customize', routes: ['mods', 'licenses'] },
-    { label: 'Other', routes: ['settings', 'debug'] }
+    { label: 'sidebar.group.general', routes: ['home', 'news'] },
+    { label: 'sidebar.group.online', routes: ['rooms', 'leaderboard', 'friends'] },
+    { label: 'sidebar.group.customize', routes: ['mods', 'licenses'] },
+    { label: 'sidebar.group.other', routes: ['settings', 'debug'] }
   ];
 
   const LABELS: Record<Route, string> = {
@@ -39,17 +40,17 @@
     try {
       await api.openExternal(url);
     } catch (error) {
-      app.toast('Apertura non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('sidebar.openFailed'), api.errorMessage(error), 'warning');
     }
   }
 </script>
 
-<nav class="sidebar" aria-label="Navigazione principale">
+<nav class="sidebar" aria-label={t('sidebar.nav')}>
   <div class="groups">
     {#each GROUPS as group (group.label)}
       {@const routes = group.routes.filter((route) => visible.has(route))}
       {#if routes.length > 0}
-        <p class="group-label">{group.label}</p>
+        <p class="group-label">{t(group.label)}</p>
         {#each routes as route (route)}
           <button
             class="nav"
@@ -66,11 +67,12 @@
   </div>
 
   <div class="vk-card vk-card--mini community">
-    <p class="vk-eyebrow">Community</p>
-    <p class="vk-faint hint">Discord e sito ufficiale</p>
+    <p class="vk-eyebrow">{t('sidebar.community')}</p>
+    <p class="vk-faint hint">{t('sidebar.communityHint')}</p>
     <div class="links">
-      <button class="vk-btn" onclick={() => open('https://sitodaking.it')}>Website</button>
-      <button class="vk-btn" onclick={() => open('https://vwfc.sitodaking.it/')}>Server</button>
+      <button class="vk-btn" onclick={() => open(TEAM_LINKS.website)}>{t('sidebar.website')}</button
+      >
+      <button class="vk-btn" onclick={() => open(TEAM_LINKS.discord)}>{t('sidebar.server')}</button>
     </div>
   </div>
 </nav>

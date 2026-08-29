@@ -115,9 +115,17 @@
   --vk-gap-lg: 26px;
 
   /* ---- Tipografia ---- */
+  /*
+   * In coda a ogni pila ci sono i font dei simboli: i nomi che arrivano dal
+   * Wii contengono ①, ★, 👑 e compagnia (vedi `domain/wii_text.rs`), e senza
+   * un font che li disegni resterebbero quadratini vuoti.
+   */
   --vk-font:
-    'Segoe UI', 'Inter', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans', sans-serif;
-  --vk-font-mono: 'Cascadia Mono', 'Consolas', 'SF Mono', 'DejaVu Sans Mono', monospace;
+    'Segoe UI', 'Inter', system-ui, -apple-system, 'Helvetica Neue', 'Noto Sans', 'Segoe UI Symbol',
+    'Segoe UI Emoji', 'Noto Sans Symbols 2', 'Noto Color Emoji', 'Apple Color Emoji', sans-serif;
+  --vk-font-mono:
+    'Cascadia Mono', 'Consolas', 'SF Mono', 'DejaVu Sans Mono', 'Segoe UI Symbol', 'Segoe UI Emoji',
+    'Noto Sans Symbols 2', 'Noto Color Emoji', 'Apple Color Emoji', monospace;
 
   --vk-fs-hero: 50px;
   --vk-fs-section: 30px;

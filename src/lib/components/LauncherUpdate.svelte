@@ -17,6 +17,7 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import { formatBytes } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { LauncherUpdateStatus } from '$lib/api/types';
 
   interface Props {
@@ -104,9 +105,7 @@
     const packaged = /appimage|not supported|unsupported/i.test(message);
     if (!packaged) return message;
 
-    return `${message}
-
-L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pacchetto .deb o .rpm, aggiorna dal gestore di pacchetti o riscarica il launcher dal sito.`;
+    return `${message}\n\n${t('updater.linuxNote')}`;
   }
 </script>
 
@@ -115,35 +114,34 @@ L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pa
     class="sheet vk-rainbow-top"
     role="dialog"
     aria-modal="true"
-    aria-label="Aggiornamento del launcher"
+    aria-label={t('home.launcherUpdate')}
   >
     <header>
-      <p class="vk-eyebrow">Aggiornamento del launcher</p>
+      <p class="vk-eyebrow">{t('home.launcherUpdate')}</p>
       <h2 class="title">
         {#if stage === 'checking'}
-          Controllo in corso…
+          {t('updater.checking')}
         {:else if stage === 'downloading'}
-          Download della versione {update?.version}
+          {t('updater.downloadingVersion', { version: update?.version ?? '' })}
         {:else if stage === 'installing'}
-          Installazione in corso
+          {t('updater.installing')}
         {:else if stage === 'done'}
-          Installato: riavvio…
+          {t('updater.done')}
         {:else if stage === 'unavailable'}
-          Versione {status.latest} disponibile
+          {t('updater.available', { version: status.latest })}
         {:else}
-          Versione {update?.version} disponibile
+          {t('updater.available', { version: update?.version ?? '' })}
         {/if}
       </h2>
     </header>
 
     {#if stage === 'checking'}
-      <p class="vk-subtitle">Sto chiedendo al server se c'è una versione più recente.</p>
+      <p class="vk-subtitle">{t('updater.checkingBody')}</p>
       <div class="vk-skeleton bar"></div>
     {:else if stage === 'unavailable'}
       <p class="vk-subtitle">
-        <code>versions.json</code> dichiara la <strong>{status.latest}</strong> — questa è la
-        {status.current} — ma il pacchetto firmato non è disponibile, quindi non posso installarlo da
-        qui.
+        <code>versions.json</code>
+        {t('updater.unavailableBody', { latest: status.latest, current: status.current })}
       </p>
       {#if error}
         <p class="vk-error inline">{error}</p>
@@ -155,20 +153,20 @@ L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pa
             onclick={() => api.openExternal(status.downloadPage)}
           >
             <Icon name="external" size={14} />
-            Apri la pagina di download
+            {t('updater.openDownloadPage')}
           </button>
         {/if}
-        <button class="vk-btn" onclick={onclose}>Chiudi</button>
+        <button class="vk-btn" onclick={onclose}>{t('common.close')}</button>
       </div>
     {:else if stage === 'done'}
-      <p class="vk-subtitle">Il launcher si riapre da solo fra un istante.</p>
+      <p class="vk-subtitle">{t('updater.doneBody')}</p>
       <div class="progress"><div class="fill" style="width: 100%"></div></div>
     {:else if busy}
       <p class="vk-subtitle">
         {#if stage === 'installing'}
-          Il pacchetto è stato verificato e si sta installando. Non chiudere la finestra.
+          {t('updater.installingBody')}
         {:else}
-          Download in corso. Il pacchetto viene verificato prima di essere installato.
+          {t('updater.downloadingBody')}
         {/if}
       </p>
       <div class="progress"><div class="fill" style="width: {percent}%"></div></div>
@@ -176,13 +174,12 @@ L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pa
         {#if total > 0}
           {formatBytes(downloaded)} / {formatBytes(total)} · {percent.toFixed(0)}%
         {:else}
-          {formatBytes(downloaded)} ricevuti
+          {t('updater.received', { bytes: formatBytes(downloaded) })}
         {/if}
       </p>
     {:else}
       <p class="vk-subtitle">
-        La versione <strong>{update?.version}</strong> sostituisce la {status.current}. Il pacchetto
-        viene verificato con la firma prima di essere installato, poi il launcher si riavvia.
+        {t('updater.readyBody', { latest: update?.version ?? '', current: status.current })}
       </p>
       {#if update?.body?.trim()}
         <p class="notes">{update.body}</p>
@@ -193,9 +190,9 @@ L'aggiornamento automatico funziona solo con l'AppImage. Se hai installato il pa
       <div class="actions">
         <button class="vk-btn vk-btn--primary" onclick={installNow}>
           <Icon name="download" size={14} />
-          Aggiorna e riavvia
+          {t('updater.installAndRestart')}
         </button>
-        <button class="vk-btn" onclick={onclose}>Più tardi</button>
+        <button class="vk-btn" onclick={onclose}>{t('notice.later')}</button>
       </div>
     {/if}
   </div>

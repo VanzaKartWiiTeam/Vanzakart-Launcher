@@ -9,6 +9,7 @@
   import Icon from './Icon.svelte';
   import logo from '$lib/assets/logo.png';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   const window = getCurrentWindow();
 
@@ -70,26 +71,28 @@
     <img src={logo} alt="" width="28" height="28" />
     <span class="wordmark">VANZAKART</span>
 
-    <span class="vk-badge chip">Launcher v{app.status?.launcherVersion ?? '—'}</span>
+    <span class="vk-badge chip">
+      {t('titlebar.version', { version: app.status?.launcherVersion ?? '—' })}
+    </span>
     <span class="vk-badge chip {toneClass}"
-      >{app.statusTone === 'info' ? 'Pronto' : app.statusLine.slice(0, 46)}</span
+      >{app.statusTone === 'info' ? t('titlebar.ready') : app.statusLine.slice(0, 46)}</span
     >
   </div>
 
   {#if !isLinux}
     <div class="controls">
-      <button class="chrome" onclick={minimize} aria-label="Riduci a icona">
+      <button class="chrome" onclick={minimize} aria-label={t('titlebar.minimize')}>
         <Icon name="minimize" size={14} />
       </button>
       <button
         class="chrome"
         onclick={toggleMaximize}
-        aria-label={maximized ? 'Ripristina' : 'Ingrandisci'}
-        title={maximized ? 'Ripristina' : 'Ingrandisci'}
+        aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
+        title={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
       >
         <Icon name={maximized ? 'restore' : 'maximize'} size={13} />
       </button>
-      <button class="chrome chrome--close" onclick={close} aria-label="Chiudi">
+      <button class="chrome chrome--close" onclick={close} aria-label={t('titlebar.close')}>
         <Icon name="close" size={13} />
       </button>
     </div>

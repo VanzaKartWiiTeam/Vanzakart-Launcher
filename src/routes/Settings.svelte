@@ -13,10 +13,13 @@
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import PathField from '$lib/components/PathField.svelte';
-  import { app } from '$lib/stores/app.svelte';
+  import logo from '$lib/assets/logo.png';
+  import { app, TEAM_LINKS } from '$lib/stores/app.svelte';
+  import { i18n, t, LOCALES, LOCALE_LABELS } from '$lib/stores/i18n.svelte';
   import type { Channel, DolphinSettings } from '$lib/api/types';
 
-  type Tab = 'paths' | 'video' | 'audio' | 'controller' | 'wii' | 'performance' | 'advanced';
+  type Tab =
+    'paths' | 'video' | 'audio' | 'controller' | 'wii' | 'performance' | 'advanced' | 'about';
 
   /** Canale di rilascio: si sceglie qui, non nella pagina Mods (§D-039). */
   let betaModalOpen = $state(false);
@@ -38,7 +41,7 @@
         betaModalOpen = true;
         return;
       }
-      app.toast('Cambio canale non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('settings.channelFailed'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -52,7 +55,7 @@
         betaToken = '';
         await api.setChannel('Beta');
         await app.refresh();
-        app.toast('Canale Beta attivo', status.message, 'success');
+        app.toast(t('settings.betaActive'), status.message, 'success');
       }
     } catch (error) {
       betaMessage = api.errorMessage(error);
@@ -61,49 +64,68 @@
     }
   }
 
-  const TABS: { id: Tab; label: string }[] = [
-    { id: 'paths', label: 'Percorsi' },
-    { id: 'video', label: 'Video' },
-    { id: 'audio', label: 'Audio' },
-    { id: 'controller', label: 'Controller' },
-    { id: 'wii', label: 'Wii' },
-    { id: 'performance', label: 'Prestazioni' },
-    { id: 'advanced', label: 'Avanzate' }
-  ];
+  /**
+   * Le liste di etichette sono derivate, non costanti: si ricostruiscono da
+   * sole quando cambia la lingua, senza ricreare la pagina.
+   */
+  const TABS: { id: Tab; label: string }[] = $derived([
+    { id: 'paths', label: t('settings.tab.paths') },
+    { id: 'video', label: t('settings.tab.video') },
+    { id: 'audio', label: t('settings.tab.audio') },
+    { id: 'controller', label: t('settings.tab.controller') },
+    { id: 'wii', label: t('settings.tab.wii') },
+    { id: 'performance', label: t('settings.tab.performance') },
+    { id: 'advanced', label: t('settings.tab.advanced') },
+    { id: 'about', label: t('settings.tab.about') }
+  ]);
 
-  const RESOLUTIONS = [
-    { value: 0, label: 'Nativa (Wii)' },
+  /**
+   * I link del team.
+   *
+   * Passano dal backend come tutti gli altri indirizzi esterni: la webview non
+   * apre niente da sé e l'URL viene validato prima di arrivare al browser.
+   */
+  async function openLink(url: string) {
+    try {
+      await api.openExternal(url);
+    } catch (error) {
+      app.toast(t('sidebar.openFailed'), api.errorMessage(error), 'warning');
+    }
+  }
+
+  const RESOLUTIONS = $derived([
+    { value: 0, label: t('settings.res.native') },
     { value: 1, label: '1× (480p)' },
     { value: 2, label: '2× (720p)' },
     { value: 3, label: '3× (1080p)' },
     { value: 4, label: '4× (1440p)' },
     { value: 5, label: '5×' },
     { value: 6, label: '6× (4K)' }
-  ];
+  ]);
 
   const BACKENDS = ['Vulkan', 'D3D11', 'D3D12', 'OpenGL', 'Null'];
   const AUDIO_BACKENDS = ['Cubeb', 'WASAPI', 'OpenAL', 'XAudio2', 'Null'];
-  const ASPECT_RATIOS = [
-    { value: 0, label: 'Auto' },
-    { value: 1, label: 'Forza 16:9' },
-    { value: 2, label: 'Forza 4:3' },
-    { value: 3, label: 'Estendi' }
-  ];
+  const ASPECT_RATIOS = $derived([
+    { value: 0, label: t('settings.aspect.auto') },
+    { value: 1, label: t('settings.aspect.force169') },
+    { value: 2, label: t('settings.aspect.force43') },
+    { value: 3, label: t('settings.aspect.stretch') }
+  ]);
   const REGIONS = [
     { value: 0, label: 'NTSC-J' },
     { value: 1, label: 'NTSC-U' },
     { value: 2, label: 'PAL' },
     { value: 3, label: 'NTSC-K' }
   ];
-  const LANGUAGES = [
-    { value: 0, label: 'Giapponese' },
-    { value: 1, label: 'Inglese' },
-    { value: 2, label: 'Tedesco' },
-    { value: 3, label: 'Francese' },
-    { value: 4, label: 'Spagnolo' },
-    { value: 5, label: 'Italiano' },
-    { value: 6, label: 'Olandese' }
-  ];
+  const LANGUAGES = $derived([
+    { value: 0, label: t('settings.lang.japanese') },
+    { value: 1, label: t('settings.lang.english') },
+    { value: 2, label: t('settings.lang.german') },
+    { value: 3, label: t('settings.lang.french') },
+    { value: 4, label: t('settings.lang.spanish') },
+    { value: 5, label: t('settings.lang.italian') },
+    { value: 6, label: t('settings.lang.dutch') }
+  ]);
   const LOG_LEVELS = ['Notice', 'Error', 'Warning', 'Info', 'Debug'];
 
   let tab = $state<Tab>('paths');
@@ -124,7 +146,7 @@
       dolphin = await api.getDolphinSettings();
       dirty = false;
     } catch (error) {
-      app.toast('Impostazioni Dolphin', api.errorMessage(error), 'warning');
+      app.toast(t('settings.dolphinSettings'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -137,7 +159,7 @@
     const selected = await open({
       multiple: false,
       directory: false,
-      title: 'Seleziona l’eseguibile di Dolphin',
+      title: t('settings.pickDolphin'),
       filters: [{ name: 'Dolphin', extensions: ['exe', 'app', 'AppImage', '*'] }]
     });
     if (typeof selected === 'string') await applyPath({ dolphinPath: selected });
@@ -147,9 +169,9 @@
     const selected = await open({
       multiple: false,
       directory: false,
-      title: 'Seleziona la ROM di Mario Kart Wii',
+      title: t('settings.pickRom'),
       filters: [
-        { name: 'Immagini disco Wii', extensions: ['wbfs', 'iso', 'rvz', 'ciso', 'gcm', 'wia'] }
+        { name: t('settings.romFilter'), extensions: ['wbfs', 'iso', 'rvz', 'ciso', 'gcm', 'wia'] }
       ]
     });
     if (typeof selected === 'string') await applyPath({ romPath: selected });
@@ -159,7 +181,7 @@
     const selected = await open({
       multiple: false,
       directory: true,
-      title: 'Seleziona la cartella User di Dolphin'
+      title: t('settings.pickUserFolder')
     });
     if (typeof selected === 'string') await applyPath({ userFolderPath: selected });
   }
@@ -167,7 +189,7 @@
   /** Come `savePath`, ma per il selettore: lì l'errore va nell'avviso. */
   async function applyPath(paths: Parameters<typeof api.updatePaths>[0]) {
     const failure = await savePath(paths);
-    if (failure) app.toast('Percorso non valido', failure, 'warning');
+    if (failure) app.toast(t('settings.pathInvalid'), failure, 'warning');
   }
 
   /**
@@ -180,7 +202,7 @@
       app.settings = await api.updatePaths(paths);
       await app.refresh();
       dolphin = null;
-      notice = 'Percorso aggiornato.';
+      notice = t('settings.pathUpdated');
       return null;
     } catch (error) {
       return api.errorMessage(error);
@@ -191,11 +213,9 @@
     try {
       app.settings = await api.detectDolphin();
       await app.refresh();
-      notice = app.settings.dolphinValid
-        ? 'Dolphin rilevato automaticamente.'
-        : 'Nessuna installazione di Dolphin trovata: selezionala a mano.';
+      notice = app.settings.dolphinValid ? t('settings.detected') : t('settings.notDetected');
     } catch (error) {
-      app.toast('Rilevamento non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('settings.detectFailed'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -203,7 +223,7 @@
     try {
       app.settings = await api.updatePreferences(patch);
     } catch (error) {
-      app.toast('Preferenza non salvata', api.errorMessage(error), 'warning');
+      app.toast(t('settings.prefFailed'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -213,9 +233,9 @@
     try {
       await api.saveDolphinSettings(dolphin);
       dirty = false;
-      notice = 'Impostazioni di Dolphin salvate.';
+      notice = t('settings.dolphinSaved');
     } catch (error) {
-      app.toast('Salvataggio non riuscito', api.errorMessage(error), 'danger');
+      app.toast(t('settings.saveFailed'), api.errorMessage(error), 'danger');
     } finally {
       saving = false;
     }
@@ -226,9 +246,9 @@
     try {
       dolphin = await api.optimizeDolphin(window.screen.width || 1920);
       dirty = false;
-      notice = 'Preset "VanzaKart Recommended" applicato e salvato.';
+      notice = t('settings.optimized');
     } catch (error) {
-      app.toast('Ottimizzazione non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('settings.optimizeFailed'), api.errorMessage(error), 'warning');
     } finally {
       saving = false;
     }
@@ -239,9 +259,9 @@
     try {
       dolphin = await api.resetDolphinCategory(category);
       dirty = false;
-      notice = `Categoria ${category} riportata ai valori predefiniti.`;
+      notice = t('settings.categoryReset', { category });
     } catch (error) {
-      app.toast('Reset non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('settings.resetFailed'), api.errorMessage(error), 'warning');
     } finally {
       saving = false;
     }
@@ -250,9 +270,9 @@
   async function backupConfig() {
     try {
       await api.backupDolphinConfig();
-      notice = 'Backup della configurazione creato nella cartella Backup.';
+      notice = t('settings.backupDone');
     } catch (error) {
-      app.toast('Backup non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('settings.backupFailed'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -261,10 +281,13 @@
       const removed = await api.deleteGameSettings();
       notice =
         removed.length === 0
-          ? 'Nessun file GameSettings di Mario Kart trovato.'
-          : `Rimossi ${removed.length} file: ${removed.join(', ')}`;
+          ? t('settings.noGameSettings')
+          : t('settings.gameSettingsRemoved', {
+              count: removed.length,
+              files: removed.join(', ')
+            });
     } catch (error) {
-      app.toast('Operazione non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('settings.operationFailed'), api.errorMessage(error), 'warning');
     }
   }
 </script>
@@ -274,7 +297,7 @@
     <div class="vk-card notice vk-rainbow-top">{notice}</div>
   {/if}
 
-  <nav class="tabs" aria-label="Categorie impostazioni">
+  <nav class="tabs" aria-label={t('settings.tabsAria')}>
     {#each TABS as item (item.id)}
       <button class="tab" class:active={tab === item.id} onclick={() => (tab = item.id)}>
         {item.label}
@@ -283,42 +306,67 @@
   </nav>
 
   {#if tab === 'paths'}
+    <!--
+      La lingua sta in cima alla prima scheda: è la scelta che cambia tutto il
+      resto di quello che si legge, quindi si trova prima di leggerlo.
+    -->
+    <section class="vk-card">
+      <p class="vk-eyebrow">{t('settings.language')}</p>
+      <p class="vk-subtitle">{t('settings.languageHint')}</p>
+
+      <div class="channels">
+        {#each LOCALES as code (code)}
+          <button
+            class="channel"
+            class:active={i18n.locale === code}
+            onclick={() => i18n.set(code)}
+            lang={code}
+          >
+            <span class="channel-name">{LOCALE_LABELS[code]}</span>
+            <span class="vk-faint channel-note">
+              {code === 'it' ? t('settings.langNote.it') : t('settings.langNote.en')}
+            </span>
+          </button>
+        {/each}
+      </div>
+    </section>
+
     <section class="vk-card">
       <div class="section-head">
         <div>
-          <p class="vk-eyebrow">Percorsi obbligatori</p>
-          <p class="vk-subtitle">Servono tutti e tre per poter avviare il gioco.</p>
+          <p class="vk-eyebrow">{t('settings.pathsTitle')}</p>
+          <p class="vk-subtitle">{t('settings.pathsSubtitle')}</p>
         </div>
         <button class="vk-btn" onclick={autoDetect}>
           <Icon name="refresh" size={14} />
-          Rileva automaticamente
+          {t('settings.autoDetect')}
         </button>
       </div>
 
       <div class="paths">
         <PathField
-          label="Eseguibile di Dolphin"
+          label={t('settings.dolphinExe')}
           value={settings?.dolphinPath ?? ''}
           valid={settings?.dolphinValid ?? false}
-          placeholder="Non configurato"
+          placeholder={t('settings.notSetM')}
           onbrowse={pickDolphin}
           onsave={(dolphinPath) => savePath({ dolphinPath })}
         />
 
         <PathField
-          label="Cartella User di Dolphin"
+          label={t('settings.userFolder')}
           value={settings?.userFolderPath ?? ''}
           valid={settings?.userFolderValid ?? false}
-          placeholder="Non configurata"
+          placeholder={t('settings.notSetF')}
           onbrowse={pickUserFolder}
           onsave={(userFolderPath) => savePath({ userFolderPath })}
         />
 
         <PathField
-          label="ROM di Mario Kart Wii"
+          label={t('settings.rom')}
           value={settings?.romPath ?? ''}
           valid={settings?.romValid ?? false}
-          placeholder="Non configurata"
+          placeholder={t('settings.notSetF')}
           onbrowse={pickRom}
           onsave={(romPath) => savePath({ romPath })}
         />
@@ -326,21 +374,20 @@
 
       {#if settings?.detectedUserFolders?.length}
         <p class="vk-faint detected">
-          Cartelle User trovate: {settings.detectedUserFolders.join(' · ')}
+          {t('settings.foundUserFolders', { folders: settings.detectedUserFolders.join(' · ') })}
         </p>
       {/if}
 
-      <p class="vk-faint detected">Modpack installata in: {settings?.modFolder ?? '—'}</p>
+      <p class="vk-faint detected">
+        {t('settings.modInstalledIn', { folder: settings?.modFolder ?? t('common.dash') })}
+      </p>
     </section>
 
     <section class="vk-card">
       <div class="section-head">
         <div>
-          <p class="vk-eyebrow">Canale di rilascio</p>
-          <p class="vk-subtitle">
-            Stable e Beta si installano in cartelle diverse: cambiare canale non tocca l'altra
-            installazione né i tuoi dati.
-          </p>
+          <p class="vk-eyebrow">{t('settings.channel')}</p>
+          <p class="vk-subtitle">{t('settings.channelHint')}</p>
         </div>
       </div>
 
@@ -353,7 +400,7 @@
           >
             <span class="channel-name">{item}</span>
             <span class="vk-faint channel-note">
-              {item === 'Stable' ? 'Consigliato' : 'Richiede un token'}
+              {item === 'Stable' ? t('settings.channelRecommended') : t('settings.channelToken')}
             </span>
           </button>
         {/each}
@@ -361,7 +408,7 @@
     </section>
 
     <section class="vk-card">
-      <p class="vk-eyebrow">Opzioni di avvio</p>
+      <p class="vk-eyebrow">{t('settings.launchOptions')}</p>
       <div class="switches">
         <label class="switch">
           <input
@@ -371,10 +418,8 @@
               updatePreference({ separateSavegame: event.currentTarget.checked })}
           />
           <span>
-            <strong>Salvataggio separato</strong>
-            <span class="vk-faint"
-              >La modpack usa un salvataggio proprio, distinto dal gioco base.</span
-            >
+            <strong>{t('settings.separateSave')}</strong>
+            <span class="vk-faint">{t('settings.separateSaveHint')}</span>
           </span>
         </label>
 
@@ -385,8 +430,8 @@
             onchange={(event) => updatePreference({ myStuffEnabled: event.currentTarget.checked })}
           />
           <span>
-            <strong>Abilita "My Stuff"</strong>
-            <span class="vk-faint">Carica texture e addon personali dalla cartella My Stuff.</span>
+            <strong>{t('settings.myStuff')}</strong>
+            <span class="vk-faint">{t('settings.myStuffHint')}</span>
           </span>
         </label>
 
@@ -398,14 +443,16 @@
               updatePreference({ autoCheckUpdates: event.currentTarget.checked })}
           />
           <span>
-            <strong>Controlla aggiornamenti all'avvio</strong>
-            <span class="vk-faint">Interroga il server all'apertura del launcher.</span>
+            <strong>{t('settings.autoCheck')}</strong>
+            <span class="vk-faint">{t('settings.autoCheckHint')}</span>
           </span>
         </label>
       </div>
 
       <label class="slider-row">
-        <span>Download in parallelo: <strong>{settings?.downloadConcurrency ?? 6}</strong></span>
+        <span>
+          {t('settings.concurrency')}: <strong>{settings?.downloadConcurrency ?? 6}</strong>
+        </span>
         <input
           type="range"
           min="1"
@@ -420,38 +467,97 @@
     <section class="vk-card">
       <div class="section-head">
         <div>
-          <p class="vk-eyebrow">Controller</p>
+          <p class="vk-eyebrow">{t('settings.tab.controller')}</p>
           <p class="vk-subtitle">
-            I binding finiscono in <code>GCPadNew.ini</code>; le chiavi che il launcher non gestisce
-            restano intatte.
+            {t('settings.controllerHintBefore')}
+            <code>GCPadNew.ini</code>{t('settings.controllerHintAfter')}
           </p>
         </div>
       </div>
       <ControllerPanel />
     </section>
+  {:else if tab === 'about'}
+    <!--
+      La nostra roba: chi c'è dietro VanzaKart e dove trovarci. Sta in coda
+      alle impostazioni perché non si tocca niente — si legge e si esce.
+    -->
+    <section class="vk-card vk-rainbow-top team-hero">
+      <img class="team-logo" src={logo} alt={t('home.logoAlt')} />
+      <div class="team-intro">
+        <p class="vk-eyebrow">{t('team.project')}</p>
+        <h2 class="team-title">VanzaKart</h2>
+        <p class="vk-subtitle">{t('team.intro')}</p>
+        <p class="vk-faint team-version">
+          {t('team.versions', {
+            launcher: app.status?.launcherVersion ?? t('common.dash'),
+            channel: app.modState?.channel ?? 'Stable',
+            modpack: app.modState?.installedVersion || t('common.dash')
+          })}
+        </p>
+      </div>
+    </section>
+
+    <section class="vk-card">
+      <p class="vk-eyebrow">{t('team.whereTitle')}</p>
+
+      <ul class="team-links">
+        <li class="team-link">
+          <span class="team-icon cyan"><Icon name="external" size={18} /></span>
+          <div class="team-text">
+            <p class="team-name">{t('team.websiteTitle')}</p>
+            <p class="vk-faint">{t('team.websiteBody')}</p>
+          </div>
+          <button class="vk-btn" onclick={() => openLink(TEAM_LINKS.website)}>
+            {t('common.open')}
+          </button>
+        </li>
+
+        <li class="team-link">
+          <span class="team-icon violet"><Icon name="friends" size={18} /></span>
+          <div class="team-text">
+            <p class="team-name">{t('team.discordTitle')}</p>
+            <p class="vk-faint">{t('team.discordBody')}</p>
+          </div>
+          <button class="vk-btn" onclick={() => openLink(TEAM_LINKS.discord)}>
+            {t('team.discordAction')}
+          </button>
+        </li>
+
+        <li class="team-link">
+          <span class="team-icon pink"><Icon name="heart" size={18} /></span>
+          <div class="team-text">
+            <p class="team-name">{t('team.donateTitle')}</p>
+            <p class="vk-faint">{t('team.donateBody')}</p>
+          </div>
+          <button class="vk-btn vk-btn--primary" onclick={() => openLink(TEAM_LINKS.paypal)}>
+            <Icon name="heart" size={14} />
+            PayPal
+          </button>
+        </li>
+      </ul>
+    </section>
+
+    <section class="vk-card">
+      <p class="vk-eyebrow">{t('team.thanksTitle')}</p>
+      <p class="vk-subtitle thanks">{t('team.thanksBody')}</p>
+    </section>
   {:else if !canEditDolphin}
     <section class="vk-card">
-      <p class="vk-subtitle">
-        Seleziona prima la cartella User di Dolphin nella scheda Percorsi: le impostazioni
-        dell'emulatore vivono nei suoi file INI.
-      </p>
+      <p class="vk-subtitle">{t('settings.needUserFolder')}</p>
     </section>
   {:else if dolphin}
     <section class="vk-card">
       <div class="section-head">
         <div>
           <p class="vk-eyebrow">{TABS.find((item) => item.id === tab)?.label}</p>
-          <p class="vk-subtitle">
-            Le modifiche vengono scritte negli INI di Dolphin senza toccare le chiavi che il
-            launcher non gestisce.
-          </p>
+          <p class="vk-subtitle">{t('settings.iniHint')}</p>
         </div>
         <div class="vk-row">
-          <button class="vk-btn" onclick={() => resetCategory(tab)} disabled={saving}
-            >Ripristina</button
-          >
+          <button class="vk-btn" onclick={() => resetCategory(tab)} disabled={saving}>
+            {t('settings.reset')}
+          </button>
           <button class="vk-btn vk-btn--primary" onclick={saveDolphin} disabled={saving || !dirty}>
-            {saving ? 'Salvataggio…' : 'Salva'}
+            {saving ? t('common.saving') : t('common.save')}
           </button>
         </div>
       </div>
@@ -459,14 +565,14 @@
       <div class="fields">
         {#if tab === 'video'}
           <label class="field">
-            <span>Backend grafico</span>
+            <span>{t('settings.gfxBackend')}</span>
             <select class="vk-input" bind:value={dolphin.gfxBackend} onchange={touch}>
               {#each BACKENDS as backend (backend)}<option value={backend}>{backend}</option>{/each}
             </select>
           </label>
 
           <label class="field">
-            <span>Risoluzione interna</span>
+            <span>{t('settings.internalRes')}</span>
             <select class="vk-input" bind:value={dolphin.internalResolution} onchange={touch}>
               {#each RESOLUTIONS as item (item.value)}
                 <option value={item.value}>{item.label}</option>
@@ -475,7 +581,7 @@
           </label>
 
           <label class="field">
-            <span>Proporzioni</span>
+            <span>{t('settings.aspect')}</span>
             <select class="vk-input" bind:value={dolphin.aspectRatio} onchange={touch}>
               {#each ASPECT_RATIOS as item (item.value)}
                 <option value={item.value}>{item.label}</option>
@@ -484,28 +590,32 @@
           </label>
 
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.fullscreen} onchange={touch} /> Schermo intero</label
+            ><input type="checkbox" bind:checked={dolphin.fullscreen} onchange={touch} />
+            {t('settings.fullscreen')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.vsync} onchange={touch} /> V-Sync</label
+            ><input type="checkbox" bind:checked={dolphin.vsync} onchange={touch} />
+            {t('settings.vsync')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.widescreenHack} onchange={touch} /> Widescreen
-            hack</label
+            ><input type="checkbox" bind:checked={dolphin.widescreenHack} onchange={touch} />
+            {t('settings.widescreenHack')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.removeBlur} onchange={touch} /> Rimuovi sfocatura</label
+            ><input type="checkbox" bind:checked={dolphin.removeBlur} onchange={touch} />
+            {t('settings.removeBlur')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.showFps} onchange={touch} /> Mostra FPS</label
+            ><input type="checkbox" bind:checked={dolphin.showFps} onchange={touch} />
+            {t('settings.showFps')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.loadCustomTextures} onchange={touch} /> Texture
-            personalizzate</label
+            ><input type="checkbox" bind:checked={dolphin.loadCustomTextures} onchange={touch} />
+            {t('settings.customTextures')}</label
           >
         {:else if tab === 'audio'}
           <label class="field">
-            <span>Backend audio</span>
+            <span>{t('settings.audioBackend')}</span>
             <select class="vk-input" bind:value={dolphin.audioBackend} onchange={touch}>
               {#each AUDIO_BACKENDS as backend (backend)}<option value={backend}>{backend}</option
                 >{/each}
@@ -513,7 +623,7 @@
           </label>
 
           <label class="field">
-            <span>Volume: {dolphin.audioVolume}%</span>
+            <span>{t('settings.volume', { value: dolphin.audioVolume })}</span>
             <input
               type="range"
               min="0"
@@ -524,7 +634,7 @@
           </label>
 
           <label class="field">
-            <span>Latenza: {dolphin.audioLatency} ms</span>
+            <span>{t('settings.latency', { value: dolphin.audioLatency })}</span>
             <input
               type="range"
               min="5"
@@ -535,15 +645,16 @@
           </label>
 
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.audioStretching} onchange={touch} /> Audio stretching</label
+            ><input type="checkbox" bind:checked={dolphin.audioStretching} onchange={touch} />
+            {t('settings.audioStretching')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.dspLle} onchange={touch} /> DSP LLE (più accurato,
-            più lento)</label
+            ><input type="checkbox" bind:checked={dolphin.dspLle} onchange={touch} />
+            {t('settings.dspLle')}</label
           >
         {:else if tab === 'wii'}
           <label class="field">
-            <span>Regione</span>
+            <span>{t('settings.region')}</span>
             <select class="vk-input" bind:value={dolphin.wiiRegion} onchange={touch}>
               {#each REGIONS as item (item.value)}<option value={item.value}>{item.label}</option
                 >{/each}
@@ -551,7 +662,7 @@
           </label>
 
           <label class="field">
-            <span>Lingua della console</span>
+            <span>{t('settings.consoleLanguage')}</span>
             <select class="vk-input" bind:value={dolphin.wiiLanguage} onchange={touch}>
               {#each LANGUAGES as item (item.value)}<option value={item.value}>{item.label}</option
                 >{/each}
@@ -559,37 +670,41 @@
           </label>
 
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.enableRiivolution} onchange={touch} /> Abilita
-            Riivolution</label
+            ><input type="checkbox" bind:checked={dolphin.enableRiivolution} onchange={touch} />
+            {t('settings.riivolution')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.enableCheats} onchange={touch} /> Abilita cheat</label
+            ><input type="checkbox" bind:checked={dolphin.enableCheats} onchange={touch} />
+            {t('settings.cheats')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.enableSdCard} onchange={touch} /> Scheda SD</label
+            ><input type="checkbox" bind:checked={dolphin.enableSdCard} onchange={touch} />
+            {t('settings.sdCard')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.forceDisableWiimote} onchange={touch} /> Disattiva
-            speaker Wiimote</label
+            ><input type="checkbox" bind:checked={dolphin.forceDisableWiimote} onchange={touch} />
+            {t('settings.disableWiimoteSpeaker')}</label
           >
         {:else if tab === 'performance'}
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.dualCore} onchange={touch} /> Dual core</label
+            ><input type="checkbox" bind:checked={dolphin.dualCore} onchange={touch} />
+            {t('settings.dualCore')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.skipIdle} onchange={touch} /> Salta cicli inattivi</label
+            ><input type="checkbox" bind:checked={dolphin.skipIdle} onchange={touch} />
+            {t('settings.skipIdle')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.fastDiscSpeed} onchange={touch} /> Lettura disco
-            veloce</label
+            ><input type="checkbox" bind:checked={dolphin.fastDiscSpeed} onchange={touch} />
+            {t('settings.fastDisc')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.cpuOverride} onchange={touch} /> Override clock
-            CPU</label
+            ><input type="checkbox" bind:checked={dolphin.cpuOverride} onchange={touch} />
+            {t('settings.cpuOverride')}</label
           >
 
           <label class="field">
-            <span>Clock CPU: {dolphin.cpuClockRatio.toFixed(2)}×</span>
+            <span>{t('settings.cpuClock', { value: dolphin.cpuClockRatio.toFixed(2) })}</span>
             <input
               type="range"
               min="0.5"
@@ -601,38 +716,41 @@
           </label>
 
           <button class="vk-btn vk-btn--primary optimize" onclick={optimize} disabled={saving}>
-            Ottimizza per VanzaKart
+            {t('settings.optimize')}
           </button>
         {:else if tab === 'advanced'}
           <label class="field">
-            <span>Livello di log</span>
+            <span>{t('settings.logLevel')}</span>
             <select class="vk-input" bind:value={dolphin.logLevel} onchange={touch}>
               {#each LOG_LEVELS as level (level)}<option value={level}>{level}</option>{/each}
             </select>
           </label>
 
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.logToFile} onchange={touch} /> Scrivi il log
-            su file</label
+            ><input type="checkbox" bind:checked={dolphin.logToFile} onchange={touch} />
+            {t('settings.logToFile')}</label
           >
           <label class="check"
-            ><input type="checkbox" bind:checked={dolphin.backendMultithreading} onchange={touch} /> Backend
-            multithread</label
+            ><input type="checkbox" bind:checked={dolphin.backendMultithreading} onchange={touch} />
+            {t('settings.backendMultithread')}</label
           >
           <label class="check"
             ><input
               type="checkbox"
               bind:checked={dolphin.waitForShadersBeforeStarting}
               onchange={touch}
-            /> Attendi la compilazione degli shader</label
+            />
+            {t('settings.waitShaders')}</label
           >
 
           <div class="tools">
-            <button class="vk-btn" onclick={backupConfig}>Backup configurazione</button>
-            <button class="vk-btn" onclick={removeGameSettings}>Rimuovi GameSettings RMC*</button>
+            <button class="vk-btn" onclick={backupConfig}>{t('settings.backupConfig')}</button>
+            <button class="vk-btn" onclick={removeGameSettings}>
+              {t('settings.removeGameSettings')}
+            </button>
             <button class="vk-btn" onclick={() => api.openFolder('logs')}>
               <Icon name="folder" size={14} />
-              Apri cartella log
+              {t('settings.openLogs')}
             </button>
           </div>
         {/if}
@@ -643,9 +761,9 @@
 
 <Modal
   open={betaModalOpen}
-  title="Token di accesso Beta"
-  confirmLabel="Verifica"
-  cancelLabel="Annulla"
+  title={t('settings.betaTitle')}
+  confirmLabel={t('settings.betaVerify')}
+  cancelLabel={t('common.cancel')}
   busy={betaBusy}
   onconfirm={submitBetaToken}
   oncancel={() => {
@@ -653,12 +771,12 @@
     betaToken = '';
   }}
 >
-  <p>Il canale Beta richiede un token fornito dallo staff VanzaKart.</p>
+  <p>{t('settings.betaBody')}</p>
   <input
     class="vk-input"
     type="password"
     bind:value={betaToken}
-    placeholder="Incolla qui il token"
+    placeholder={t('settings.betaPlaceholder')}
     autocomplete="off"
   />
   {#if betaMessage}
@@ -667,6 +785,119 @@
 </Modal>
 
 <style>
+  /* --- Scheda Team --- */
+
+  .team-hero {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 22px;
+  }
+
+  .team-logo {
+    width: 84px;
+    height: 84px;
+    flex: none;
+    object-fit: contain;
+  }
+
+  .team-intro {
+    min-width: 0;
+  }
+
+  .team-title {
+    margin: 2px 0 6px;
+    font-size: var(--vk-fs-section);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+  }
+
+  .team-version {
+    margin: 10px 0 0;
+    font-size: var(--vk-fs-micro);
+  }
+
+  .team-links {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin: 14px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .team-link {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 14px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-badge);
+    background: var(--vk-panel-soft);
+    transition: border-color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .team-link:hover {
+    border-color: #3a4c74;
+  }
+
+  /* Pastiglia colorata dell'icona: ogni link ha il suo colore, come le card. */
+  .team-icon {
+    display: grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    flex: none;
+    border-radius: 50%;
+    border: 1px solid currentcolor;
+  }
+
+  .team-icon.cyan {
+    color: var(--vk-cyan-soft);
+    background: rgb(0 242 255 / 0.12);
+  }
+
+  .team-icon.violet {
+    color: #b79bff;
+    background: rgb(157 92 255 / 0.14);
+  }
+
+  .team-icon.pink {
+    color: #ff77a8;
+    background: rgb(255 0 102 / 0.14);
+  }
+
+  .team-text {
+    min-width: 0;
+    margin-right: auto;
+  }
+
+  .team-name {
+    margin: 0;
+    font-size: var(--vk-fs-body);
+    font-weight: 800;
+  }
+
+  .team-text .vk-faint {
+    margin: 3px 0 0;
+    font-size: var(--vk-fs-micro);
+  }
+
+  .thanks {
+    margin-top: 10px;
+  }
+
+  @media (max-width: 760px) {
+    .team-hero {
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .team-link {
+      flex-wrap: wrap;
+    }
+  }
+
   .channels {
     display: grid;
     grid-template-columns: 1fr 1fr;

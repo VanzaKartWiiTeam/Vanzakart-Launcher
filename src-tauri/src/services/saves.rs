@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use crate::domain::wii_text::humanize;
 use crate::domain::{FriendView, LicenseView};
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -106,7 +107,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
                 save_index,
                 slot: card.slot,
                 is_empty: card.is_empty,
-                mii_name: mii.map(|mii| mii.name.clone()).unwrap_or_else(|| {
+                mii_name: mii.map(|mii| humanize(&mii.name)).unwrap_or_else(|| {
                     if card.is_empty {
                         String::new()
                     } else {
@@ -120,10 +121,12 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
                 studio_data: mii
                     .map(|mii| vk_save::mii::studio_data(&mii.raw))
                     .unwrap_or_default(),
-                avatar_initial: initial(mii.map_or(card.name.as_str(), |mii| mii.name.as_str())),
+                avatar_initial: initial(&humanize(
+                    mii.map_or(card.name.as_str(), |mii| mii.name.as_str()),
+                )),
                 win_rate: card.win_rate(),
                 friend_count: vk_save::rksys::read_friends(&bytes, card.slot).len(),
-                name: card.name,
+                name: humanize(&card.name),
                 friend_code: card.friend_code,
                 // Il VR della licenza è quello vanilla: la modpack ripristina
                 // i valori originali prima di riscrivere `rksys.dat`, e il
@@ -342,12 +345,12 @@ fn to_views(
     friends
         .into_iter()
         .map(|friend| FriendView {
-            avatar_initial: initial(&friend.mii_name),
+            avatar_initial: initial(&humanize(&friend.mii_name)),
             accent_color: ACCENTS[friend.slot % ACCENTS.len()].to_string(),
             stats: index.get(&friend.friend_code).cloned(),
             slot: friend.slot,
             friend_code: friend.friend_code,
-            mii_name: friend.mii_name,
+            mii_name: humanize(&friend.mii_name),
             studio_data: friend.studio_data,
             wins: u32::from(friend.wins),
             losses: u32::from(friend.losses),

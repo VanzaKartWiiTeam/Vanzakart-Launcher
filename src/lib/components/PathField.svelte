@@ -13,6 +13,8 @@
    */
   import { untrack } from 'svelte';
 
+  import { t } from '$lib/stores/i18n.svelte';
+
   interface Props {
     label: string;
     /** Percorso salvato, quello che il backend conosce. */
@@ -81,10 +83,10 @@
   <div class="path-label">
     <span>{label}</span>
     <span class="vk-badge {valid ? 'vk-badge--success' : 'vk-badge--danger'}">
-      {valid ? 'OK' : 'Mancante'}
+      {valid ? t('path.ok') : t('path.missing')}
     </span>
     {#if changed && !saving}
-      <span class="vk-faint hint">Invio per salvare · Esc per annullare</span>
+      <span class="vk-faint hint">{t('path.hint')}</span>
     {/if}
   </div>
 
@@ -102,7 +104,7 @@
     {onkeydown}
   />
 
-  <button class="vk-btn" onclick={onbrowse} disabled={saving}>Sfoglia</button>
+  <button class="vk-btn" onclick={onbrowse} disabled={saving}>{t('path.browse')}</button>
 
   {#if error}
     <p class="vk-error inline">{error}</p>

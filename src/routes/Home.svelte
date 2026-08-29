@@ -11,10 +11,12 @@
   import Modal from '$lib/components/Modal.svelte';
   import logo from '$lib/assets/logo.png';
   import { app, formatDate, formatPlayTime } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   let launching = $state(false);
   let installing = $state(false);
   let checking = $state(false);
+  let verifying = $state(false);
   let confirmOutdated = $state(false);
 
   /**
@@ -46,14 +48,14 @@
 
   const badgeText = $derived(
     !mod?.checked
-      ? 'Idle'
+      ? t('home.badge.idle')
       : !mod.installed
-        ? 'Non installata'
+        ? t('home.badge.notInstalled')
         : mod.needsRepair
-          ? 'Da riparare'
+          ? t('home.badge.needsRepair')
           : mod.updateAvailable
-            ? 'Aggiornamento'
-            : 'Aggiornata'
+            ? t('home.badge.update')
+            : t('home.badge.upToDate')
   );
 
   async function play() {
@@ -74,17 +76,17 @@
     try {
       const blocker = await api.launchPreflight();
       if (blocker) {
-        app.toast('Non si può ancora partire', blocker.message, 'warning');
+        app.toast(t('home.blocked'), blocker.message, 'warning');
         app.navigate(blocker.navigateTo as never);
         return;
       }
 
       await api.launchGame();
-      app.setStatusLine('Gioco avviato. Buona gara.', 'success');
-      app.toast('Gara iniziata', 'VanzaKart è in avvio.', 'success');
+      app.setStatusKey('home.launched', {}, 'success');
+      app.toast(t('home.raceStarted'), t('home.raceStartedBody'), 'success');
       await app.refresh();
     } catch (error) {
-      app.toast('Avvio non riuscito', api.errorMessage(error), 'danger');
+      app.toast(t('home.launchFailed'), api.errorMessage(error), 'danger');
     } finally {
       launching = false;
     }
@@ -96,7 +98,7 @@
       await api.checkUpdates();
       await app.refresh();
     } catch (error) {
-      app.toast('Controllo non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('home.checkFailed'), api.errorMessage(error), 'warning');
     } finally {
       checking = false;
       void app.refreshLauncherUpdate();
@@ -110,31 +112,41 @@
     try {
       const outcome = await api.installMods();
       app.toast(
-        outcome.wasUpdate ? 'Aggiornamento completato' : 'Installazione completata',
+        outcome.wasUpdate ? t('home.updateDone') : t('home.installDone'),
         outcome.summary,
         'success'
       );
-      for (const warning of outcome.warnings) app.toast('Avviso', warning, 'warning');
+      for (const warning of outcome.warnings) app.toast(t('common.warning'), warning, 'warning');
       await app.refresh();
     } catch (error) {
-      app.toast('Operazione non riuscita', api.errorMessage(error), 'danger');
+      app.toast(t('home.operationFailed'), api.errorMessage(error), 'danger');
     } finally {
       installing = false;
     }
   }
 
-  async function repair() {
-    if (installing) return;
-    installing = true;
-    app.resetProgress();
+  /**
+   * Verifica i file installati contro il manifest.
+   *
+   * È il controllo che si fa prima di riparare: dice se manca davvero
+   * qualcosa. Riparare — che riscarica — resta in Mods, dove c'è anche il
+   * dettaglio dei file che non tornano.
+   */
+  async function verify() {
+    if (verifying || installing) return;
+    verifying = true;
     try {
-      const outcome = await api.repairMods();
-      app.toast('Riparazione completata', outcome.summary, 'success');
-      await app.refresh();
+      const report = await api.verifyMods();
+      const broken = report.mismatched.length > 0;
+      app.toast(
+        broken ? t('home.verifyBroken') : t('home.verifyDone'),
+        report.message,
+        broken ? 'warning' : 'success'
+      );
     } catch (error) {
-      app.toast('Riparazione non riuscita', api.errorMessage(error), 'danger');
+      app.toast(t('home.verifyFailed'), api.errorMessage(error), 'warning');
     } finally {
-      installing = false;
+      verifying = false;
     }
   }
 </script>
@@ -148,7 +160,7 @@
       <h2 class="hero-title">VANZAKART</h2>
 
       <button class="vk-play" onclick={play} disabled={launching || installing}>
-        {launching ? 'AVVIO…' : 'PLAY'}
+        {launching ? t('home.launching') : t('home.play')}
       </button>
 
       <p class="status-line" data-tone={app.statusTone}>{app.statusLine}</p>
@@ -176,41 +188,61 @@
     </div>
 
     <div class="hero-art">
-      <img src={logo} alt="Logo VanzaKart" />
+      <img src={logo} alt={t('home.logoAlt')} />
     </div>
   </section>
 
   <!-- CARD AFFIANCATE -->
   <section class="cards">
     <div class="vk-card stats-card">
-      <p class="vk-eyebrow">Game stats</p>
+      <p class="vk-eyebrow">{t('home.stats')}</p>
+
+      <!--
+        Tre dati, tre colonne: etichetta sopra e numero sotto, come nella card
+        accanto. Su una riga sola le etichette e i valori si alternavano e le
+        distanze cambiavano a ogni partita giocata.
+      -->
       <div class="stats">
-        <span class="vk-faint">Ultima partita</span>
-        <strong>{formatDate(stats?.lastPlayedUtc ?? null)}</strong>
-        <span class="vk-faint">Tempo</span>
-        <strong>{formatPlayTime(stats?.totalPlayTimeMinutes ?? 0)}</strong>
-        <span class="vk-faint">Avvii</span>
-        <strong>{stats?.launchCount ?? 0}</strong>
+        <div class="stat">
+          <p class="vk-faint label">{t('home.lastPlayed')}</p>
+          <p class="value">{formatDate(stats?.lastPlayedUtc ?? null)}</p>
+        </div>
+        <div class="stat">
+          <p class="vk-faint label">{t('home.playTime')}</p>
+          <p class="value">{formatPlayTime(stats?.totalPlayTimeMinutes ?? 0)}</p>
+        </div>
+        <div class="stat">
+          <p class="vk-faint label">{t('home.launches')}</p>
+          <p class="value">{stats?.launchCount ?? 0}</p>
+        </div>
       </div>
-      <p class="folder vk-faint">{mod?.modFolder ?? ''}</p>
-      <button class="vk-btn" onclick={() => app.navigate('mods')}>Mods</button>
+
+      <div class="folder">
+        <p class="vk-faint label">{t('home.modFolder')}</p>
+        <p class="vk-faint path" title={mod?.modFolder ?? ''}>{mod?.modFolder || '—'}</p>
+      </div>
+
+      <button class="vk-btn" onclick={() => app.navigate('mods')}>
+        <Icon name="package" size={14} />
+        {t('home.openMods')}
+      </button>
     </div>
 
     <div class="vk-card update-card">
       <div class="update-head">
         <div>
-          <p class="vk-eyebrow">Mod update</p>
+          <p class="vk-eyebrow">{t('home.modUpdate')}</p>
           <h3 class="update-title">
             {#if !mod?.checked}
-              Controllo dello stato locale
+              {t('home.state.checking')}
             {:else if !mod.installed}
-              Modpack non installata
+              {t('home.state.notInstalled')}
             {:else if mod.needsRepair}
-              Modpack da riparare
+              {t('home.state.needsRepair')}
             {:else if mod.updateAvailable}
-              Aggiornamento disponibile
+              {t('home.state.update')}
             {:else}
-              Tutto aggiornato
+              {t('home.state.upToDate')}
             {/if}
           </h3>
         </div>
@@ -219,37 +251,45 @@
 
       <div class="versions">
         <div>
-          <p class="vk-faint label">Installata</p>
-          <p class="version">{mod?.installedVersion || 'Nessuna'}</p>
+          <p class="vk-faint label">{t('home.installedLabel')}</p>
+          <p class="version">{mod?.installedVersion || t('common.none')}</p>
         </div>
         <div>
-          <p class="vk-faint label">Disponibile</p>
-          <p class="version">{mod?.latestVersion || 'Sconosciuta'}</p>
+          <p class="vk-faint label">{t('home.availableLabel')}</p>
+          <p class="version">{mod?.latestVersion || t('common.unknown')}</p>
         </div>
       </div>
 
       {#if mod?.needsRepair}
-        <p class="repair">
-          I file della modpack non sono utilizzabili: {mod.repairReason}. Premi
-          <strong>Aggiorna mod</strong> per riscaricarli: finché non lo fai, Dolphin avvia Mario Kart
-          Wii originale.
-        </p>
+        <p class="repair">{t('home.repairNotice', { reason: mod.repairReason })}</p>
       {/if}
 
-      <p class="check vk-muted">{mod?.checkMessage || 'Nessun controllo eseguito.'}</p>
+      <p class="check vk-muted">{mod?.checkMessage || t('home.noCheck')}</p>
 
       <div class="actions">
-        <button class="vk-btn" onclick={checkUpdates} disabled={checking || installing}>
+        <button
+          class="vk-btn"
+          onclick={checkUpdates}
+          disabled={checking || installing || verifying}
+        >
           <Icon name="refresh" size={14} />
-          {checking ? 'Controllo…' : 'Controlla aggiornamenti'}
+          {checking ? t('home.checking') : t('home.checkUpdates')}
         </button>
-        <button class="vk-btn vk-btn--primary" onclick={install} disabled={installing}>
+        <button class="vk-btn vk-btn--primary" onclick={install} disabled={installing || verifying}>
           <Icon name="download" size={14} />
-          {installing ? 'In corso…' : mod?.installed ? 'Aggiorna mod' : 'Installa mod'}
+          {installing
+            ? t('common.working')
+            : mod?.installed
+              ? t('home.updateMods')
+              : t('home.installMods')}
         </button>
-        <button class="vk-btn" onclick={repair} disabled={installing || !mod?.installed}>
-          <Icon name="repair" size={14} />
-          Ripara
+        <button
+          class="vk-btn"
+          onclick={verify}
+          disabled={verifying || installing || !mod?.installed}
+        >
+          <Icon name="check" size={14} />
+          {verifying ? t('home.verifying') : t('home.verify')}
         </button>
       </div>
     </div>
@@ -258,10 +298,12 @@
   {#if launcherUpdate?.available}
     <section class="vk-card launcher-update">
       <div>
-        <p class="vk-eyebrow">Aggiornamento del launcher</p>
+        <p class="vk-eyebrow">{t('home.launcherUpdate')}</p>
         <p class="vk-subtitle">
-          È disponibile la versione <strong>{launcherUpdate.latest}</strong>; questa è la
-          {launcherUpdate.current}.
+          {t('home.launcherUpdateBody', {
+            latest: launcherUpdate.latest,
+            current: launcherUpdate.current
+          })}
           {#if launcherUpdate.changelog.filter((line) => line.trim()).length > 0}
             {launcherUpdate.changelog.filter((line) => line.trim()).join(' · ')}
           {/if}
@@ -270,7 +312,7 @@
       {#if launcherUpdate.downloadPage}
         <button class="vk-btn vk-btn--primary" onclick={() => (app.updaterOpen = true)}>
           <Icon name="download" size={14} />
-          Aggiorna il launcher
+          {t('home.launcherUpdateAction')}
         </button>
       {/if}
     </section>
@@ -279,17 +321,19 @@
 
 <Modal
   open={confirmOutdated}
-  title="Aggiornamento disponibile"
-  confirmLabel="Avvia comunque"
-  cancelLabel="Vai a Mods"
+  title={t('home.outdatedTitle')}
+  confirmLabel={t('home.outdatedConfirm')}
+  cancelLabel={t('home.outdatedCancel')}
   onconfirm={doLaunch}
   oncancel={() => {
     confirmOutdated = false;
     app.navigate('mods');
   }}
 >
-  La modpack installata ({mod?.installedVersion}) non è l'ultima disponibile ({mod?.latestVersion}).
-  Vuoi avviare comunque?
+  {t('home.outdatedBody', {
+    installed: mod?.installedVersion ?? '',
+    latest: mod?.latestVersion ?? ''
+  })}
 </Modal>
 
 <style>
@@ -431,29 +475,48 @@
   .stats-card {
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
   }
 
   .stats {
     display: grid;
-    grid-template-columns: auto auto auto auto auto auto;
-    gap: 6px 10px;
-    align-items: baseline;
-    font-size: var(--vk-fs-small);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+    margin-top: 14px;
   }
 
-  .stats strong {
-    font-weight: 800;
+  .stat {
+    min-width: 0;
+  }
+
+  .stat .value {
+    margin: 2px 0 0;
+    font-size: 15px;
+    font-weight: 900;
+    font-variant-numeric: tabular-nums;
   }
 
   .folder {
-    margin: 0;
-    font-size: var(--vk-fs-eyebrow);
-    overflow-wrap: anywhere;
+    margin-top: auto;
+  }
+
+  /* Il percorso è lungo per natura: una riga sola, e per esteso nel tooltip. */
+  .folder .path {
+    margin: 2px 0 0;
+    font-size: var(--vk-fs-micro);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .stats-card .vk-btn {
     align-self: flex-start;
+  }
+
+  @media (max-width: 1320px) {
+    .stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
   }
 
   .update-head {

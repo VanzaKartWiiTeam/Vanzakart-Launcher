@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+use crate::domain::wii_text::humanize;
 use crate::domain::{
     LeaderboardEntry, LeaderboardPage, PlayerStatsView, RoomPlayerView, RoomView, RoomsSummary,
 };
@@ -246,7 +247,7 @@ fn room(value: &Value) -> RoomView {
         .map(|(index, player)| room_player(player, index))
         .collect();
 
-    let host = loose::text(value, &["host", "Host"]);
+    let host = humanize(&loose::text(value, &["host", "Host"]));
     let counted = loose::count(value, &["player_count", "playerCount"]);
 
     RoomView {
@@ -281,7 +282,7 @@ fn room(value: &Value) -> RoomView {
 }
 
 fn room_player(value: &Value, index: usize) -> RoomPlayerView {
-    let name = non_empty(loose::text(value, &["name", "Name"]), "Player");
+    let name = non_empty(humanize(&loose::text(value, &["name", "Name"])), "Player");
     let face = face(
         &loose::text(value, &["mii_data", "miiData", "mii", "Mii"]),
         &name,
@@ -358,7 +359,7 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
 
     let prestige_rank = loose::int(value, &["prestigeRank", "prestige_rank", "pr", "rank"]);
 
-    let name = loose::text(value, &["name", "player"]);
+    let name = humanize(&loose::text(value, &["name", "player"]));
     let face = face(
         &loose::text(value, &["mii_data", "miiData", "mii"]),
         &name,

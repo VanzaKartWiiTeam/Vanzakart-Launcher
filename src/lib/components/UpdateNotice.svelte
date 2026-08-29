@@ -12,6 +12,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 
   const launcher = $derived(app.launcherUpdate?.available ? app.launcherUpdate : null);
 
@@ -25,11 +26,7 @@
   const open = $derived(!app.updateNoticeDismissed && (launcher !== null || modpack !== null));
 
   const title = $derived(
-    launcher && modpack
-      ? 'Due aggiornamenti disponibili'
-      : launcher
-        ? 'Aggiornamento del launcher'
-        : 'Aggiornamento della modpack'
+    launcher && modpack ? t('notice.both') : launcher ? t('notice.launcher') : t('notice.modpack')
   );
 
   function later() {
@@ -55,8 +52,8 @@
 <Modal
   {open}
   {title}
-  confirmLabel={launcher ? 'Aggiorna il launcher' : 'Vai alla modpack'}
-  cancelLabel="Più tardi"
+  confirmLabel={launcher ? t('home.launcherUpdateAction') : t('notice.goToModpack')}
+  cancelLabel={t('notice.later')}
   onconfirm={updateNow}
   oncancel={later}
 >
@@ -65,7 +62,7 @@
       <li class="item">
         <Icon name="download" size={16} />
         <div>
-          <p class="what">Launcher</p>
+          <p class="what">{t('notice.launcherItem')}</p>
           <p class="vk-faint versions">
             <span class="vk-mono">{launcher.current}</span>
             <span aria-hidden="true">→</span>
@@ -79,9 +76,11 @@
       <li class="item">
         <Icon name="package" size={16} />
         <div>
-          <p class="what">Modpack {modpack.channel}</p>
+          <p class="what">{t('notice.modpackItem', { channel: modpack.channel })}</p>
           <p class="vk-faint versions">
-            <span class="vk-mono">{modpack.installedVersion || 'sconosciuta'}</span>
+            <span class="vk-mono">
+              {modpack.installedVersion || t('notice.unknownVersion')}
+            </span>
             <span aria-hidden="true">→</span>
             <span class="vk-mono next">{modpack.latestVersion}</span>
           </p>

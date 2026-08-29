@@ -1,6 +1,7 @@
 <script lang="ts">
   /** Toast in basso a destra, come `ShowToast` del launcher WPF. */
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
 </script>
 
 <div class="stack" aria-live="polite">
@@ -10,8 +11,10 @@
         <p class="title">{toast.title}</p>
         <p class="message">{toast.message}</p>
       </div>
-      <button class="dismiss" onclick={() => app.dismissToast(toast.id)} aria-label="Chiudi"
-        >×</button
+      <button
+        class="dismiss"
+        onclick={() => app.dismissToast(toast.id)}
+        aria-label={t('common.close')}>×</button
       >
     </div>
   {/each}

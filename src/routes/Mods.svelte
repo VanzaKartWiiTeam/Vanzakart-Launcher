@@ -20,6 +20,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import Switch from '$lib/components/Switch.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { AddonView, ConflictView, IntegrityReport, MusicPackStatus } from '$lib/api/types';
 
   type Tab = 'addons' | 'gamebanana';
@@ -73,6 +74,12 @@
   );
   const showSourceFilter = $derived(fromGameBanana > 0 && fromGameBanana < localAddons.length);
 
+  const SOURCES: { value: typeof source; label: string }[] = $derived([
+    { value: 'all', label: t('mods.filterAll') },
+    { value: 'Local', label: t('mods.filterLocal') },
+    { value: 'GameBanana', label: 'GameBanana' }
+  ]);
+
   const shownAddons = $derived(
     source === 'all' || !showSourceFilter
       ? localAddons
@@ -81,12 +88,12 @@
 
   const health = $derived(
     !mod?.installed
-      ? { tone: 'vk-badge--danger', label: 'Non installata' }
+      ? { tone: 'vk-badge--danger', label: t('home.badge.notInstalled') }
       : mod.needsRepair
-        ? { tone: 'vk-badge--danger', label: 'Da riparare' }
+        ? { tone: 'vk-badge--danger', label: t('home.badge.needsRepair') }
         : mod.updateAvailable
-          ? { tone: 'vk-badge--warning', label: 'Aggiornamento' }
-          : { tone: 'vk-badge--success', label: 'Aggiornata' }
+          ? { tone: 'vk-badge--warning', label: t('home.badge.update') }
+          : { tone: 'vk-badge--success', label: t('home.badge.upToDate') }
   );
 
   $effect(() => {
@@ -136,14 +143,14 @@
       await app.refresh();
       const state = app.modState;
       app.toast(
-        'Controllo aggiornamenti',
+        t('mods.checkTitle'),
         state?.updateAvailable
-          ? `Disponibile la versione ${state.latestVersion}.`
-          : 'La modpack è già aggiornata.',
+          ? t('mods.checkAvailable', { version: state.latestVersion })
+          : t('mods.checkUpToDate'),
         state?.updateAvailable ? 'info' : 'success'
       );
     } catch (error) {
-      app.toast('Controllo non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('home.checkFailed'), api.errorMessage(error), 'warning');
     } finally {
       checking = false;
     }
@@ -154,7 +161,7 @@
     try {
       await api.openFolder(key);
     } catch (error) {
-      app.toast('Cartella non apribile', api.errorMessage(error), 'warning');
+      app.toast(t('mods.folderFailed'), api.errorMessage(error), 'warning');
     }
   }
 
@@ -180,7 +187,7 @@
       await loadAddons();
       if (done) app.toast('VanzaKart Music Pack', done, 'success');
     } catch (error) {
-      app.toast('Operazione non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('home.operationFailed'), api.errorMessage(error), 'warning');
     } finally {
       musicBusy = '';
       if (action === 'install') app.resetProgress();
@@ -214,7 +221,7 @@
   async function importArchives(paths: string[]) {
     const archives = paths.filter((path) => path.toLowerCase().endsWith('.zip'));
     if (archives.length === 0) {
-      app.toast('Niente da importare', 'Gli addon sono archivi .zip.', 'warning');
+      app.toast(t('mods.nothingToImport'), t('mods.zipOnly'), 'warning');
       return;
     }
 
@@ -225,9 +232,13 @@
         try {
           const addon = await api.importAddon(archive, suggestedName(archive));
           imported += 1;
-          app.toast('Addon importato', `${addon.name}: ${addon.fileCount} file.`, 'success');
+          app.toast(
+            t('mods.addonImported'),
+            t('mods.addonImportedBody', { name: addon.name, count: addon.fileCount }),
+            'success'
+          );
         } catch (error) {
-          app.toast('Import non riuscito', api.errorMessage(error), 'warning');
+          app.toast(t('mods.importFailed'), api.errorMessage(error), 'warning');
         }
       }
     } finally {
@@ -241,8 +252,8 @@
     const selected = await open({
       multiple: true,
       directory: false,
-      title: 'Seleziona uno o più archivi addon',
-      filters: [{ name: 'Archivi ZIP', extensions: ['zip'] }]
+      title: t('mods.pickArchives'),
+      filters: [{ name: t('mods.zipFilter'), extensions: ['zip'] }]
     });
     if (selected === null) return;
 
@@ -254,9 +265,9 @@
     try {
       await run();
       await loadAddons();
-      if (done) app.toast('Addon', done, 'success');
+      if (done) app.toast(t('mods.addon'), done, 'success');
     } catch (error) {
-      app.toast('Operazione non riuscita', api.errorMessage(error), 'warning');
+      app.toast(t('home.operationFailed'), api.errorMessage(error), 'warning');
     } finally {
       addonBusy = '';
     }
@@ -268,20 +279,20 @@
     integrity = null;
     activity = {
       tone: 'busy',
-      text: action === 'install' ? 'Preparazione…' : 'Riparazione in corso…'
+      text: action === 'install' ? t('mods.preparing') : t('mods.repairing')
     };
     app.resetProgress();
 
     try {
       const outcome = action === 'install' ? await api.installMods() : await api.repairMods();
       activity = { tone: outcome.warnings.length > 0 ? 'warn' : 'ok', text: outcome.summary };
-      for (const warning of outcome.warnings) app.toast('Avviso', warning, 'warning');
+      for (const warning of outcome.warnings) app.toast(t('common.warning'), warning, 'warning');
       await app.refresh();
       await loadAddons();
     } catch (error) {
       const message = api.errorMessage(error);
       activity = { tone: 'warn', text: message };
-      app.toast('Operazione non riuscita', message, 'danger');
+      app.toast(t('home.operationFailed'), message, 'danger');
     } finally {
       installing = false;
     }
@@ -290,7 +301,7 @@
   async function verify() {
     verifying = true;
     integrity = null;
-    activity = { tone: 'busy', text: 'Confronto dei file con il manifest…' };
+    activity = { tone: 'busy', text: t('mods.verifyBusy') };
     try {
       integrity = await api.verifyMods();
       activity = {
@@ -300,7 +311,7 @@
     } catch (error) {
       const message = api.errorMessage(error);
       activity = { tone: 'warn', text: message };
-      app.toast('Verifica non riuscita', message, 'warning');
+      app.toast(t('home.verifyFailed'), message, 'warning');
     } finally {
       verifying = false;
     }
@@ -321,23 +332,21 @@
 
       <div class="versions">
         <div class="version">
-          <span class="vk-eyebrow">Installata</span>
+          <span class="vk-eyebrow">{t('home.installedLabel')}</span>
           <strong>{mod?.installedVersion || '—'}</strong>
         </div>
         <span class="arrow" class:pending={mod?.updateAvailable} aria-hidden="true">
           {mod?.updateAvailable ? '→' : '·'}
         </span>
         <div class="version" class:next={mod?.updateAvailable}>
-          <span class="vk-eyebrow">Ultima</span>
+          <span class="vk-eyebrow">{t('home.availableLabel')}</span>
           <strong>{mod?.latestVersion || '—'}</strong>
         </div>
       </div>
     </header>
 
     {#if mod?.needsRepair}
-      <p class="alert">
-        {mod.repairReason}. Finché non ripari, Dolphin avvia Mario Kart Wii originale.
-      </p>
+      <p class="alert">{t('mods.repairAlert', { reason: mod.repairReason })}</p>
     {/if}
 
     <div class="actions">
@@ -348,12 +357,12 @@
       >
         <Icon name="download" size={15} />
         {installing
-          ? 'In corso…'
+          ? t('common.working')
           : !mod?.installed
-            ? 'Installa'
+            ? t('mods.install')
             : mod.updateAvailable || mod.needsRepair
-              ? 'Aggiorna'
-              : 'Reinstalla'}
+              ? t('mods.update')
+              : t('mods.reinstall')}
       </button>
 
       <div class="secondary">
@@ -363,7 +372,7 @@
           disabled={installing || verifying || checking}
         >
           <Icon name="refresh" size={14} />
-          {checking ? 'Controllo…' : 'Aggiornamenti'}
+          {checking ? t('home.checking') : t('mods.updates')}
         </button>
         <button
           class="vk-btn"
@@ -371,7 +380,7 @@
           disabled={installing || verifying || !mod?.installed}
         >
           <Icon name="repair" size={14} />
-          Ripara
+          {t('mods.repair')}
         </button>
         <button
           class="vk-btn"
@@ -379,16 +388,16 @@
           disabled={verifying || installing || !mod?.installed}
         >
           <Icon name="check" size={14} />
-          {verifying ? 'Verifica…' : 'Verifica'}
+          {verifying ? t('home.verifying') : t('home.verify')}
         </button>
         <button
           class="vk-btn"
-          title="Apri la cartella della modpack"
+          title={t('mods.modFolderTitle')}
           onclick={() => openFolder('mod')}
           disabled={installing}
         >
           <Icon name="folder" size={14} />
-          Cartella mod
+          {t('mods.modFolder')}
         </button>
       </div>
     </div>
@@ -402,7 +411,12 @@
           <span>{app.progress.phase} — {app.progress.detail}</span>
           <span class="vk-spacer"></span>
           {#if app.progress.filesTotal > 0}
-            <span class="vk-faint">{app.progress.filesDone}/{app.progress.filesTotal} file</span>
+            <span class="vk-faint">
+              {t('mods.files', {
+                done: app.progress.filesDone,
+                total: app.progress.filesTotal
+              })}
+            </span>
           {/if}
           {#if app.progress.bytesLabel}
             <span class="vk-faint">{app.progress.bytesLabel}</span>
@@ -411,7 +425,7 @@
             <span class="speed">{app.progress.speedLabel}</span>
           {/if}
           <button class="vk-btn vk-btn--ghost small" onclick={() => api.cancelOperation()}>
-            Annulla
+            {t('common.cancel')}
           </button>
         </div>
       </div>
@@ -434,7 +448,7 @@
         {#if activity.tone !== 'busy'}
           <button
             class="vk-btn vk-btn--ghost small dismiss"
-            aria-label="Nascondi"
+            aria-label={t('common.hide')}
             onclick={() => {
               activity = null;
               integrity = null;
@@ -448,7 +462,7 @@
 
     {#if integrity && integrity.mismatched.length > 0}
       <details class="report">
-        <summary>{integrity.mismatched.length} file da ripristinare</summary>
+        <summary>{t('mods.mismatched', { count: integrity.mismatched.length })}</summary>
         <ul class="file-list vk-mono">
           {#each integrity.mismatched.slice(0, 60) as path (path)}
             <li>{path}</li>
@@ -459,7 +473,11 @@
 
     {#if mod?.changelog?.length}
       <details class="changelog-block">
-        <summary>Novità della {mod.latestVersion || 'versione disponibile'}</summary>
+        <summary>
+          {t('mods.changelogTitle', {
+            version: mod.latestVersion || t('mods.versionAvailable')
+          })}
+        </summary>
         <ul class="changelog">
           {#each mod.changelog as line, index (index)}
             <li>{line}</li>
@@ -476,7 +494,7 @@
         VanzaKart Music Pack
         {#if musicPack?.installed}
           <span class="vk-badge {musicPack.enabled ? 'vk-badge--success' : ''}">
-            {musicPack.enabled ? 'Attivo' : 'Disattivo'}
+            {musicPack.enabled ? t('mods.musicActive') : t('mods.musicInactive')}
           </span>
         {/if}
       </p>
@@ -484,12 +502,12 @@
         <p class="vk-faint music-note">{musicPack.blocker}</p>
       {:else}
         <p class="vk-faint music-note">
-          {musicPack?.installedVersion || 'Non installato'}
+          {musicPack?.installedVersion || t('mods.musicNotInstalled')}
           {#if musicPack?.updateAvailable && musicPack.latestVersion}
             → {musicPack.latestVersion}
           {/if}
           {#if musicPack?.installed}
-            · {musicPack.fileCount} tracce
+            · {t('mods.tracks', { count: musicPack.fileCount })}
           {/if}
         </p>
       {/if}
@@ -509,14 +527,14 @@
               disabled={installing || musicBusy !== ''}
             >
               <Icon name="download" size={14} />
-              {musicPack?.installed ? 'Aggiorna' : 'Installa'}
+              {musicPack?.installed ? t('mods.update') : t('mods.install')}
             </button>
           {/if}
 
           {#if musicPack?.installed}
             <Switch
               checked={musicPack.enabled}
-              label={musicPack.enabled ? 'Disattiva il music pack' : 'Attiva il music pack'}
+              label={musicPack.enabled ? t('mods.musicDisable') : t('mods.musicEnable')}
               busy={musicBusy === 'toggle'}
               disabled={musicBusy !== ''}
               onchange={() =>
@@ -532,11 +550,11 @@
                   async () => {
                     musicPack = await api.uninstallMusicPack();
                   },
-                  'Tracce originali ripristinate.'
+                  t('mods.musicRemoved')
                 )}
               disabled={musicBusy !== ''}
             >
-              Rimuovi
+              {t('common.remove')}
             </button>
           {/if}
         {/if}
@@ -545,10 +563,10 @@
   </section>
 
   <!-- ── SCHEDE ──────────────────────────────────────────────────────── -->
-  <nav class="tabs" aria-label="Addon">
+  <nav class="tabs" aria-label={t('mods.tabsAria')}>
     <button class="tab" class:active={tab === 'addons'} onclick={() => (tab = 'addons')}>
       <Icon name="package" size={15} />
-      Addon installati
+      {t('mods.installedAddons')}
       {#if localAddons.length > 0}<span class="count">{localAddons.length}</span>{/if}
     </button>
     <button class="tab" class:active={tab === 'gamebanana'} onclick={() => (tab = 'gamebanana')}>
@@ -560,19 +578,19 @@
   {#if tab === 'addons'}
     <section class="vk-card">
       <div class="section-head">
-        <p class="vk-eyebrow">Addon installati</p>
+        <p class="vk-eyebrow">{t('mods.installedAddons')}</p>
         <div class="vk-row">
           <button
             class="vk-btn"
-            title="Apri la cartella degli addon"
+            title={t('mods.addonFolderTitle')}
             onclick={() => openFolder('addons')}
           >
             <Icon name="folder" size={14} />
-            Cartella addon
+            {t('mods.addonFolder')}
           </button>
           <button class="vk-btn vk-btn--primary" onclick={importAddon} disabled={addonBusy !== ''}>
             <Icon name="download" size={14} />
-            {addonBusy === 'import' ? 'Importo…' : 'Importa .zip'}
+            {addonBusy === 'import' ? t('mods.importing') : t('mods.importZip')}
           </button>
         </div>
       </div>
@@ -584,22 +602,28 @@
         disabled={addonBusy !== ''}
       >
         <Icon name="download" size={22} />
-        <span class="drop-title">{dropping ? 'Rilascia qui' : 'Trascina qui i tuoi addon'}</span>
-        <span class="vk-faint drop-hint">archivi .zip, anche più d'uno alla volta</span>
+        <span class="drop-title">
+          {dropping ? t('mods.dropHere') : t('mods.dragHere')}
+        </span>
+        <span class="vk-faint drop-hint">{t('mods.dropHint')}</span>
       </button>
 
       {#if localAddons.length === 0}
         <div class="vk-empty">
           <Icon name="package" size={28} />
-          <p>Nessun addon installato.</p>
-          <p class="vk-faint">Trascinane uno qui sopra, o prendine uno da GameBanana.</p>
+          <p>{t('mods.noAddons')}</p>
+          <p class="vk-faint">{t('mods.noAddonsHint')}</p>
         </div>
       {:else}
         {#if showSourceFilter}
           <div class="filters">
-            {#each [['all', 'Tutti'], ['Local', 'Importati'], ['GameBanana', 'GameBanana']] as const as [value, label] (value)}
-              <button class="chip" class:active={source === value} onclick={() => (source = value)}>
-                {label}
+            {#each SOURCES as item (item.value)}
+              <button
+                class="chip"
+                class:active={source === item.value}
+                onclick={() => (source = item.value)}
+              >
+                {item.label}
               </button>
             {/each}
           </div>
@@ -623,9 +647,10 @@
               <div class="addon-info">
                 <strong>{addon.name}</strong>
                 <span class="vk-faint">
-                  {addon.author || addon.source} · {addon.fileCount} file{addon.managed
-                    ? ''
-                    : ' · non gestito'}
+                  {t('mods.addonMeta', {
+                    author: addon.author || addon.source,
+                    count: addon.fileCount
+                  })}{addon.managed ? '' : t('mods.unmanaged')}
                 </span>
               </div>
 
@@ -633,7 +658,9 @@
                    guarda scorrendo l'elenco, non un pulsante fra i pulsanti. -->
               <Switch
                 checked={addon.enabled}
-                label={addon.enabled ? `Disattiva ${addon.name}` : `Attiva ${addon.name}`}
+                label={addon.enabled
+                  ? t('mods.disableAddon', { name: addon.name })
+                  : t('mods.enableAddon', { name: addon.name })}
                 disabled={!addon.managed || (addonBusy !== '' && addonBusy !== addon.id)}
                 busy={addonBusy === addon.id}
                 onchange={() =>
@@ -642,14 +669,14 @@
 
               {#if addonBusy === addon.id}
                 <span class="working"
-                  ><span class="dot busy" aria-hidden="true"></span>Attendi…</span
+                  ><span class="dot busy" aria-hidden="true"></span>{t('mods.wait')}</span
                 >
               {:else}
                 {#if addon.sourceUrl}
                   <button
                     class="vk-btn icon-btn"
-                    title="Apri la pagina della mod su GameBanana"
-                    aria-label="Apri la pagina della mod su GameBanana"
+                    title={t('mods.openOnGameBanana')}
+                    aria-label={t('mods.openOnGameBanana')}
                     onclick={() => api.openExternal(addon.sourceUrl)}
                   >
                     <Icon name="external" size={14} />
@@ -657,10 +684,14 @@
                 {/if}
                 <button
                   class="vk-btn vk-btn--danger icon-btn"
-                  title="Rimuovi l'addon"
-                  aria-label="Rimuovi l'addon"
+                  title={t('mods.removeAddon')}
+                  aria-label={t('mods.removeAddon')}
                   onclick={() =>
-                    withAddon(addon, () => api.removeAddon(addon.id), `${addon.name} rimosso.`)}
+                    withAddon(
+                      addon,
+                      () => api.removeAddon(addon.id),
+                      t('mods.addonRemoved', { name: addon.name })
+                    )}
                   disabled={addonBusy !== '' || !addon.managed}
                 >
                   <Icon name="trash" size={14} />
@@ -673,12 +704,8 @@
 
       {#if conflicts.length > 0}
         <div class="conflicts-block">
-          <p class="vk-eyebrow">
-            {conflicts.length} conflitti
-          </p>
-          <p class="vk-subtitle">
-            Questi file compaiono più volte: Riivolution ne applica uno solo.
-          </p>
+          <p class="vk-eyebrow">{t('mods.conflicts', { count: conflicts.length })}</p>
+          <p class="vk-subtitle">{t('mods.conflictsHint')}</p>
           <ul class="conflicts">
             {#each conflicts as conflict (conflict.fileName)}
               <li>

@@ -28,6 +28,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import { app } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { MiiEditorState, MiiNumericField } from '$lib/api/types';
   import type { MiiRenderKind } from '$lib/api';
 
@@ -53,7 +54,7 @@
   let shot = $state<MiiRenderKind>('face');
 
   let preview = $state<string | null>(null);
-  let previewStatus = $state('Anteprima in coda…');
+  let previewStatus = $state(t('editor.queued'));
   /** Miniature delle opzioni, per chiave `campo:valore`. */
   let thumbnails = $state<Record<string, string>>({});
 
@@ -62,7 +63,7 @@
 
   const current = $derived(CATEGORIES[category] ?? CATEGORIES[0]);
   const dirty = $derived(editor !== null && JSON.stringify(editor) !== original);
-  const title = $derived(miiId ? 'Modifica Mii' : 'Nuovo Mii');
+  const title = $derived(miiId ? t('editor.edit') : t('editor.new'));
 
   /** Il legacy impagina ogni categoria tranne la barba, che mostra tutto. */
   const paginated = $derived(current.groups.length === 1 && current.groups[0]?.kind !== 'color');
@@ -114,18 +115,18 @@
     const key = `${kind}:${appearanceKey(state)}`;
     if (key !== lastPreviewKey) {
       lastPreviewKey = key;
-      previewStatus = 'Anteprima in coda…';
+      previewStatus = t('editor.queued');
     }
 
     let alive = true;
     const timer = setTimeout(() => {
       if (!alive) return;
-      if (!preview) previewStatus = 'Render in corso…';
+      if (!preview) previewStatus = t('editor.rendering');
 
       void renderState(snapshot, kind).then((image) => {
         if (!alive) return;
         preview = image;
-        previewStatus = image ? 'Anteprima pronta' : 'Il renderer non risponde: resta la sagoma.';
+        previewStatus = image ? t('editor.ready') : t('editor.noRenderer');
       });
     }, 260);
 
@@ -164,7 +165,7 @@
       return colors.map((color, index) => ({
         key: `favoriteColorIndex:${index}`,
         label: `${index + 1}`,
-        title: `${group.label} ${index + 1}`,
+        title: `${t(group.label)} ${index + 1}`,
         selected: state.favoriteColorIndex === index,
         color,
         apply: () => {
@@ -176,8 +177,8 @@
     if (group.kind === 'switch') {
       return [false, true].map((value) => ({
         key: `${group.field}:${value}`,
-        label: value ? group.on : group.off,
-        title: value ? group.on : group.off,
+        label: value ? t(group.on) : t(group.off),
+        title: value ? t(group.on) : t(group.off),
         selected: state[group.field] === value,
         state: { ...state, [group.field]: value },
         apply: () => {
@@ -191,7 +192,7 @@
       options.push({
         key: `${group.field}:${value}`,
         label: `${value + 1}`,
-        title: `${group.label} ${value + 1}`,
+        title: `${t(group.label)} ${value + 1}`,
         selected: state[group.field] === value,
         state: withNumber(state, group.field, value),
         apply: () => {
@@ -207,7 +208,7 @@
     if (!state) return [] as { label: string; options: GridOption[] }[];
 
     return current.groups.map((group) => ({
-      label: group.label,
+      label: t(group.label),
       options: buildOptions(group, state)
     }));
   });
@@ -316,7 +317,7 @@
       // L'identità non si tocca: un Mii che esiste già mantiene il suo id.
       editor = { ...random, miiId: editor.miiId, systemId: editor.systemId };
     } catch (err) {
-      app.toast('Mii casuale non riuscito', api.errorMessage(err), 'warning');
+      app.toast(t('editor.randomFailed'), api.errorMessage(err), 'warning');
     } finally {
       busy = false;
     }
@@ -329,7 +330,7 @@
   async function persist() {
     if (!editor) return;
     if (!editor.name.trim()) {
-      error = 'Scegli un nome per il Mii.';
+      error = t('editor.needName');
       return;
     }
 
@@ -339,7 +340,7 @@
       const saved = miiId
         ? await api.updateMii(miiId, editor)
         : await api.createMiiFromState(editor);
-      app.toast('Mii salvato', `${saved.name} è pronto.`, 'success');
+      app.toast(t('editor.saved'), t('editor.savedBody', { name: saved.name }), 'success');
       onclose(true);
     } catch (err) {
       error = api.errorMessage(err);
@@ -352,11 +353,11 @@
     if (!miiId) return;
 
     const destination = await saveDialog({
-      title: 'Esporta il Mii',
+      title: t('lic.exportMii'),
       defaultPath: `${editor?.name.trim() || 'mii'}.mii`,
       filters: [
-        { name: 'Mii Wii', extensions: ['mii', 'rcd', 'rsd'] },
-        { name: 'Profilo del launcher', extensions: ['json'] }
+        { name: t('editor.wiiMiiFilter'), extensions: ['mii', 'rcd', 'rsd'] },
+        { name: t('lic.profileFilter'), extensions: ['json'] }
       ]
     });
     if (typeof destination !== 'string') return;
@@ -364,9 +365,9 @@
     busy = true;
     try {
       const written = await api.exportMii(miiId, destination);
-      app.toast('Mii esportato', written, 'success');
+      app.toast(t('lic.miiExported'), written, 'success');
     } catch (err) {
-      app.toast('Export non riuscito', api.errorMessage(err), 'warning');
+      app.toast(t('lic.exportFailed'), api.errorMessage(err), 'warning');
     } finally {
       busy = false;
     }
@@ -390,32 +391,31 @@
 <svelte:window onkeydown={onKeydown} />
 
 <div class="overlay">
-  <button class="backdrop" aria-label="Chiudi l’editor Mii" onclick={close} disabled={busy}
-  ></button>
+  <button class="backdrop" aria-label={t('editor.close')} onclick={close} disabled={busy}></button>
 
   <div class="sheet vk-rainbow-top" role="dialog" aria-modal="true" aria-label={title}>
     <header class="head">
       <div>
         <h2 class="head-title">Mii Studio</h2>
-        <p class="vk-subtitle">{title} — ogni modifica resta nel launcher finché non salvi.</p>
+        <p class="vk-subtitle">{t('editor.subtitle', { title })}</p>
       </div>
       <button class="vk-btn" onclick={close} disabled={busy}>
         <Icon name="close" size={14} />
-        Chiudi
+        {t('common.close')}
       </button>
     </header>
 
     {#if loading}
       <div class="vk-skeleton loading"></div>
     {:else if !editor}
-      <div class="vk-error">{error || 'Mii non leggibile.'}</div>
+      <div class="vk-error">{error || t('editor.unreadable')}</div>
     {:else}
       <div class="body">
         <aside class="side">
           <div class="preview vk-card">
             <div class="stage" class:body-shot={shot === 'all_body'}>
               {#if preview}
-                <img src={preview} alt="Anteprima di {editor.name}" />
+                <img src={preview} alt={t('editor.previewOf', { name: editor.name })} />
               {:else}
                 <img class="silhouette" src={miiSilhouette} alt="" />
               {/if}
@@ -428,7 +428,7 @@
                 aria-pressed={shot === 'face'}
                 onclick={() => (shot = 'face')}
               >
-                Volto
+                {t('editor.shotFace')}
               </button>
               <button
                 class="vk-btn shot"
@@ -436,20 +436,24 @@
                 aria-pressed={shot === 'all_body'}
                 onclick={() => (shot = 'all_body')}
               >
-                Figura
+                {t('editor.shotBody')}
               </button>
             </div>
 
             <p class="preview-name">{editor.name || 'Mii'}</p>
             <p class="vk-faint preview-meta">
-              {editor.isFemale ? 'Femmina' : 'Maschio'} · Colore {editor.favoriteColorIndex + 1} ·
-              {editor.birthMonth}/{editor.birthDay}
+              {t('editor.meta', {
+                sex: editor.isFemale ? t('miicat.female') : t('miicat.male'),
+                color: editor.favoriteColorIndex + 1,
+                month: editor.birthMonth,
+                day: editor.birthDay
+              })}
             </p>
             <p class="vk-faint preview-status">{previewStatus}</p>
           </div>
 
           <div class="field">
-            <span class="vk-eyebrow">Nome del Mii</span>
+            <span class="vk-eyebrow">{t('editor.name')}</span>
             <div class="name-row">
               <input
                 class="vk-input"
@@ -459,7 +463,7 @@
               />
               <button
                 class="vk-btn symbol-btn"
-                title="Inserisci un simbolo"
+                title={t('editor.insertSymbol')}
                 aria-expanded={symbolsOpen}
                 onclick={() => (symbolsOpen = !symbolsOpen)}
               >
@@ -476,7 +480,7 @@
           </div>
 
           <label class="field">
-            <span class="vk-eyebrow">Creatore</span>
+            <span class="vk-eyebrow">{t('editor.creator')}</span>
             <input class="vk-input" maxlength="10" bind:value={editor.creatorName} />
           </label>
 
@@ -486,33 +490,35 @@
 
           <div class="actions">
             <button class="vk-btn vk-btn--primary" onclick={persist} disabled={busy || !dirty}>
-              Salva
+              {t('common.save')}
             </button>
-            <button class="vk-btn" onclick={close} disabled={busy}>Annulla</button>
-            <button class="vk-btn" onclick={randomize} disabled={busy}>Casuale</button>
-            <button class="vk-btn" onclick={reset} disabled={busy || !dirty}>Ripristina</button>
+            <button class="vk-btn" onclick={close} disabled={busy}>{t('common.cancel')}</button>
+            <button class="vk-btn" onclick={randomize} disabled={busy}>{t('editor.random')}</button>
+            <button class="vk-btn" onclick={reset} disabled={busy || !dirty}>
+              {t('settings.reset')}
+            </button>
             {#if miiId}
               <button class="vk-btn export" onclick={exportMii} disabled={busy}>
-                Esporta file .mii
+                {t('editor.exportFile')}
               </button>
             {/if}
           </div>
 
           <p class="vk-faint saved-hint">
-            {dirty ? 'Modifiche non salvate.' : 'Nessuna modifica in sospeso.'}
+            {dirty ? t('editor.unsaved') : t('editor.noChanges')}
           </p>
         </aside>
 
         <div class="editor">
-          <nav class="rail" aria-label="Categorie">
+          <nav class="rail" aria-label={t('editor.categories')}>
             {#each CATEGORIES as item, index (item.key)}
               <button
                 class="rail-item"
                 class:active={category === index}
-                title={item.hint}
+                title={t(item.hint)}
                 onclick={() => selectCategory(index)}
               >
-                {item.label}
+                {t(item.label)}
               </button>
             {/each}
           </nav>
@@ -520,8 +526,8 @@
           <div class="panel vk-card">
             <div class="panel-head">
               <div>
-                <p class="panel-title">{current.label}</p>
-                <p class="vk-subtitle">{current.hint}</p>
+                <p class="panel-title">{t(current.label)}</p>
+                <p class="vk-subtitle">{t(current.hint)}</p>
               </div>
 
               <div class="panel-tools">
@@ -529,7 +535,7 @@
                   <div class="pager">
                     <button
                       class="vk-btn pager-btn"
-                      aria-label="Pagina precedente"
+                      aria-label={t('editor.prevPage')}
                       onclick={() => (page = Math.max(0, page - 1))}
                       disabled={page <= 0}
                     >
@@ -540,7 +546,7 @@
                     >
                     <button
                       class="vk-btn pager-btn"
-                      aria-label="Pagina successiva"
+                      aria-label={t('editor.nextPage')}
                       onclick={() => (page = Math.min(pageCount - 1, page + 1))}
                       disabled={page >= pageCount - 1}
                     >
@@ -555,7 +561,7 @@
                     aria-expanded={adjusting}
                     onclick={() => (adjusting = !adjusting)}
                   >
-                    Regola
+                    {t('editor.adjust')}
                   </button>
                 {/if}
               </div>
@@ -597,7 +603,7 @@
                     {#each current.toggles as toggle (toggle.field)}
                       <label class="toggle">
                         <input type="checkbox" bind:checked={editor[toggle.field]} />
-                        <span>{toggle.label}</span>
+                        <span>{t(toggle.label)}</span>
                       </label>
                     {/each}
                   </div>
@@ -607,7 +613,7 @@
                   {#each current.sliders as slider (slider.field)}
                     <label class="slider">
                       <span class="slider-head">
-                        <span>{slider.label}</span>
+                        <span>{t(slider.label)}</span>
                         <strong>{editor[slider.field]}</strong>
                       </span>
                       <input

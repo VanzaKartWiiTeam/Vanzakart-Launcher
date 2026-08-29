@@ -9,6 +9,8 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 
+import { t } from '$lib/stores/i18n.svelte';
+
 import type {
   AddonView,
   ApiError,
@@ -66,7 +68,7 @@ export function errorMessage(error: unknown): string {
   if (isApiError(error)) return error.message;
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;
-  return 'Errore imprevisto.';
+  return t('common.unexpectedError');
 }
 
 /** Codice stabile dell'errore, per decidere dove indirizzare l'utente. */

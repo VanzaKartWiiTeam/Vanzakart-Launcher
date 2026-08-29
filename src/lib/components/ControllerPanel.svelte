@@ -9,6 +9,7 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { t, type TranslationKey } from '$lib/stores/i18n.svelte';
   import type {
     ControllerMode,
     ControllerProfile,
@@ -26,6 +27,30 @@
   let notice = $state('');
 
   const sections = $derived([...new Set(actions.map((action) => action.section))]);
+
+  /**
+   * Le descrizioni delle azioni arrivano dal backend, che le ha in italiano.
+   * Qui si traducono per id: se un giorno ne arriva una nuova, si mostra
+   * comunque quella del backend invece di una casella vuota.
+   */
+  const ACTION_KEYS: Record<string, TranslationKey> = {
+    drive: 'action.drive',
+    brake: 'action.brake',
+    drift: 'action.drift',
+    item: 'action.item',
+    look_back: 'action.look_back',
+    pause: 'action.pause',
+    steering: 'action.steering',
+    trick_up: 'action.trick_up',
+    trick_down: 'action.trick_down',
+    trick_left: 'action.trick_left',
+    trick_right: 'action.trick_right'
+  };
+
+  function describe(action: MarioKartAction): string {
+    const key = ACTION_KEYS[action.id];
+    return key ? t(key) : action.description;
+  }
   const launcherMode = $derived(mode === 'launcher-configuration');
 
   $effect(() => {
@@ -42,7 +67,7 @@
       ]);
       profile = await api.getControllerProfile();
     } catch (error) {
-      app.toast('Controller non leggibili', api.errorMessage(error), 'warning');
+      app.toast(t('controller.unreadable'), api.errorMessage(error), 'warning');
     } finally {
       loading = false;
     }
@@ -50,18 +75,18 @@
 
   /** Valore assegnato a un'azione: la prima chiave non vuota. */
   function bindingFor(action: MarioKartAction): string {
-    if (!profile) return 'Non assegnato';
+    if (!profile) return t('controller.unassigned');
     for (const key of action.dolphin_keys) {
       const value = profile.bindings[key];
       if (value && value.trim() !== '') return friendly(value);
     }
-    return 'Non assegnato';
+    return t('controller.unassigned');
   }
 
   /** Toglie i backtick della sintassi Dolphin e il moltiplicatore. */
   function friendly(raw: string): string {
     const unwrapped = raw.replace(/^\((.*) \* [\d.]+\)$/, '$1');
-    return unwrapped.replace(/`/g, '').trim() || 'Non assegnato';
+    return unwrapped.replace(/`/g, '').trim() || t('controller.unassigned');
   }
 
   /**
@@ -109,25 +134,25 @@
       },
       configuredDolphinDevice: device.dolphinDevice
     };
-    notice = `Controller selezionato: ${device.name}. Salva per applicare.`;
+    notice = t('controller.selected', { name: device.name });
   }
 
   async function capture(action: MarioKartAction) {
     if (!profile || listeningFor) return;
     listeningFor = action.id;
-    notice = `Premi l’input da assegnare a "${action.title}"…`;
+    notice = t('controller.pressInputFor', { action: action.title });
 
     try {
       const binding = await api.captureBinding(profile.device.dolphinDevice);
       if (binding === null) {
-        notice = 'Nessun input rilevato: riprova.';
+        notice = t('controller.noInput');
         return;
       }
 
       const bindings = { ...profile.bindings };
       for (const key of action.dolphin_keys) bindings[key] = binding;
       profile = { ...profile, bindings };
-      notice = `"${action.title}" assegnato a ${friendly(binding)}.`;
+      notice = t('controller.assigned', { action: action.title, binding: friendly(binding) });
     } catch (error) {
       notice = api.errorMessage(error);
     } finally {
@@ -139,9 +164,7 @@
     if (!profile) return;
     try {
       const supported = await api.rumbleController(profile.device.dolphinDevice);
-      notice = supported
-        ? 'Vibrazione inviata al controller.'
-        : 'Questo controller non supporta la vibrazione.';
+      notice = supported ? t('controller.rumbleSent') : t('controller.noRumble');
     } catch (error) {
       notice = api.errorMessage(error);
     }
@@ -153,9 +176,9 @@
     try {
       await api.saveControllerProfile(profile);
       mode = await api.getControllerMode();
-      notice = 'Binding salvati in GCPadNew.ini.';
+      notice = t('controller.saved');
     } catch (error) {
-      app.toast('Salvataggio non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('settings.saveFailed'), api.errorMessage(error), 'warning');
     } finally {
       saving = false;
     }
@@ -166,10 +189,10 @@
       mode = await api.setControllerMode(next);
       notice =
         next === 'configure-with-dolphin'
-          ? 'Dolphin gestisce i controller: il launcher non tocca più i suoi file.'
-          : 'Il launcher gestisce i controller.';
+          ? t('controller.modeDolphin')
+          : t('controller.modeLauncher');
     } catch (error) {
-      app.toast('Cambio modalità non riuscito', api.errorMessage(error), 'warning');
+      app.toast(t('controller.modeFailed'), api.errorMessage(error), 'warning');
     }
   }
 </script>
@@ -186,28 +209,28 @@
       class:active={launcherMode}
       onclick={() => switchMode('launcher-configuration')}
     >
-      <strong>Configura dal launcher</strong>
-      <span class="vk-faint">Il launcher scrive i binding e attiva il pad GameCube.</span>
+      <strong>{t('controller.fromLauncher')}</strong>
+      <span class="vk-faint">{t('controller.fromLauncherHint')}</span>
     </button>
     <button
       class="mode"
       class:active={!launcherMode}
       onclick={() => switchMode('configure-with-dolphin')}
     >
-      <strong>Configura da Dolphin</strong>
-      <span class="vk-faint">Dolphin resta l’unico proprietario dei suoi file.</span>
+      <strong>{t('controller.fromDolphin')}</strong>
+      <span class="vk-faint">{t('controller.fromDolphinHint')}</span>
     </button>
   </div>
 
   {#if !launcherMode}
     <p class="vk-subtitle">
-      In questa modalità i binding si impostano dentro Dolphin. Il launcher non modifica
+      {t('controller.dolphinModeBody')}
       <code>GCPadNew.ini</code>.
     </p>
   {:else if loading}
     <div class="vk-skeleton skeleton"></div>
   {:else if !profile}
-    <p class="vk-subtitle">Seleziona la cartella User di Dolphin per configurare i controller.</p>
+    <p class="vk-subtitle">{t('controller.needUserFolder')}</p>
   {:else}
     <!-- DEVICE -->
     <div class="devices">
@@ -220,8 +243,8 @@
         >
           <span class="device-name">{device.name}</span>
           <span class="vk-faint device-meta">
-            {device.connected ? device.kind : 'non connesso'}
-            {device.supportsRumble ? ' · vibrazione' : ''}
+            {device.connected ? device.kind : t('controller.notConnected')}
+            {device.supportsRumble ? t('controller.rumbleTag') : ''}
           </span>
         </button>
       {/each}
@@ -237,7 +260,7 @@
               <span class="glyph" aria-hidden="true">{action.icon}</span>
               <div class="labels">
                 <strong>{action.title}</strong>
-                <span class="vk-faint">{action.description}</span>
+                <span class="vk-faint">{describe(action)}</span>
               </div>
               <button
                 class="assign"
@@ -245,7 +268,7 @@
                 onclick={() => capture(action)}
                 disabled={listeningFor !== null || !profile.device.connected}
               >
-                {listeningFor === action.id ? 'Premi un input…' : bindingFor(action)}
+                {listeningFor === action.id ? t('controller.pressInput') : bindingFor(action)}
               </button>
             </div>
           {/each}
@@ -255,19 +278,21 @@
 
     <!-- PARAMETRI ANALOGICI -->
     <section class="section">
-      <p class="vk-eyebrow">Sterzo</p>
+      <p class="vk-eyebrow">{t('controller.steering')}</p>
       <div class="sliders">
         <label>
-          <span>Zona morta: <strong>{profile.deadzone.toFixed(0)}%</strong></span>
+          <span>{t('controller.deadzone')}: <strong>{profile.deadzone.toFixed(0)}%</strong></span>
           <input type="range" min="0" max="50" bind:value={profile.deadzone} />
         </label>
         <label>
-          <span>Sensibilità: <strong>{profile.sensitivity.toFixed(0)}%</strong></span>
+          <span>
+            {t('controller.sensitivity')}: <strong>{profile.sensitivity.toFixed(0)}%</strong>
+          </span>
           <input type="range" min="50" max="150" bind:value={profile.sensitivity} />
         </label>
         <label class="check">
           <input type="checkbox" bind:checked={profile.vibration} />
-          Vibrazione
+          {t('controller.vibration')}
         </label>
       </div>
     </section>
@@ -275,14 +300,14 @@
     <div class="actions-row">
       <button class="vk-btn" onclick={load} disabled={saving}>
         <Icon name="refresh" size={14} />
-        Rileggi
+        {t('controller.reload')}
       </button>
       <button
         class="vk-btn"
         onclick={testRumble}
         disabled={!profile.device.supportsRumble || !profile.device.connected}
       >
-        Prova vibrazione
+        {t('controller.testRumble')}
       </button>
       <span class="vk-spacer"></span>
       <button
@@ -290,14 +315,12 @@
         onclick={save}
         disabled={saving || conflicts.length > 0 || !profile.device.connected}
       >
-        {saving ? 'Salvataggio…' : 'Salva binding'}
+        {saving ? t('common.saving') : t('controller.saveBindings')}
       </button>
     </div>
 
     {#if conflicts.length > 0}
-      <p class="conflict-note">
-        Alcune azioni condividono lo stesso input. Solo Brake e Drift possono farlo.
-      </p>
+      <p class="conflict-note">{t('controller.conflictNote')}</p>
     {/if}
   {/if}
 </div>

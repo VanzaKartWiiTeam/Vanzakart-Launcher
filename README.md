@@ -19,6 +19,7 @@ non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
 | Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
 | Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
 | Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |
+| Lingua | solo italiano | italiano e inglese, si cambia dalle impostazioni |
 
 Contratti server, formato dei manifest, layout delle cartelle della modpack e
 file di versione **non cambiano**: i due launcher possono convivere sulla
@@ -46,6 +47,7 @@ tauri-launcher/
   src/
     lib/api/        wrapper IPC tipizzati
     lib/components/ componenti riusabili
+    lib/i18n/       dizionari italiano (riferimento) e inglese
     lib/styles/     design system estratto dallo XAML
     routes/         una pagina per voce di menu
   setup/            installer e disinstallatore: stessa finestra, stesso

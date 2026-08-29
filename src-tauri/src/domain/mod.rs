@@ -4,6 +4,8 @@
 //! già risolti e sanitizzati, mai URL di configurazione o percorsi che non gli
 //! servono (vedi `docs/decisions.md` §D-005 e §D-017).
 
+pub mod wii_text;
+
 use serde::{Deserialize, Serialize};
 use vk_core::Channel;
 

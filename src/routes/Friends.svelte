@@ -22,6 +22,7 @@
   import Modal from '$lib/components/Modal.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { formatNumber, t } from '$lib/stores/i18n.svelte';
   import type { FriendView, LicenseView } from '$lib/api/types';
 
   /** Posti disponibili nella lista amici di una licenza. */
@@ -32,7 +33,8 @@
   let selected = $state<LicenseView | null>(null);
   let loading = $state(true);
   let busy = $state(false);
-  let copied = $state(false);
+  /** Ultimo friend code copiato: la spunta sta sul pulsante che si è premuto. */
+  let copiedCode = $state('');
   let newCode = $state('');
   let error = $state('');
   let pendingRemoval = $state<FriendView | null>(null);
@@ -54,7 +56,7 @@
       const first = licenses.find((license) => !license.isEmpty);
       await select(first ?? null);
     } catch (err) {
-      app.toast('Licenze non leggibili', api.errorMessage(err), 'warning');
+      app.toast(t('friends.licensesUnreadable'), api.errorMessage(err), 'warning');
       licenses = [];
     } finally {
       loading = false;
@@ -81,11 +83,11 @@
   async function copy(code: string) {
     try {
       await navigator.clipboard.writeText(code);
-      copied = true;
+      copiedCode = code;
       clearTimeout(copiedTimer);
-      copiedTimer = setTimeout(() => (copied = false), 1600);
+      copiedTimer = setTimeout(() => (copiedCode = ''), 1600);
     } catch {
-      copied = false;
+      copiedCode = '';
     }
   }
 
@@ -97,11 +99,7 @@
     try {
       friends = await api.addFriend(selected.saveIndex, selected.slot, newCode.trim());
       newCode = '';
-      app.toast(
-        'Amico aggiunto',
-        'Il salvataggio è stato copiato prima di modificarlo.',
-        'success'
-      );
+      app.toast(t('friends.added'), t('friends.addedBody'), 'success');
       licenses = await api.listLicenses();
     } catch (err) {
       error = api.errorMessage(err);
@@ -119,7 +117,11 @@
     error = '';
     try {
       friends = await api.removeFriend(selected.saveIndex, selected.slot, target.slot);
-      app.toast('Amico rimosso', `${target.friendCode} non è più nella lista.`, 'success');
+      app.toast(
+        t('friends.removed'),
+        t('friends.removedBody', { code: target.friendCode }),
+        'success'
+      );
       licenses = await api.listLicenses();
     } catch (err) {
       error = api.errorMessage(err);
@@ -135,12 +137,10 @@
   {:else if withCode.length === 0}
     <div class="vk-card vk-empty">
       <Icon name="friends" size={28} />
-      <p>Nessuna licenza con friend code.</p>
-      <p class="vk-faint">
-        Il friend code compare dopo la prima connessione online dentro Mario Kart Wii.
-      </p>
+      <p>{t('friends.emptyTitle')}</p>
+      <p class="vk-faint">{t('friends.emptyHint')}</p>
       <button class="vk-btn" onclick={() => app.navigate('licenses')}>
-        Vai a Mii &amp; Licenses
+        {t('friends.goToLicenses')}
       </button>
     </div>
   {:else if selected}
@@ -157,22 +157,22 @@
 
       <div class="who">
         <p class="owner">{license.name}</p>
-        <p class="vk-faint region">{license.region} · Slot {license.slot + 1}</p>
+        <p class="vk-faint region">
+          {license.region} · {t('friends.slot', { number: license.slot + 1 })}
+        </p>
       </div>
 
-      <button
-        class="code"
-        onclick={() => copy(license.friendCode)}
-        title="Copia il tuo friend code"
-      >
+      <button class="code" onclick={() => copy(license.friendCode)} title={t('friends.copyMine')}>
         <span class="vk-mono">{license.friendCode}</span>
-        <Icon name={copied ? 'check' : 'copy'} size={14} />
-        <span class="vk-visually-hidden">{copied ? 'Copiato' : 'Copia'}</span>
+        <Icon name={copiedCode === license.friendCode ? 'check' : 'copy'} size={14} />
+        <span class="vk-visually-hidden">
+          {copiedCode === license.friendCode ? t('common.copied') : t('common.copy')}
+        </span>
       </button>
 
-      <button class="icon-btn" onclick={load} disabled={busy} title="Ricarica dal salvataggio">
+      <button class="icon-btn" onclick={load} disabled={busy} title={t('friends.reload')}>
         <Icon name="refresh" size={15} />
-        <span class="vk-visually-hidden">Ricarica</span>
+        <span class="vk-visually-hidden">{t('common.refresh')}</span>
       </button>
 
       {#if withCode.length > 1}
@@ -181,8 +181,8 @@
           da 11 px non lo dicevano. Ogni licenza è una linguetta con la sua
           faccia e i suoi amici, e la attiva si vede (§D-062).
         -->
-        <nav class="switch" aria-label="Licenze del salvataggio">
-          <span class="vk-eyebrow switch-label">Mostra gli amici di</span>
+        <nav class="switch" aria-label={t('friends.licensesAria')}>
+          <span class="vk-eyebrow switch-label">{t('friends.showFriendsOf')}</span>
 
           {#each withCode as option (`${option.saveIndex}-${option.slot}`)}
             <button
@@ -212,7 +212,7 @@
       <header class="list-head">
         <div class="count">
           <span class="value">{friends.length}<span class="of">/{SLOTS}</span></span>
-          <span class="vk-eyebrow">Amici salvati</span>
+          <span class="vk-eyebrow">{t('friends.saved')}</span>
         </div>
 
         {#if canWrite}
@@ -231,16 +231,16 @@
               disabled={busy || full || newCode.trim().length === 0}
             >
               <Icon name="plus" size={14} />
-              Aggiungi
+              {t('friends.add')}
             </button>
           </div>
         {:else}
-          <span class="vk-badge">Sola lettura</span>
+          <span class="vk-badge">{t('friends.readOnly')}</span>
         {/if}
       </header>
 
       {#if full && canWrite}
-        <p class="vk-faint hint">Lista piena: rimuovi un amico prima di aggiungerne un altro.</p>
+        <p class="vk-faint hint">{t('friends.full')}</p>
       {/if}
 
       {#if error}
@@ -248,7 +248,7 @@
       {/if}
 
       {#if friends.length === 0}
-        <p class="vk-faint empty-list">Nessun amico salvato in questa licenza.</p>
+        <p class="vk-faint empty-list">{t('friends.none')}</p>
       {:else}
         <ul class="friends">
           {#each friends as friend (friend.slot)}
@@ -271,8 +271,8 @@
                     <img
                       class="rank-mini"
                       src={friend.stats.rankImage}
-                      alt="Grado {friend.stats.prestigeRank}"
-                      title="Grado {friend.stats.prestigeRank}"
+                      alt={t('friends.rank', { rank: friend.stats.prestigeRank })}
+                      title={t('friends.rank', { rank: friend.stats.prestigeRank })}
                     />
                   {/if}
                   {friend.miiName}
@@ -280,28 +280,40 @@
                 <p class="vk-mono friend-code">{friend.friendCode}</p>
               </div>
 
+              <!--
+                Del server qui interessa solo il VR: vittorie e percentuale
+                allungavano la riga e si leggono per intero in Leaderboard.
+              -->
               {#if friend.stats}
-                {@const stats = friend.stats}
-                <div class="friend-stats">
-                  <span class="stat-vr">{stats.points.toLocaleString('it-IT')} VR</span>
-                  <span class="vk-faint">{stats.wins} V su {stats.games}</span>
-                  <span class="vk-faint">{stats.winrate.toFixed(0)}%</span>
-                </div>
+                <span class="stat-vr">
+                  {t('friends.vr', { points: formatNumber(friend.stats.points) })}
+                </span>
               {:else}
-                <span class="vk-faint friend-unranked">Non in classifica</span>
+                <span class="vk-faint friend-unranked">{t('friends.unranked')}</span>
               {/if}
 
-              {#if canWrite}
+              <div class="friend-actions">
                 <button
-                  class="icon-btn danger"
-                  onclick={() => (pendingRemoval = friend)}
-                  disabled={busy}
-                  title="Rimuovi {friend.miiName}"
+                  class="icon-btn"
+                  onclick={() => copy(friend.friendCode)}
+                  title={t('friends.copyCodeOf', { name: friend.miiName })}
                 >
-                  <Icon name="trash" size={15} />
-                  <span class="vk-visually-hidden">Rimuovi</span>
+                  <Icon name={copiedCode === friend.friendCode ? 'check' : 'copy'} size={15} />
+                  <span class="vk-visually-hidden">{t('friends.copyCode')}</span>
                 </button>
-              {/if}
+
+                {#if canWrite}
+                  <button
+                    class="icon-btn danger"
+                    onclick={() => (pendingRemoval = friend)}
+                    disabled={busy}
+                    title={t('friends.removeOf', { name: friend.miiName })}
+                  >
+                    <Icon name="trash" size={15} />
+                    <span class="vk-visually-hidden">{t('common.remove')}</span>
+                  </button>
+                {/if}
+              </div>
             </li>
           {/each}
         </ul>
@@ -312,17 +324,19 @@
 
 <Modal
   open={pendingRemoval !== null}
-  title="Rimuovere questo amico?"
-  confirmLabel="Rimuovi"
-  cancelLabel="Annulla"
+  title={t('friends.confirmTitle')}
+  confirmLabel={t('common.remove')}
+  cancelLabel={t('common.cancel')}
   danger
   {busy}
   onconfirm={confirmRemoval}
   oncancel={() => (pendingRemoval = null)}
 >
   <p>
-    <strong>{pendingRemoval?.miiName}</strong> ({pendingRemoval?.friendCode}) verrà tolto dalla
-    lista di questa licenza. Il salvataggio viene copiato e verificato prima della modifica.
+    {t('friends.confirmBody', {
+      name: pendingRemoval?.miiName ?? '',
+      code: pendingRemoval?.friendCode ?? ''
+    })}
   </p>
 </Modal>
 
@@ -600,23 +614,31 @@
     color: var(--vk-text-secondary);
   }
 
-  .friend-stats {
-    display: flex;
-    align-items: baseline;
-    gap: 12px;
+  .stat-vr {
     margin-left: auto;
     font-size: var(--vk-fs-micro);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .stat-vr {
     font-weight: 800;
+    font-variant-numeric: tabular-nums;
     color: var(--vk-cyan-soft);
+    white-space: nowrap;
   }
 
   .friend-unranked {
     margin-left: auto;
     font-size: var(--vk-fs-micro);
+    white-space: nowrap;
+  }
+
+  /* Copia e cestino, in quest'ordine: si preme molto più spesso la prima. */
+  .friend-actions {
+    display: flex;
+    gap: 6px;
+    flex: none;
+  }
+
+  .friend-actions .icon-btn {
+    width: 30px;
+    height: 30px;
   }
 
   .skeleton {
@@ -648,7 +670,6 @@
       width: auto;
     }
 
-    .friend-stats,
     .friend-unranked {
       display: none;
     }

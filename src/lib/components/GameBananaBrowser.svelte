@@ -13,6 +13,7 @@
   import DownloadOverlay from '$lib/components/DownloadOverlay.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { app, formatBytes } from '$lib/stores/app.svelte';
+  import { t } from '$lib/stores/i18n.svelte';
   import type { GameBananaFile, GameBananaMod } from '$lib/api/types';
 
   interface Props {
@@ -22,13 +23,13 @@
 
   const { oninstalled }: Props = $props();
 
-  const SORTS = [
-    { value: 'Generic_Newest', label: 'Più recenti' },
-    { value: 'Generic_MostLiked', label: 'Più apprezzate' },
-    { value: 'Generic_MostViewed', label: 'Più viste' },
-    { value: 'Generic_MostDownloaded', label: 'Più scaricate' },
-    { value: 'Generic_Alphabetically', label: 'Alfabetico' }
-  ];
+  const SORTS = $derived([
+    { value: 'Generic_Newest', label: t('gb.sort.newest') },
+    { value: 'Generic_MostLiked', label: t('gb.sort.liked') },
+    { value: 'Generic_MostViewed', label: t('gb.sort.viewed') },
+    { value: 'Generic_MostDownloaded', label: t('gb.sort.downloaded') },
+    { value: 'Generic_Alphabetically', label: t('gb.sort.alphabetical') }
+  ]);
 
   let query = $state('');
   let sort = $state('Generic_Newest');
@@ -96,15 +97,15 @@
     try {
       const addon = await api.installGameBananaFile(item.id, file.fileId);
       app.toast(
-        'Addon installato',
-        `${addon.name}: ${addon.fileCount} file. Attivalo per usarlo.`,
+        t('gb.installed'),
+        t('gb.installedBody', { name: addon.name, count: addon.fileCount }),
         'success'
       );
       oninstalled();
     } catch (err) {
       const message = api.errorMessage(err);
       app.toast(
-        api.errorCode(err) === 'cancelled' ? 'Download annullato' : 'Download non riuscito',
+        api.errorCode(err) === 'cancelled' ? t('gb.cancelled') : t('gb.downloadFailed'),
         message,
         'warning'
       );
@@ -124,7 +125,7 @@
   <div class="controls">
     <input
       class="vk-input search"
-      placeholder="Cerca fra le mod di Mario Kart Wii…"
+      placeholder={t('gb.search')}
       bind:value={query}
       onkeydown={onSearchKey}
       disabled={loading}
@@ -136,14 +137,12 @@
     </select>
     <button class="vk-btn" onclick={() => run(1)} disabled={loading}>
       <Icon name="refresh" size={14} />
-      Cerca
+      {t('gb.searchAction')}
     </button>
   </div>
 
   {#if truncated}
-    <p class="vk-faint note">
-      Il catalogo dei nomi è stato troncato: la ricerca potrebbe non coprire le mod meno recenti.
-    </p>
+    <p class="vk-faint note">{t('gb.truncated')}</p>
   {/if}
 
   {#if error}
@@ -152,10 +151,10 @@
     <div class="vk-skeleton skeleton"></div>
   {:else if mods.length === 0}
     <p class="vk-faint note">
-      {query.trim() ? 'Nessuna mod trovata per questa ricerca.' : 'Nessun risultato.'}
+      {query.trim() ? t('gb.noMatch') : t('gb.noResults')}
     </p>
   {:else}
-    <p class="vk-faint note">{total} mod disponibili · pagina {page}</p>
+    <p class="vk-faint note">{t('gb.count', { count: total, page })}</p>
 
     <ul class="mods">
       {#each mods as item (item.id)}
@@ -176,8 +175,11 @@
             <div class="mod-id">
               <p class="mod-name">{item.name}</p>
               <p class="vk-faint mod-meta">
-                {item.author || 'Autore sconosciuto'} · {item.likes} mi piace · {item.files.length}
-                file
+                {t('gb.modMeta', {
+                  author: item.author || t('gb.unknownAuthor'),
+                  likes: item.likes,
+                  files: item.files.length
+                })}
               </p>
               {#if item.description}
                 <p class="vk-faint mod-desc">{item.description.slice(0, 190)}</p>
@@ -191,7 +193,7 @@
                 disabled={installing !== ''}
               >
                 <Icon name="download" size={14} />
-                {busy(item) ? 'Download…' : 'Installa'}
+                {busy(item) ? t('gb.downloading') : t('gb.install')}
                 {#if item.files.length > 1}
                   <span class="caret" class:up={expanded === item.id}>
                     <Icon name="chevron" size={13} />
@@ -202,8 +204,8 @@
               {#if item.profileUrl}
                 <button
                   class="vk-btn act"
-                  title="Apri la pagina della mod su GameBanana"
-                  aria-label="Apri la pagina della mod su GameBanana"
+                  title={t('mods.openOnGameBanana')}
+                  aria-label={t('mods.openOnGameBanana')}
                   onclick={() => api.openExternal(item.profileUrl)}
                 >
                   <Icon name="external" size={14} />
@@ -214,7 +216,7 @@
 
           {#if expanded === item.id}
             <ul class="files">
-              <li class="files-hint vk-faint">Questa mod ha più file: scegli quale installare.</li>
+              <li class="files-hint vk-faint">{t('gb.multipleFiles')}</li>
               {#each item.files as file (file.fileId)}
                 <li class="file">
                   <div class="file-id">
@@ -230,7 +232,9 @@
                     disabled={installing !== ''}
                   >
                     <Icon name="download" size={14} />
-                    {installing === `${item.id}-${file.fileId}` ? 'Download…' : 'Installa'}
+                    {installing === `${item.id}-${file.fileId}`
+                      ? t('gb.downloading')
+                      : t('gb.install')}
                   </button>
                 </li>
               {/each}
@@ -242,10 +246,10 @@
 
     <div class="pager">
       <button class="vk-btn" onclick={() => run(page - 1)} disabled={loading || page <= 1}>
-        Precedente
+        {t('gb.previous')}
       </button>
       <button class="vk-btn" onclick={() => run(page + 1)} disabled={loading || !hasMore}>
-        Successiva
+        {t('gb.next')}
       </button>
     </div>
   {/if}

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { CATEGORIES, NAME_SYMBOLS, OPTIONS_PER_PAGE } from './categories';
+import { t } from '$lib/stores/i18n.svelte';
 import type { MiiBooleanField, MiiNumericField } from '$lib/api/types';
 
 /**
@@ -110,10 +111,12 @@ describe('categorie dell’editor Mii', () => {
     }
   });
 
-  it('dà a ogni categoria un’etichetta e almeno un controllo', () => {
+  it('dà a ogni categoria un’etichetta tradotta e almeno un controllo', () => {
     for (const category of CATEGORIES) {
-      expect(category.label.trim()).not.toBe('');
-      expect(category.hint.trim()).not.toBe('');
+      // `t` ricade sulla chiave quando manca: un'etichetta uguale alla sua
+      // chiave è una traduzione dimenticata.
+      expect(t(category.label)).not.toBe(category.label);
+      expect(t(category.hint)).not.toBe(category.hint);
       expect(
         category.groups.length + category.sliders.length + category.toggles.length
       ).toBeGreaterThan(0);
