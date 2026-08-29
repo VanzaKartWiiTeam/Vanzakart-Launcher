@@ -19,7 +19,7 @@ non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
 | Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
 | Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
 | Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |
-| Lingua | solo italiano | italiano e inglese, si cambia dalle impostazioni |
+| Lingua | solo italiano | inglese di default, italiano a un clic dalle impostazioni |
 
 Contratti server, formato dei manifest, layout delle cartelle della modpack e
 file di versione **non cambiano**: i due launcher possono convivere sulla

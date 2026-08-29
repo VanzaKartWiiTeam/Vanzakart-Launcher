@@ -34,21 +34,25 @@ function isLocale(value: unknown): value is Locale {
   return typeof value === 'string' && (LOCALES as readonly string[]).includes(value);
 }
 
+/** Lingua di chi non ha ancora scelto: inglese. */
+const DEFAULT_LOCALE: Locale = 'en';
+
 /**
- * Lingua di partenza: quella scelta l'ultima volta, altrimenti quella del
- * sistema. Chi ha Windows in italiano trova il launcher in italiano, come
- * prima che esistesse questa impostazione.
+ * Lingua di partenza: quella scelta l'ultima volta, altrimenti l'inglese.
+ *
+ * Non si guarda la lingua del sistema: la community non è solo italiana e
+ * l'inglese è la lingua che tutti leggono. Chi preferisce l'italiano lo
+ * sceglie una volta in Impostazioni e la scelta resta.
  */
 function initialLocale(): Locale {
   try {
     const saved = localStorage.getItem(STORAGE_KEY);
     if (isLocale(saved)) return saved;
   } catch {
-    // Webview senza storage: si riparte dalla lingua di sistema.
+    // Webview senza storage: resta la lingua predefinita.
   }
 
-  const system = typeof navigator === 'undefined' ? '' : navigator.language;
-  return system.toLowerCase().startsWith('it') ? 'it' : 'en';
+  return DEFAULT_LOCALE;
 }
 
 class I18nStore {
