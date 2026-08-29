@@ -9,7 +9,9 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import Switch from '$lib/components/Switch.svelte';
   import { app } from '$lib/stores/app.svelte';
+  import { effects } from '$lib/stores/effects.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { BackupSummary, DiagnosticEntry } from '$lib/api/types';
 
@@ -20,6 +22,34 @@
   let purgeOpen = $state(false);
   let confirmation = $state('');
   let purging = $state(false);
+
+  /*
+   * Contatore di fotogrammi.
+   *
+   * Serve a rispondere a una domanda sola: la finestra sta disegnando alla
+   * velocità dello schermo, o no? Gira solo finché questa pagina è aperta —
+   * un `requestAnimationFrame` perenne sarebbe esso stesso un costo — e la
+   * media si aggiorna una volta al secondo (§D-082).
+   */
+  let fps = $state(0);
+  const pixelRatio = typeof window === 'undefined' ? 1 : window.devicePixelRatio;
+
+  $effect(() => {
+    let frames = 0;
+    let since = performance.now();
+    let handle = requestAnimationFrame(function tick(now: number) {
+      frames += 1;
+      const elapsed = now - since;
+      if (elapsed >= 1000) {
+        fps = Math.round((frames * 1000) / elapsed);
+        frames = 0;
+        since = now;
+      }
+      handle = requestAnimationFrame(tick);
+    });
+
+    return () => cancelAnimationFrame(handle);
+  });
 
   $effect(() => {
     void load();
@@ -94,6 +124,37 @@
         </div>
       {/each}
     </dl>
+  </section>
+
+  <section class="vk-card">
+    <div class="head">
+      <div>
+        <p class="vk-eyebrow">{t('debug.performance')}</p>
+        <p class="vk-subtitle">{t('debug.performanceBody')}</p>
+      </div>
+      <p class="fps" class:fps--low={fps > 0 && fps < 45}>
+        {t('debug.fps', { fps })}
+      </p>
+    </div>
+
+    <dl class="entries">
+      <div class="entry">
+        <dt>{t('debug.pixelRatio')}</dt>
+        <dd><span class="value">{pixelRatio}×</span></dd>
+      </div>
+    </dl>
+
+    <label class="effects">
+      <span>
+        <strong>{t('debug.reducedEffects')}</strong>
+        <span class="vk-faint">{t('debug.reducedEffectsBody')}</span>
+      </span>
+      <Switch
+        checked={effects.reduced}
+        label={t('debug.reducedEffects')}
+        onchange={(next) => effects.set(next)}
+      />
+    </label>
   </section>
 
   <section class="vk-card">
@@ -180,6 +241,39 @@
     grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
     gap: 8px 24px;
     margin: 0;
+  }
+
+  .fps {
+    margin: 0;
+    font-family: var(--vk-font-mono);
+    font-size: var(--vk-fs-card-title);
+    font-weight: 800;
+    color: var(--vk-success);
+    white-space: nowrap;
+  }
+
+  /* Sotto i 45 fps la finestra non sta al passo con lo schermo. */
+  .fps--low {
+    color: var(--vk-warning);
+  }
+
+  .effects {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: var(--vk-gap-md);
+    padding-top: var(--vk-gap);
+    border-top: 1px solid var(--vk-stroke);
+    font-size: var(--vk-fs-small);
+    cursor: pointer;
+  }
+
+  .effects span {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
   }
 
   .entry {

@@ -3,6 +3,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import type { Bootstrap } from '$setup/lib/api';
   import { formatBytes, formatDate } from '$setup/lib/format';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let {
     boot,
@@ -19,39 +20,40 @@
 
 <div class="vk-view-enter view">
   <header>
-    <p class="vk-eyebrow">Installazione guidata</p>
+    <p class="vk-eyebrow">{t('welcome.eyebrow')}</p>
     <h1 class="vk-title">VanzaKart Launcher</h1>
-    <p class="vk-subtitle">
-      Scarica e installa il launcher della modpack su {boot.platform}. Da lì si installano la
-      modpack, il music pack e gli addon, e si avvia il gioco.
-    </p>
+    <p class="vk-subtitle">{t('welcome.subtitle', { platform: boot.platform })}</p>
   </header>
 
   {#if boot.release}
     <section class="vk-card vk-rainbow-top">
       <div class="release">
         <div>
-          <p class="vk-eyebrow">Versione da installare</p>
+          <p class="vk-eyebrow">{t('welcome.releaseTitle')}</p>
           <p class="version">{boot.release.version}</p>
           {#if boot.release.pubDate}
-            <p class="vk-faint">Pubblicata il {formatDate(boot.release.pubDate)}</p>
+            <p class="vk-faint">
+              {t('welcome.published', { date: formatDate(boot.release.pubDate) })}
+            </p>
           {/if}
         </div>
         <dl class="facts">
           <div>
-            <dt>Pacchetto</dt>
+            <dt>{t('welcome.package')}</dt>
             <dd>{boot.release.packageKey}</dd>
           </div>
           <div>
-            <dt>Dimensione</dt>
+            <dt>{t('welcome.size')}</dt>
             <dd>
-              {boot.release.sizeBytes > 0 ? formatBytes(boot.release.sizeBytes) : 'da leggere'}
+              {boot.release.sizeBytes > 0
+                ? formatBytes(boot.release.sizeBytes)
+                : t('welcome.sizeUnknown')}
             </dd>
           </div>
           <div>
-            <dt>Verifica</dt>
+            <dt>{t('welcome.verify')}</dt>
             <dd class={boot.release.verifiable ? 'ok' : 'warn'}>
-              {boot.release.verifiable ? 'impronta SHA-256' : 'non dichiarata'}
+              {boot.release.verifiable ? t('welcome.verify.sha') : t('welcome.verify.none')}
             </dd>
           </div>
         </dl>
@@ -63,16 +65,16 @@
     </section>
   {:else}
     <section class="vk-error">
-      <p class="strong">Non riesco a leggere l'elenco dei pacchetti dal server.</p>
-      <p class="reason">{boot.releaseError ?? 'Causa sconosciuta.'}</p>
+      <p class="strong">{t('welcome.releaseFailed')}</p>
+      <p class="reason">{boot.releaseError ?? t('welcome.unknownCause')}</p>
       <div class="vk-row actions">
         <button class="vk-btn" onclick={onRetry} disabled={busy}>
           <Icon name="refresh" size={14} />
-          Riprova
+          {t('common.retry')}
         </button>
         <button class="vk-btn" onclick={onOpenDownloadPage}>
           <Icon name="external" size={14} />
-          Apri la pagina dei download
+          {t('welcome.openDownloads')}
         </button>
       </div>
     </section>
@@ -82,22 +84,22 @@
     <section class="vk-card existing">
       <div class="vk-row">
         <Icon name="package" size={18} />
-        <p class="strong">Installazione già presente</p>
+        <p class="strong">{t('welcome.existing')}</p>
       </div>
       <p class="vk-muted">
         {#if boot.existing.version}
-          Versione {boot.existing.version}
+          {t('welcome.existing.version', { version: boot.existing.version })}
         {:else}
-          Versione sconosciuta
+          {t('welcome.existing.unknownVersion')}
         {/if}
         · {formatBytes(boot.existing.bytes)}
       </p>
       <p class="vk-mono path">{boot.existing.installDir}</p>
       <p class="vk-faint">
         {#if boot.existing.managed}
-          Verrà aggiornata sul posto. Al passo successivo puoi scegliere una reinstallazione pulita.
+          {t('welcome.existing.managed')}
         {:else}
-          Non è stata installata da questa procedura: si può comunque aggiornare o sostituire.
+          {t('welcome.existing.foreign')}
         {/if}
       </p>
     </section>
@@ -107,21 +109,14 @@
     <section class="vk-card legacy">
       <div class="vk-row">
         <Icon name="package" size={16} />
-        <p class="strong">C'è anche il launcher precedente</p>
+        <p class="strong">{t('welcome.legacy')}</p>
       </div>
       <p class="vk-mono path">{boot.legacyInstallDir}</p>
-      <p class="vk-faint">
-        Resta dov'è: il launcher nuovo si installa in una cartella sua e al primo avvio importa le
-        impostazioni di quello vecchio, senza toccarne i file. Quando non ti serve più,
-        disinstallalo con il suo disinstallatore.
-      </p>
+      <p class="vk-faint">{t('welcome.legacy.note')}</p>
     </section>
   {/if}
 
-  <p class="vk-faint footnote">
-    L'installazione non richiede privilegi di amministratore e non tocca i dati di gioco già
-    presenti.
-  </p>
+  <p class="vk-faint footnote">{t('welcome.footnote')}</p>
 </div>
 
 <style>

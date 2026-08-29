@@ -47,13 +47,13 @@ pub async fn status(state: &Arc<AppState>) -> AppResult<LauncherUpdateStatus> {
     let available = !latest.is_empty() && vk_core::is_newer(&latest, LAUNCHER_VERSION);
 
     let message = if !remote.checked {
-        "Nessun controllo eseguito in questa sessione.".to_string()
+        "No check run in this session.".to_string()
     } else if latest.is_empty() {
-        "Il server non pubblica una versione del launcher.".to_string()
+        "The server publishes no launcher version.".to_string()
     } else if available {
-        format!("La versione {latest} è disponibile.")
+        format!("Version {latest} is available.")
     } else {
-        format!("Il launcher è aggiornato (v{LAUNCHER_VERSION}).")
+        format!("The launcher is up to date (v{LAUNCHER_VERSION}).")
     };
 
     Ok(LauncherUpdateStatus {
@@ -121,7 +121,7 @@ mod tests {
 
         let status = status(&state).await.unwrap();
         assert!(!status.available, "1.5.1 non è più recente di 2.0.0");
-        assert!(status.message.contains("aggiornato"));
+        assert!(status.message.contains("up to date"));
     }
 
     #[tokio::test]

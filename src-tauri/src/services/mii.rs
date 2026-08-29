@@ -94,10 +94,10 @@ fn parse_id(id: &str) -> AppResult<u32> {
         u32::from_str_radix(trimmed, 16)
             .ok()
             .filter(|value| *value != 0)
-            .ok_or_else(|| AppError::BadRequest(format!("identificatore Mii non valido: {id}")))
+            .ok_or_else(|| AppError::BadRequest(format!("invalid Mii identifier: {id}")))
     } else {
         Err(AppError::BadRequest(format!(
-            "identificatore Mii non valido: {id}"
+            "invalid Mii identifier: {id}"
         )))
     }
 }
@@ -111,7 +111,7 @@ pub async fn database_path(state: &Arc<AppState>) -> AppResult<PathBuf> {
     let user_folder = state.settings.read().await.user_folder();
     if user_folder.as_os_str().is_empty() || !user_folder.is_dir() {
         return Err(AppError::Configuration(
-            "Configura la cartella User di Dolphin per leggere e modificare i Mii.".into(),
+            "Set the Dolphin User folder to read and edit Miis.".into(),
         ));
     }
 
@@ -270,7 +270,7 @@ pub async fn create(
     is_female: bool,
 ) -> AppResult<MiiView> {
     if name.trim().is_empty() {
-        return Err(AppError::BadRequest("Scegli un nome per il Mii.".into()));
+        return Err(AppError::BadRequest("Choose a name for the Mii.".into()));
     }
 
     create_from_state(state, &default_state(name, favorite_color_index, is_female)).await
@@ -282,7 +282,7 @@ pub async fn create_from_state(
     editor: &MiiEditorState,
 ) -> AppResult<MiiView> {
     if editor.name.trim().is_empty() {
-        return Err(AppError::BadRequest("Scegli un nome per il Mii.".into()));
+        return Err(AppError::BadRequest("Choose a name for the Mii.".into()));
     }
 
     let mut database = read_database(state).await?;
@@ -400,12 +400,13 @@ pub fn is_supported_source(path: &Path) -> bool {
 pub async fn import_file(state: &Arc<AppState>, source: &Path) -> AppResult<MiiView> {
     if !source.is_file() {
         return Err(AppError::BadRequest(
-            "Il file Mii selezionato non esiste.".into(),
+            "The selected Mii file does not exist.".into(),
         ));
     }
     if !is_supported_source(source) {
         return Err(AppError::BadRequest(
-            "Formato non riconosciuto: sono supportati .mii, .miigx, .mae, .rcd, .rsd e i Mii in JSON.".into(),
+            "Format not recognised: .mii, .miigx, .mae, .rcd, .rsd and JSON Miis are supported."
+                .into(),
         ));
     }
 
@@ -414,7 +415,7 @@ pub async fn import_file(state: &Arc<AppState>, source: &Path) -> AppResult<MiiV
         .map_err(|error| AppError::io(source, error))?;
 
     let block = extract_block_from(&bytes).ok_or_else(|| {
-        AppError::BadRequest("Il file selezionato non contiene dati Mii Wii reali.".into())
+        AppError::BadRequest("The selected file holds no real Wii Mii data.".into())
     })?;
 
     let mut database = read_database(state).await?;
@@ -508,7 +509,7 @@ pub async fn export(state: &Arc<AppState>, id: &str, destination: &Path) -> AppR
         }
         _ => {
             return Err(AppError::BadRequest(
-                "Estensione non supportata: usa .mii, .rcd, .rsd, .json o .vk-mii.".into(),
+                "Unsupported extension: use .mii, .rcd, .rsd, .json or .vk-mii.".into(),
             ))
         }
     }

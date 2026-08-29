@@ -177,7 +177,7 @@ impl Installer {
         }
 
         Err(last_error.unwrap_or_else(|| {
-            InstallError::InvalidManifest("nessun indirizzo da cui leggere il manifest".into())
+            InstallError::InvalidManifest("no address to read the manifest from".into())
         }))
     }
 
@@ -272,7 +272,7 @@ impl Installer {
 
         progress(ProgressUpdate::new(
             Phase::Installing,
-            "Creazione delle scorciatoie",
+            "Creating the shortcuts",
         ));
 
         // 4. Disinstallatore, scorciatoie, registrazione.
@@ -338,7 +338,7 @@ impl Installer {
         let _ = record.save();
 
         progress(
-            ProgressUpdate::new(Phase::Completed, "Installazione completata").with_percent(100.0),
+            ProgressUpdate::new(Phase::Completed, "Installation complete").with_percent(100.0),
         );
 
         Ok(InstallReport {
@@ -363,7 +363,7 @@ impl Installer {
     ) -> InstallResult<String> {
         progress(ProgressUpdate::new(
             Phase::Connecting,
-            "Contatto del server",
+            "Contacting the server",
         ));
 
         // Un file rimasto da un tentativo precedente farebbe ripartire il
@@ -378,7 +378,7 @@ impl Installer {
         if !package.sha256.is_empty() {
             progress(ProgressUpdate::new(
                 Phase::Verifying,
-                "Verifica dell'impronta del pacchetto",
+                "Verifying the package checksum",
             ));
             let actual = vk_core::hash::sha256_file(archive).await?;
             if !vk_core::hash::hash_eq(&actual, &package.sha256) {
@@ -392,7 +392,7 @@ impl Installer {
             tracing::warn!("il manifest non dichiara un'impronta: pacchetto non verificabile");
         }
 
-        Ok(outcome.summary("pacchetto del launcher"))
+        Ok(outcome.summary("launcher package"))
     }
 
     /// Copia l'installer accanto al launcher, con il nome del
@@ -447,7 +447,7 @@ fn clean_install_dir(install_dir: &Path, progress: &ProgressSink) -> InstallResu
     fsops::ensure_safe_target(install_dir)?;
     progress(ProgressUpdate::new(
         Phase::Installing,
-        "Pulizia della cartella d'installazione",
+        "Cleaning the install folder",
     ));
 
     let entries =

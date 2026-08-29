@@ -220,10 +220,18 @@ fn well_known_artifacts() -> Vec<crate::record::Artifact> {
                 ArtifactKind::StartMenuShortcut,
                 &programs.join("VanzaKart Launcher.lnk"),
             ));
-            artifacts.push(Artifact::file(
-                ArtifactKind::UninstallShortcut,
-                &programs.join("Disinstalla VanzaKart Launcher.lnk"),
-            ));
+            // Il collegamento si chiamava «Disinstalla…» prima che
+            // l'installer parlasse inglese: chi ha installato allora ha
+            // ancora quel file, e va tolto lo stesso.
+            for name in [
+                "Uninstall VanzaKart Launcher.lnk",
+                "Disinstalla VanzaKart Launcher.lnk",
+            ] {
+                artifacts.push(Artifact::file(
+                    ArtifactKind::UninstallShortcut,
+                    &programs.join(name),
+                ));
+            }
             artifacts.push(Artifact::file(
                 ArtifactKind::QuickLaunchShortcut,
                 &roaming

@@ -185,38 +185,38 @@ pub fn validate_preconditions(
 ) -> DolphinResult<LaunchPreconditions> {
     if dolphin_path.as_os_str().is_empty() {
         return Err(DolphinError::InvalidDolphinPath(
-            "percorso di Dolphin non configurato".into(),
+            "Dolphin path not configured".into(),
         ));
     }
     if !dolphin_path.exists() {
         return Err(DolphinError::InvalidDolphinPath(
-            "l'eseguibile di Dolphin non esiste".into(),
+            "the Dolphin executable does not exist".into(),
         ));
     }
 
     if rom_path.as_os_str().is_empty() {
-        return Err(DolphinError::InvalidRom("ROM non configurata".into()));
+        return Err(DolphinError::InvalidRom("ROM not configured".into()));
     }
     if !rom_path.is_file() {
         return Err(DolphinError::InvalidRom(
-            "il file della ROM non esiste".into(),
+            "the ROM file does not exist".into(),
         ));
     }
     if !has_rom_extension(rom_path) {
         return Err(DolphinError::InvalidRom(
-            "estensione non riconosciuta: sono supportati .iso, .wbfs, .rvz, .ciso, .gcm, .wia"
+            "extension not recognised: .iso, .wbfs, .rvz, .ciso, .gcm and .wia are supported"
                 .into(),
         ));
     }
 
     if user_folder.as_os_str().is_empty() {
         return Err(DolphinError::InvalidUserFolder(
-            "cartella User non configurata".into(),
+            "User folder not configured".into(),
         ));
     }
     if !user_folder.is_dir() {
         return Err(DolphinError::InvalidUserFolder(
-            "la cartella User di Dolphin non esiste".into(),
+            "the Dolphin User folder does not exist".into(),
         ));
     }
 

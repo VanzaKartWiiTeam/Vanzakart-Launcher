@@ -80,17 +80,17 @@ pub fn sanitize_entry_path(raw: &str) -> CoreResult<PathBuf> {
     let trimmed = normalized.trim();
 
     if trimmed.is_empty() {
-        return Err(CoreError::UnsafeArchiveEntry("percorso vuoto".into()));
+        return Err(CoreError::UnsafeArchiveEntry("empty path".into()));
     }
     if trimmed.starts_with('/') {
         return Err(CoreError::UnsafeArchiveEntry(format!(
-            "percorso assoluto: {raw}"
+            "absolute path: {raw}"
         )));
     }
     // Prefisso di device o unità Windows (`C:/…`, `\\?\…` già normalizzato in `//?/…`).
     if trimmed.len() >= 2 && trimmed.as_bytes()[1] == b':' {
         return Err(CoreError::UnsafeArchiveEntry(format!(
-            "percorso con unità: {raw}"
+            "path with a drive letter: {raw}"
         )));
     }
 
@@ -100,7 +100,7 @@ pub fn sanitize_entry_path(raw: &str) -> CoreResult<PathBuf> {
             "" | "." => continue,
             ".." => {
                 return Err(CoreError::UnsafeArchiveEntry(format!(
-                    "risalita di directory: {raw}"
+                    "directory traversal: {raw}"
                 )))
             }
             other => out.push(other),
@@ -109,7 +109,7 @@ pub fn sanitize_entry_path(raw: &str) -> CoreResult<PathBuf> {
 
     if out.as_os_str().is_empty() {
         return Err(CoreError::UnsafeArchiveEntry(format!(
-            "percorso vuoto dopo la normalizzazione: {raw}"
+            "empty path after normalisation: {raw}"
         )));
     }
 
@@ -119,7 +119,7 @@ pub fn sanitize_entry_path(raw: &str) -> CoreResult<PathBuf> {
         .any(|component| !matches!(component, Component::Normal(_)))
     {
         return Err(CoreError::UnsafeArchiveEntry(format!(
-            "componente di percorso non consentita: {raw}"
+            "path component not allowed: {raw}"
         )));
     }
 
@@ -138,7 +138,7 @@ pub fn ensure_within(root: &Path, candidate: &Path) -> CoreResult<PathBuf> {
         Ok(candidate_real)
     } else {
         Err(CoreError::UnsafePath(format!(
-            "{} è fuori da {}",
+            "{} is outside {}",
             candidate.display(),
             root.display()
         )))
@@ -215,7 +215,7 @@ pub fn validate_archive(zip_path: &Path, cancel: &CancelToken) -> CoreResult<u64
 
     if archive.is_empty() {
         return Err(CoreError::InvalidArchive(
-            "l'archivio scaricato è vuoto".into(),
+            "the downloaded archive is empty".into(),
         ));
     }
 
@@ -300,7 +300,7 @@ pub fn extract_safe(
             written_bytes += entry.size();
             if written_bytes > options.max_total_bytes {
                 return Err(CoreError::InvalidArchive(format!(
-                    "l'archivio supera il limite di espansione di {} byte",
+                    "the archive exceeds the {} byte expansion limit",
                     options.max_total_bytes
                 )));
             }

@@ -7,6 +7,7 @@
    * fingere lo zero.
    */
   import type { ProgressEvent } from '$setup/lib/api';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let { title, progress, log }: { title: string; progress: ProgressEvent | null; log: string[] } =
     $props();
@@ -17,9 +18,9 @@
 
 <div class="vk-view-enter view">
   <header>
-    <p class="vk-eyebrow">{progress?.phase ?? 'Avvio'}</p>
+    <p class="vk-eyebrow">{progress?.phase ?? t('progress.starting')}</p>
     <h1 class="vk-title">{title}</h1>
-    <p class="vk-subtitle">{progress?.detail ?? 'Preparazione…'}</p>
+    <p class="vk-subtitle">{progress?.detail ?? t('progress.preparing')}</p>
   </header>
 
   <section class="vk-card">
@@ -29,26 +30,26 @@
 
     <dl class="stats">
       <div>
-        <dt>Avanzamento</dt>
-        <dd>{percent === null ? '—' : `${Math.round(percent)}%`}</dd>
+        <dt>{t('progress.percent')}</dt>
+        <dd>{percent === null ? t('common.dash') : `${Math.round(percent)}%`}</dd>
       </div>
       <div>
-        <dt>Scaricato</dt>
-        <dd>{progress?.bytesLabel || '—'}</dd>
+        <dt>{t('progress.downloaded')}</dt>
+        <dd>{progress?.bytesLabel || t('common.dash')}</dd>
       </div>
       <div>
-        <dt>Velocità</dt>
-        <dd>{progress?.speedLabel || '—'}</dd>
+        <dt>{t('progress.speed')}</dt>
+        <dd>{progress?.speedLabel || t('common.dash')}</dd>
       </div>
       <div>
-        <dt>Tempo rimanente</dt>
-        <dd>{progress?.etaLabel || '—'}</dd>
+        <dt>{t('progress.eta')}</dt>
+        <dd>{progress?.etaLabel || t('common.dash')}</dd>
       </div>
     </dl>
   </section>
 
   <section class="vk-card vk-card--flush log-card">
-    <p class="vk-eyebrow log-title">Registro</p>
+    <p class="vk-eyebrow log-title">{t('progress.log')}</p>
     <ol class="log">
       {#each log as line, index (index)}
         <li>{line}</li>

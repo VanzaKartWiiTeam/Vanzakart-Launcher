@@ -506,6 +506,14 @@ export const it = {
   'debug.purgeFailed': 'Cancellazione non riuscita',
   'debug.installState': 'Stato dell’installazione',
   'debug.copyReport': 'Copia rapporto',
+  'debug.performance': 'Prestazioni della finestra',
+  'debug.performanceBody':
+    'Fotogrammi al secondo disegnati adesso. Se restano bassi, spegni gli effetti qui sotto e guarda se risalgono.',
+  'debug.fps': '{fps} fps',
+  'debug.pixelRatio': 'Pixel per punto dello schermo',
+  'debug.reducedEffects': 'Effetti visivi ridotti',
+  'debug.reducedEffectsBody':
+    'Spegne lo sfondo animato e i gradienti che scorrono. Colori e layout restano quelli.',
   'debug.log': 'Log del launcher',
   'debug.backups': 'Backup dei dati utente',
   'debug.openFolder': 'Apri cartella',

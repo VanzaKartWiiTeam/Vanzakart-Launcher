@@ -57,11 +57,11 @@ impl UpdateReport {
     /// Riepilogo con lo stesso fraseggio del launcher legacy.
     pub fn summary(&self) -> String {
         let mut text = format!(
-            "{} aggiornati, {} saltati (protetti), {} rimossi (obsoleti)",
+            "{} updated, {} skipped (protected), {} removed (obsolete)",
             self.files_written, self.files_skipped, self.files_pruned
         );
         if self.has_errors() {
-            text.push_str(&format!(", {} errori", self.errors.len()));
+            text.push_str(&format!(", {} errors", self.errors.len()));
         }
         text
     }
@@ -177,7 +177,7 @@ pub async fn apply_differential(
 
     progress(ProgressUpdate::new(
         Phase::Verifying,
-        "Analisi dei file locali...",
+        "Checking the local files...",
     ));
     let local = fsx::scan_managed_files(&mod_root, cancel).await?;
     let plan = diff(manifest, &local);
@@ -221,7 +221,7 @@ pub async fn apply_differential(
     // scaricati e verificati.
     progress(ProgressUpdate::new(
         Phase::Installing,
-        "Applicazione dei file verificati...",
+        "Applying the verified files...",
     ));
 
     let mut report = UpdateReport {
@@ -246,7 +246,7 @@ pub async fn apply_differential(
         if zipx::ensure_within(&mod_root, &target).is_err() {
             report
                 .errors
-                .push(format!("percorso obsoleto ignorato: {relative}"));
+                .push(format!("obsolete path ignored: {relative}"));
             continue;
         }
         if target.is_file() {
@@ -255,9 +255,7 @@ pub async fn apply_differential(
                     report.files_pruned += 1;
                     tracing::info!(path = %relative, "file obsoleto rimosso");
                 }
-                Err(error) => report
-                    .errors
-                    .push(format!("rimozione di {relative}: {error}")),
+                Err(error) => report.errors.push(format!("removing {relative}: {error}")),
             }
         }
     }
@@ -308,7 +306,7 @@ async fn download_all_to_staging(
                         .file_candidates(&file.path, &file.sha256, now_millis);
                 if candidates.is_empty() {
                     return Err(CoreError::InvalidUrl(format!(
-                        "nessuna sorgente per {}",
+                        "no source for {}",
                         file.path
                     )));
                 }
@@ -378,13 +376,13 @@ pub async fn apply_full_archive(
     let candidates = context.mirrors.archive_candidates();
     if candidates.is_empty() {
         return Err(CoreError::InvalidUrl(
-            "nessuna sorgente per l'archivio della modpack".into(),
+            "no source for the modpack archive".into(),
         ));
     }
 
     progress(ProgressUpdate::new(
         Phase::Download,
-        "Download della modpack...",
+        "Downloading the modpack...",
     ));
     let outcome = downloader
         .download_with_mirrors(&candidates, archive_path, progress, cancel)
@@ -393,13 +391,13 @@ pub async fn apply_full_archive(
 
     progress(ProgressUpdate::new(
         Phase::Verifying,
-        "Verifica dell'integrità dell'archivio...",
+        "Verifying the archive...",
     ));
     if !context.expected_archive_sha256.trim().is_empty() {
         let actual = sha256_file(archive_path).await?;
         if !hash_eq(&actual, &context.expected_archive_sha256) {
             return Err(CoreError::HashMismatch {
-                path: "archivio della modpack".into(),
+                path: "modpack archive".into(),
                 expected: context.expected_archive_sha256.to_lowercase(),
                 actual,
             });
@@ -492,9 +490,7 @@ fn extract_and_prune(
                     report.files_pruned += 1;
                     tracing::info!(path = %relative, "file obsoleto rimosso");
                 }
-                Err(error) => report
-                    .errors
-                    .push(format!("rimozione di {relative}: {error}")),
+                Err(error) => report.errors.push(format!("removing {relative}: {error}")),
             }
         }
 
@@ -613,7 +609,7 @@ pub async fn fingerprint(
 
     if managed.is_empty() {
         return Ok(Fingerprint::differs(
-            "il manifest non contiene file gestiti".to_string(),
+            "the manifest lists no managed files".to_string(),
         ));
     }
 
@@ -624,13 +620,13 @@ pub async fn fingerprint(
             Ok(metadata) if metadata.is_file() && metadata.len() == file.size.max(0) as u64 => {}
             Ok(metadata) if metadata.is_file() => {
                 return Ok(Fingerprint::differs(format!(
-                    "{}: {} byte invece di {}",
+                    "{}: {} bytes instead of {}",
                     file.path,
                     metadata.len(),
                     file.size.max(0)
                 )));
             }
-            _ => return Ok(Fingerprint::differs(format!("{} manca", file.path))),
+            _ => return Ok(Fingerprint::differs(format!("{} is missing", file.path))),
         }
     }
 
@@ -917,7 +913,7 @@ mod tests {
     }
 
     #[test]
-    fn report_summary_uses_the_legacy_wording() {
+    fn report_summary_keeps_the_legacy_shape() {
         let report = UpdateReport {
             files_written: 12,
             files_skipped: 3,
@@ -927,7 +923,7 @@ mod tests {
         };
         assert_eq!(
             report.summary(),
-            "12 aggiornati, 3 saltati (protetti), 1 rimossi (obsoleti), 1 errori"
+            "12 updated, 3 skipped (protected), 1 removed (obsolete), 1 errors"
         );
     }
 

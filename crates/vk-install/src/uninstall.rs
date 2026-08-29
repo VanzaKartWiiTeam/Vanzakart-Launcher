@@ -72,7 +72,7 @@ pub fn plan(record: &InstallRecord, options: &UninstallOptions) -> Vec<RemovalIt
     let mut items = Vec::new();
 
     for path in record.installed_paths() {
-        items.push(item("Programma installato", path, false));
+        items.push(item("Installed program", path, false));
     }
 
     for artifact in &record.artifacts {
@@ -88,12 +88,12 @@ pub fn plan(record: &InstallRecord, options: &UninstallOptions) -> Vec<RemovalIt
 
     if let Some(data_root) = paths::launcher_data_root() {
         if options.remove_launcher_data {
-            items.push(item("Impostazioni e dati del launcher", data_root, true));
+            items.push(item("Launcher settings and data", data_root, true));
         } else if options.remove_cache_and_logs {
             for (label, name) in [
                 ("Cache", "cache"),
                 ("Log", "logs"),
-                ("Download interrotti", "downloads"),
+                ("Interrupted downloads", "downloads"),
             ] {
                 items.push(item(label, data_root.join(name), true));
             }
@@ -131,7 +131,7 @@ pub fn run(
 
     progress(ProgressUpdate::new(
         Phase::Updating,
-        "Rimozione delle scorciatoie",
+        "Removing the shortcuts",
     ));
     platform::remove_artifacts(&record.artifacts);
     platform::unregister_uninstall(record.executable.file_name().and_then(|name| name.to_str()));
@@ -146,15 +146,12 @@ pub fn run(
     for entry in optional {
         progress(ProgressUpdate::new(
             Phase::Updating,
-            format!("Rimozione: {}", entry.label),
+            format!("Removing: {}", entry.label),
         ));
         remove_into(&entry.path, entry.bytes, &mut report);
     }
 
-    progress(ProgressUpdate::new(
-        Phase::Updating,
-        "Rimozione del programma",
-    ));
+    progress(ProgressUpdate::new(Phase::Updating, "Removing the program"));
     let installed = record.installed_paths();
     let installed_bytes: u64 = installed.iter().map(|path| fsops::path_size(path)).sum();
 
@@ -193,9 +190,7 @@ pub fn run(
 
     record.forget();
 
-    progress(
-        ProgressUpdate::new(Phase::Completed, "Disinstallazione completata").with_percent(100.0),
-    );
+    progress(ProgressUpdate::new(Phase::Completed, "Uninstall complete").with_percent(100.0));
     Ok(report)
 }
 
@@ -258,11 +253,11 @@ pub fn modpack_paths(user_data: bool) -> Vec<(&'static str, PathBuf)> {
     if user_data {
         return vec![
             (
-                "Dati di gioco della modpack (Stable)",
+                "Modpack game data (Stable)",
                 riivolution.join("VanzaKart_UserData"),
             ),
             (
-                "Dati di gioco della modpack (Beta)",
+                "Modpack game data (Beta)",
                 riivolution.join("VKBeta_UserData"),
             ),
         ];

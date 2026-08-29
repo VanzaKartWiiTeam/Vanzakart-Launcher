@@ -6,7 +6,7 @@ use serde::Serialize;
 /// **già sanitizzata**: nessun percorso utente completo, nessun token.
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
-    #[error("I/O su {path}: {source}")]
+    #[error("I/O on {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]
@@ -22,22 +22,22 @@ pub enum AppError {
     #[error("{0}")]
     Save(#[from] vk_save::SaveError),
 
-    #[error("archiviazione: {0}")]
+    #[error("storage: {0}")]
     Storage(String),
 
-    #[error("configurazione incompleta: {0}")]
+    #[error("incomplete configuration: {0}")]
     Configuration(String),
 
-    #[error("richiesta non valida: {0}")]
+    #[error("invalid request: {0}")]
     BadRequest(String),
 
-    #[error("operazione già in corso")]
+    #[error("an operation is already running")]
     Busy,
 
-    #[error("operazione annullata")]
+    #[error("operation cancelled")]
     Cancelled,
 
-    #[error("errore interno: {0}")]
+    #[error("internal error: {0}")]
     Internal(String),
 }
 

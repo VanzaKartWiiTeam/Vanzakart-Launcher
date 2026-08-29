@@ -14,7 +14,7 @@ use crate::protect::{is_ignored_system_file, is_protected_relative, ProtectionRu
 /// `fsync`, poi `rename`.
 pub async fn write_atomic(path: &Path, bytes: &[u8]) -> CoreResult<()> {
     let parent = path.parent().ok_or_else(|| {
-        CoreError::UnsafePath(format!("{} non ha una directory padre", path.display()))
+        CoreError::UnsafePath(format!("{} has no parent directory", path.display()))
     })?;
     tokio::fs::create_dir_all(parent)
         .await

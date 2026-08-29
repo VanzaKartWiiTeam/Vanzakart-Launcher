@@ -7,6 +7,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import type { Preflight } from '$setup/lib/api';
   import { formatBytes } from '$setup/lib/format';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let {
     preflight,
@@ -26,35 +27,39 @@
     if (!preflight) return [];
     return [
       {
-        label: 'Spazio necessario',
+        label: t('checks.requiredSpace'),
         value: formatBytes(preflight.requiredBytes),
         tone: 'ok'
       },
       {
-        label: 'Spazio disponibile',
+        label: t('checks.availableSpace'),
         value:
-          preflight.availableBytes > 0 ? formatBytes(preflight.availableBytes) : 'non rilevabile',
+          preflight.availableBytes > 0
+            ? formatBytes(preflight.availableBytes)
+            : t('checks.unmeasurable'),
         tone: preflight.enoughSpace ? 'ok' : 'bad'
       },
       {
-        label: 'Da scaricare',
+        label: t('checks.download'),
         value:
-          preflight.downloadBytes > 0 ? formatBytes(preflight.downloadBytes) : 'non dichiarato',
+          preflight.downloadBytes > 0
+            ? formatBytes(preflight.downloadBytes)
+            : t('checks.undeclared'),
         tone: preflight.downloadBytes > 0 ? 'ok' : 'warn'
       },
       {
-        label: 'Cartella scrivibile',
-        value: preflight.writable ? 'sì' : 'no, servono altri permessi',
+        label: t('checks.writable'),
+        value: preflight.writable ? t('checks.writable.yes') : t('checks.writable.no'),
         tone: preflight.writable ? 'ok' : 'bad'
       },
       {
-        label: 'Launcher in esecuzione',
-        value: preflight.launcherRunning ? 'sì, va chiuso' : 'no',
+        label: t('checks.running'),
+        value: preflight.launcherRunning ? t('checks.running.yes') : t('checks.running.no'),
         tone: preflight.launcherRunning ? 'bad' : 'ok'
       },
       {
-        label: 'Verifica del pacchetto',
-        value: preflight.verifiable ? 'impronta SHA-256' : 'non dichiarata dal server',
+        label: t('checks.verify'),
+        value: preflight.verifiable ? t('checks.verify.sha') : t('checks.verify.none'),
         tone: preflight.verifiable ? 'ok' : 'warn'
       }
     ];
@@ -63,11 +68,11 @@
 
 <div class="vk-view-enter view">
   <header>
-    <p class="vk-eyebrow">Passo 3</p>
-    <h1 class="vk-title">Verifiche</h1>
+    <p class="vk-eyebrow">{t('checks.eyebrow')}</p>
+    <h1 class="vk-title">{t('checks.title')}</h1>
     {#if preflight}
       <p class="vk-subtitle">
-        VanzaKart Launcher {preflight.version} in
+        {t('checks.subtitle', { version: preflight.version })}
         <span class="vk-mono">{preflight.installDir}</span>
       </p>
     {/if}
@@ -78,15 +83,15 @@
       <div class="vk-progress vk-progress--indeterminate">
         <div class="vk-progress__fill"></div>
       </div>
-      <p class="vk-muted checking">Controllo in corso…</p>
+      <p class="vk-muted checking">{t('checks.checking')}</p>
     </div>
   {:else if error}
     <div class="vk-error">
-      <p class="strong">Le verifiche non sono riuscite.</p>
+      <p class="strong">{t('checks.failed')}</p>
       <p class="reason">{error}</p>
       <button class="vk-btn" onclick={onRecheck}>
         <Icon name="refresh" size={14} />
-        Riprova
+        {t('common.retry')}
       </button>
     </div>
   {:else if preflight}
@@ -105,22 +110,17 @@
     </section>
 
     {#if !preflight.enoughSpace}
-      <p class="vk-error">
-        Sul disco scelto non c'è abbastanza spazio. Libera spazio o scegli un'altra cartella.
-      </p>
+      <p class="vk-error">{t('checks.noSpace')}</p>
     {:else if preflight.launcherRunning}
-      <p class="vk-error">
-        VanzaKart Launcher è aperto. Chiudilo e ripeti le verifiche: i suoi file non si possono
-        sostituire mentre è in esecuzione.
-      </p>
+      <p class="vk-error">{t('checks.launcherOpen')}</p>
     {:else if !preflight.writable}
-      <p class="vk-error">
-        Nella cartella scelta non si può scrivere. Scegline una dentro la tua cartella utente.
-      </p>
+      <p class="vk-error">{t('checks.notWritable')}</p>
     {:else}
       <p class="ready">
         <Icon name="check" size={14} />
-        Tutto pronto: premi <strong>Installa</strong> per procedere.
+        {t('checks.readyBefore')}
+        <strong>{t('wizard.install')}</strong>
+        {t('checks.readyAfter')}
       </p>
     {/if}
   {/if}

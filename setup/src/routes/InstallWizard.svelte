@@ -18,6 +18,7 @@
   import StepProgress from '$setup/lib/components/StepProgress.svelte';
   import StepDone from '$setup/lib/components/StepDone.svelte';
   import * as api from '$setup/lib/api';
+  import { t, type SetupKey } from '$setup/lib/i18n/store.svelte';
   import type {
     Bootstrap,
     InstallOptionsInput,
@@ -30,18 +31,32 @@
 
   type StepKey = 'welcome' | 'folder' | 'checks' | 'running' | 'done';
 
-  const STEPS: { key: StepKey; label: string; hint: string }[] = [
-    { key: 'welcome', label: 'Benvenuto', hint: 'Cosa verrà installato' },
-    { key: 'folder', label: 'Cartella', hint: 'Dove e con quali scorciatoie' },
-    { key: 'checks', label: 'Verifiche', hint: 'Spazio, permessi, launcher' },
-    { key: 'running', label: 'Installazione', hint: 'Download ed estrazione' },
-    { key: 'done', label: 'Fine', hint: 'Riepilogo e avvio' }
-  ];
+  const STEP_KEYS: StepKey[] = ['welcome', 'folder', 'checks', 'running', 'done'];
+
+  // Le etichette sono `$derived` e non una costante: costruite una volta sola
+  // resterebbero nella lingua di partenza (§D-078).
+  const STEPS = $derived(
+    STEP_KEYS.map((key) => ({
+      key,
+      label: t(`step.${key}`),
+      hint: t(`step.${key}.hint`)
+    }))
+  );
 
   let step = $state<StepKey>('welcome');
   let busy = $state(false);
-  let footerMessage = $state('');
+  /*
+   * La riga di stato si tiene come chiave, non come frase già composta:
+   * cambiando lingua deve cambiare quello che c'è scritto adesso. I messaggi
+   * che arrivano dal backend fanno eccezione — sono già testo — e viaggiano
+   * in `footerText`.
+   */
+  let footerKey = $state<SetupKey | ''>('');
+  let footerParams = $state<Record<string, string | number> | undefined>(undefined);
+  let footerText = $state('');
   let footerTone = $state<'info' | 'danger'>('info');
+
+  const footerMessage = $derived(footerKey ? t(footerKey, footerParams) : footerText);
 
   let preflight = $state<Preflight | null>(null);
   let checking = $state(false);
@@ -71,9 +86,15 @@
     }))
   );
 
-  const stepIndex = $derived(STEPS.findIndex((entry) => entry.key === step));
+  const stepIndex = $derived(STEP_KEYS.indexOf(step));
   const canGoBack = $derived(step === 'folder' || step === 'checks');
-  const nextLabel = $derived(step === 'checks' ? 'Installa' : step === 'done' ? 'Fine' : 'Avanti');
+  const nextLabel = $derived(
+    step === 'checks'
+      ? t('wizard.install')
+      : step === 'done'
+        ? t('wizard.finish')
+        : t('wizard.next')
+  );
   const nextEnabled = $derived.by(() => {
     if (busy) return false;
     if (step === 'welcome') return Boolean(release);
@@ -102,19 +123,33 @@
     onBusyChange(value);
   }
 
+  /** Messaggio del backend: già testo, va mostrato com'è. */
   function fail(error: unknown) {
-    footerMessage = api.errorMessage(error);
+    footerKey = '';
+    footerParams = undefined;
+    footerText = api.errorMessage(error);
     footerTone = 'danger';
+  }
+
+  /** Messaggio nostro: si tiene la chiave, così segue la lingua. */
+  function say(
+    key: SetupKey,
+    tone: 'info' | 'danger' = 'info',
+    params?: Record<string, string | number>
+  ) {
+    footerKey = key;
+    footerParams = params;
+    footerText = '';
+    footerTone = tone;
   }
 
   async function retryRelease() {
     setBusy(true);
-    footerMessage = 'Rilettura dal server…';
-    footerTone = 'info';
+    say('wizard.status.rereading');
     try {
       release = await api.refreshRelease();
       releaseError = null;
-      footerMessage = `Versione disponibile: ${release.version}.`;
+      say('wizard.status.available', 'info', { version: release.version });
     } catch (error) {
       releaseError = api.errorMessage(error);
       fail(error);
@@ -129,12 +164,12 @@
   }
 
   async function browseInstall() {
-    const chosen = await browse(options.installDir, "Scegli la cartella d'installazione");
+    const chosen = await browse(options.installDir, t('wizard.dialog.installDir'));
     if (chosen) options.installDir = chosen;
   }
 
   async function browseBackup() {
-    const chosen = await browse(options.backupDir, 'Scegli la cartella del backup');
+    const chosen = await browse(options.backupDir, t('wizard.dialog.backupDir'));
     if (chosen) options.backupDir = chosen;
   }
 
@@ -143,8 +178,8 @@
     checkError = '';
     try {
       preflight = await api.preflight(options.installDir);
-      footerMessage = preflight.enoughSpace ? 'Verifiche completate.' : 'Spazio insufficiente.';
-      footerTone = preflight.enoughSpace ? 'info' : 'danger';
+      if (preflight.enoughSpace) say('wizard.status.checksDone');
+      else say('wizard.status.noSpace', 'danger');
     } catch (error) {
       preflight = null;
       checkError = api.errorMessage(error);
@@ -159,17 +194,15 @@
     step = 'running';
     log = [];
     progress = null;
-    footerMessage = 'Installazione in corso…';
-    footerTone = 'info';
+    say('wizard.status.installing');
 
     try {
       report = await api.install($state.snapshot(options));
       step = 'done';
-      footerMessage = 'Installazione completata.';
+      say('wizard.status.installed');
     } catch (error) {
       if (api.errorCode(error) === 'cancelled') {
-        footerMessage = 'Installazione annullata.';
-        footerTone = 'info';
+        say('wizard.status.cancelled');
       } else {
         fail(error);
       }
@@ -220,7 +253,7 @@
   }
 
   async function cancel() {
-    footerMessage = 'Annullamento…';
+    say('wizard.status.cancelling');
     await api.cancel();
   }
 </script>
@@ -247,7 +280,7 @@
       {:else if step === 'checks'}
         <StepChecks {preflight} {checking} error={checkError} onRecheck={runChecks} />
       {:else if step === 'running'}
-        <StepProgress title="Installazione in corso" {progress} {log} />
+        <StepProgress title={t('progress.installing')} {progress} {log} />
       {:else if report}
         <StepDone {report} bind:launchAfter />
       {/if}
@@ -257,10 +290,10 @@
       <p class="status" class:status--danger={footerTone === 'danger'}>{footerMessage}</p>
 
       {#if step === 'running'}
-        <button class="vk-btn" onclick={cancel}>Annulla</button>
+        <button class="vk-btn" onclick={cancel}>{t('common.cancel')}</button>
       {:else}
         {#if canGoBack}
-          <button class="vk-btn" onclick={back} disabled={busy}>Indietro</button>
+          <button class="vk-btn" onclick={back} disabled={busy}>{t('wizard.back')}</button>
         {/if}
         <button class="vk-btn vk-btn--primary" onclick={next} disabled={!nextEnabled}>
           {nextLabel}

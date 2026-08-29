@@ -12,16 +12,19 @@
   import UninstallPanel from './UninstallPanel.svelte';
   import * as api from '$setup/lib/api';
   import type { Bootstrap } from '$setup/lib/api';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let boot = $state<Bootstrap | null>(null);
   let bootError = $state('');
   let busy = $state(false);
 
+  // `$derived` e non una costante: cambiando lingua deve cambiare anche
+  // quello che c'è scritto adesso nella barra del titolo (§D-078).
   const subtitle = $derived(
     boot
-      ? boot.mode === 'uninstall'
-        ? `Disinstallazione · v${boot.setupVersion}`
-        : `Setup · v${boot.setupVersion}`
+      ? t(boot.mode === 'uninstall' ? 'app.badge.uninstall' : 'app.badge.install', {
+          version: boot.setupVersion
+        })
       : ''
   );
 
@@ -50,16 +53,16 @@
   {:else if bootError}
     <div class="vk-empty">
       <Icon name="warning" size={28} />
-      <p>Non riesco ad avviare l'installer.</p>
+      <p>{t('app.bootFailed')}</p>
       <p class="vk-faint">{bootError}</p>
       <button class="vk-btn" onclick={load}>
         <Icon name="refresh" size={14} />
-        Riprova
+        {t('common.retry')}
       </button>
     </div>
   {:else}
     <div class="vk-empty">
-      <p class="vk-muted">Preparazione…</p>
+      <p class="vk-muted">{t('app.preparing')}</p>
     </div>
   {/if}
 </div>

@@ -37,48 +37,47 @@ pub fn preflight() -> Result<(), String> {
 }
 
 const ROOT_MESSAGE: &str = "\
-Il launcher è stato avviato come root (sudo).
+The launcher was started as root (sudo).
 
-Un'applicazione grafica avviata con sudo non riesce ad aprire nessuna finestra:
-il cookie di autorizzazione del server grafico appartiene al tuo utente, non a
-root — è l'errore \"Authorization required, but no authorization protocol
-specified\" che compare appena prima. In più le impostazioni e i salvataggi
-finirebbero nella cartella di root invece che nella tua.
+A graphical application started with sudo cannot open any window: the display
+server's authorisation cookie belongs to your user, not to root — that is the
+\"Authorization required, but no authorization protocol specified\" error just
+above. On top of that, settings and saves would end up in root's folder instead
+of yours.
 
-Riavvialo senza sudo:
+Start it again without sudo:
 
     ./VanzaKart-Launcher_*.AppImage
 
-Il launcher non ha bisogno di privilegi di amministratore. Se sai quello che
-fai e vuoi comunque proseguire, imposta VK_ALLOW_ROOT=1.";
+The launcher needs no administrator rights. If you know what you are doing and
+want to continue anyway, set VK_ALLOW_ROOT=1.";
 
 const DISPLAY_MESSAGE: &str = "\
-Nessun server grafico disponibile: né DISPLAY né WAYLAND_DISPLAY sono impostate.
+No display server available: neither DISPLAY nor WAYLAND_DISPLAY is set.
 
-Il launcher ha una finestra e non può partire in una sessione solo testuale o
-in un collegamento SSH senza inoltro grafico. Avvialo dalla sessione desktop,
-oppure con \"ssh -X\" se stai lavorando da remoto.";
+The launcher has a window and cannot start in a text-only session or over an
+SSH connection without display forwarding. Start it from the desktop session,
+or with \"ssh -X\" if you are working remotely.";
 
 const GTK_MESSAGE: &str = "\
-GTK non è riuscita ad aprire il display, in nessuna delle configurazioni
-provate.
+GTK could not open the display, in any of the configurations tried.
 
-Le cause abituali, in ordine di frequenza:
+The usual causes, most common first:
 
-  · librerie di sistema mancanti. Su Debian e Ubuntu:
+  · missing system libraries. On Debian and Ubuntu:
         sudo apt install libwebkit2gtk-4.1-0 libgtk-3-0 libgdk-pixbuf-2.0-0
-    su Fedora:
+    on Fedora:
         sudo dnf install webkit2gtk4.1 gtk3
-    su Arch:
+    on Arch:
         sudo pacman -S webkit2gtk-4.1 gtk3
 
-  · l'AppImage e le librerie di sistema non vanno d'accordo. Prova ad
-    avviarla senza montarla:
+  · the AppImage and the system libraries disagree. Try starting it without
+    mounting it:
         ./VanzaKart-Launcher_*.AppImage --appimage-extract-and-run
-    oppure installa il pacchetto .deb o .rpm, che usa le librerie del sistema.
+    or install the .deb or .rpm package, which uses the system libraries.
 
-  · sessione Wayland senza XWayland e senza backend Wayland utilizzabile:
-    installa xorg-xwayland, oppure avvia la sessione in modalità X11.";
+  · a Wayland session without XWayland and without a usable Wayland backend:
+    install xorg-xwayland, or start the session in X11 mode.";
 
 fn has_display() -> bool {
     ["DISPLAY", "WAYLAND_DISPLAY"]
@@ -254,7 +253,7 @@ fn probe_with(executable: &std::path::Path, variables: &[(&str, &str)]) -> std::
         started: status.is_some_and(|status| status.success()),
         message: match status {
             Some(_) => message.trim().to_string(),
-            None => "la prova di apertura del display non ha risposto entro dieci secondi".into(),
+            None => "the display probe did not answer within ten seconds".into(),
         },
     })
 }
@@ -272,7 +271,7 @@ fn failure_message(reason: &str) -> String {
     let reason = if reason.is_empty() {
         String::new()
     } else {
-        format!("\n\nQuello che ha detto il sistema:\n{reason}")
+        format!("\n\nWhat the system said:\n{reason}")
     };
 
     format!("{GTK_MESSAGE}{reason}\n\n{}", environment())
@@ -280,10 +279,10 @@ fn failure_message(reason: &str) -> String {
 
 /// Fotografia dell'ambiente grafico, da incollare in una segnalazione.
 fn environment() -> String {
-    let value = |name: &str| std::env::var(name).unwrap_or_else(|_| "(non impostata)".into());
+    let value = |name: &str| std::env::var(name).unwrap_or_else(|_| "(not set)".into());
 
     format!(
-        "Ambiente:\n  XDG_SESSION_TYPE = {}\n  DISPLAY          = {}\n  \
+        "Environment:\n  XDG_SESSION_TYPE = {}\n  DISPLAY          = {}\n  \
          WAYLAND_DISPLAY  = {}\n  GDK_BACKEND      = {}\n  APPIMAGE         = {}",
         value("XDG_SESSION_TYPE"),
         value("DISPLAY"),
@@ -444,10 +443,10 @@ mod tests {
     fn the_failure_message_carries_what_the_system_said() {
         let message = failure_message("Could not create default EGL display: EGL_BAD_PARAMETER.");
         assert!(message.contains("EGL_BAD_PARAMETER"));
-        assert!(message.contains("Ambiente:"));
+        assert!(message.contains("Environment:"));
 
         // Senza motivo non si inventa una sezione vuota.
-        assert!(!failure_message("").contains("Quello che ha detto il sistema"));
+        assert!(!failure_message("").contains("What the system said"));
     }
 
     #[test]

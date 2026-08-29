@@ -70,7 +70,7 @@ async fn save_at(state: &Arc<AppState>, index: usize) -> AppResult<PathBuf> {
         .await
         .into_iter()
         .nth(index)
-        .ok_or_else(|| AppError::Configuration("Salvataggio non trovato.".into()))
+        .ok_or_else(|| AppError::Configuration("Save file not found.".into()))
 }
 
 /// Elenca le licenze di tutti i salvataggi trovati.
@@ -111,7 +111,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
                     if card.is_empty {
                         String::new()
                     } else {
-                        "Mii non trovato in RFL_DB.dat".into()
+                        "Mii not found in RFL_DB.dat".into()
                     }
                 }),
                 accent_color: mii
@@ -207,7 +207,7 @@ pub async fn overview(state: &Arc<AppState>) -> AppResult<SaveOverview> {
     let user_folder = state.settings.read().await.user_folder();
     if user_folder.as_os_str().is_empty() || !user_folder.is_dir() {
         return Ok(SaveOverview {
-            message: "Seleziona la cartella User di Dolphin per leggere licenze e Mii.".into(),
+            message: "Select the Dolphin User folder to read licences and Miis.".into(),
             ..Default::default()
         });
     }
@@ -226,9 +226,9 @@ pub async fn overview(state: &Arc<AppState>) -> AppResult<SaveOverview> {
         license_count: licenses.iter().filter(|card| !card.is_empty).count(),
         backup_count: save_backups(state).len(),
         message: if saves.is_empty() {
-            "Nessun salvataggio di Mario Kart Wii trovato in questa cartella User.".into()
+            "No Mario Kart Wii save found in this User folder.".into()
         } else {
-            format!("{} file di salvataggio trovati.", saves.len())
+            format!("{} save files found.", saves.len())
         },
     })
 }
@@ -370,7 +370,7 @@ pub(crate) fn require_save_writes() -> AppResult<()> {
         Ok(())
     } else {
         Err(AppError::BadRequest(
-            "questa build del launcher non abilita le scritture sui salvataggi".into(),
+            "this launcher build does not enable save writes".into(),
         ))
     }
 }
@@ -383,7 +383,7 @@ pub(crate) async fn guard_dolphin_not_running(state: &Arc<AppState>) -> AppResul
     let dolphin = state.settings.read().await.dolphin();
     if !dolphin.as_os_str().is_empty() && crate::platform::is_executable_running(&dolphin) {
         return Err(AppError::BadRequest(
-            "Chiudi Dolphin prima di modificare i suoi file: altrimenti riscriverebbe le modifiche all'uscita.".into(),
+            "Close Dolphin before changing its files: otherwise it would write over your changes when it exits.".into(),
         ));
     }
     Ok(())
@@ -451,7 +451,7 @@ pub(crate) async fn backup_verified(
         attempt += 1;
         if attempt > 100 {
             return Err(AppError::Storage(
-                "impossibile creare un nome di backup libero".into(),
+                "no free backup name could be created".into(),
             ));
         }
     }
@@ -463,7 +463,7 @@ pub(crate) async fn backup_verified(
     if !expected.eq_ignore_ascii_case(&actual) {
         let _ = tokio::fs::remove_file(&destination).await;
         return Err(AppError::Storage(
-            "il backup non coincide con l'originale: nulla è stato modificato".into(),
+            "the backup does not match the original: nothing was changed".into(),
         ));
     }
 
@@ -476,9 +476,7 @@ pub(crate) async fn backup_verified(
 /// `SaveManagerService.GetPrimarySaveProfile`.
 async fn primary_save(state: &Arc<AppState>) -> AppResult<PathBuf> {
     save_files(state).await.into_iter().next().ok_or_else(|| {
-        AppError::Configuration(
-            "Nessun salvataggio di Mario Kart Wii trovato nella cartella User di Dolphin.".into(),
-        )
+        AppError::Configuration("No Mario Kart Wii save found in the Dolphin User folder.".into())
     })
 }
 
@@ -511,8 +509,7 @@ pub async fn import_save(state: &Arc<AppState>, source: &Path) -> AppResult<Stri
 
     if !vk_save::rksys::has_rksys_magic(&bytes) {
         return Err(AppError::BadRequest(
-            "Il file scelto non è un salvataggio di Mario Kart Wii: nulla è stato modificato."
-                .into(),
+            "The chosen file is not a Mario Kart Wii save: nothing was changed.".into(),
         ));
     }
 
@@ -548,7 +545,7 @@ pub async fn restore_backup(state: &Arc<AppState>, name: &str) -> AppResult<Stri
         .iter()
         .any(|candidate| candidate == name)
     {
-        return Err(AppError::BadRequest("Questo backup non esiste più.".into()));
+        return Err(AppError::BadRequest("This backup no longer exists.".into()));
     }
 
     let source = save_backup_dir(state).join(name);
@@ -558,7 +555,7 @@ pub async fn restore_backup(state: &Arc<AppState>, name: &str) -> AppResult<Stri
 
     if !vk_save::rksys::has_rksys_magic(&bytes) {
         return Err(AppError::BadRequest(
-            "Il backup scelto non è un salvataggio leggibile: nulla è stato modificato.".into(),
+            "The chosen backup is not a readable save: nothing was changed.".into(),
         ));
     }
 
@@ -630,7 +627,7 @@ mod tests {
 
         let overview = overview(&state).await.unwrap();
         assert!(!overview.user_folder_configured);
-        assert!(overview.message.contains("Seleziona"));
+        assert!(overview.message.contains("Select"));
     }
 
     #[tokio::test]

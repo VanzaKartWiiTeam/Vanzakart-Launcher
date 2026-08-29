@@ -356,13 +356,13 @@ impl MiiEditorState {
 pub fn read_editor_state(block: &[u8]) -> SaveResult<MiiEditorState> {
     if block.len() != BLOCK_SIZE {
         return Err(SaveError::InvalidMii(format!(
-            "un blocco Mii Wii deve essere di {BLOCK_SIZE} byte, ricevuti {}",
+            "a Wii Mii block must be {BLOCK_SIZE} bytes, got {}",
             block.len()
         )));
     }
     if !looks_like_wii_mii(block) {
         return Err(SaveError::InvalidMii(
-            "il blocco non ha superato la validazione".into(),
+            "the block did not pass validation".into(),
         ));
     }
 
@@ -485,7 +485,7 @@ pub fn write_editor_state(state: &MiiEditorState) -> Vec<u8> {
 pub fn apply_editor_state(base: &[u8], state: &MiiEditorState) -> SaveResult<Vec<u8>> {
     if base.len() != BLOCK_SIZE {
         return Err(SaveError::InvalidMii(format!(
-            "un blocco Mii Wii deve essere di {BLOCK_SIZE} byte, ricevuti {}",
+            "a Wii Mii block must be {BLOCK_SIZE} bytes, got {}",
             base.len()
         )));
     }
@@ -634,7 +634,7 @@ pub fn generate_mii_id(counter: u32, entropy: u8) -> u32 {
 pub fn parse_block(block: &[u8]) -> SaveResult<WiiMii> {
     if block.len() != BLOCK_SIZE {
         return Err(SaveError::InvalidMii(format!(
-            "un blocco Mii Wii deve essere di {BLOCK_SIZE} byte, ricevuti {}",
+            "a Wii Mii block must be {BLOCK_SIZE} bytes, got {}",
             block.len()
         )));
     }
@@ -648,7 +648,7 @@ pub fn parse_block(block: &[u8]) -> SaveResult<WiiMii> {
 
     if !looks_like_wii_mii(&raw) {
         return Err(SaveError::InvalidMii(
-            "il blocco non ha superato la validazione".into(),
+            "the block did not pass validation".into(),
         ));
     }
 
@@ -1474,7 +1474,7 @@ mod tests {
         let mut file = vec![0u8; 0x40];
         file.extend_from_slice(&block);
 
-        let found = extract_block(&file).expect("blocco non trovato");
+        let found = extract_block(&file).expect("block not found");
         assert_eq!(parse_block(&found).unwrap().name, "Trovato");
     }
 

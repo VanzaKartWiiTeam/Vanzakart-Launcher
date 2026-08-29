@@ -41,17 +41,17 @@ pub fn parse(text: &str) -> SaveResult<u32> {
 
     if digits.len() != 12 {
         return Err(SaveError::InvalidFriendCode(
-            "il friend code deve contenere esattamente 12 cifre".into(),
+            "a friend code must hold exactly 12 digits".into(),
         ));
     }
 
     let value: u64 = digits
         .parse()
-        .map_err(|_| SaveError::InvalidFriendCode("friend code non valido".into()))?;
+        .map_err(|_| SaveError::InvalidFriendCode("invalid friend code".into()))?;
 
     if value > MAX_FRIEND_CODE {
         return Err(SaveError::InvalidFriendCode(
-            "il friend code è fuori dall'intervallo di Mario Kart Wii".into(),
+            "the friend code is outside the Mario Kart Wii range".into(),
         ));
     }
 
@@ -60,7 +60,7 @@ pub fn parse(text: &str) -> SaveResult<u32> {
 
     if provided != checksum(profile_id) {
         return Err(SaveError::InvalidFriendCode(
-            "il checksum del friend code non è valido".into(),
+            "the friend code checksum is not valid".into(),
         ));
     }
 

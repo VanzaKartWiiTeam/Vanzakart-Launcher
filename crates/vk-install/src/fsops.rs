@@ -209,7 +209,7 @@ pub fn ensure_safe_target(path: &Path) -> InstallResult<PathBuf> {
 
     if absolute.parent().is_none() {
         return Err(InstallError::UnsafePath(format!(
-            "{} è la radice del disco",
+            "{} is the drive root",
             absolute.display()
         )));
     }
@@ -220,7 +220,7 @@ pub fn ensure_safe_target(path: &Path) -> InstallResult<PathBuf> {
         .count();
     if depth < 2 {
         return Err(InstallError::UnsafePath(format!(
-            "{} è troppo vicino alla radice del disco",
+            "{} is too close to the drive root",
             absolute.display()
         )));
     }
@@ -228,7 +228,7 @@ pub fn ensure_safe_target(path: &Path) -> InstallResult<PathBuf> {
     for forbidden in protected_dirs() {
         if same_path(&absolute, &forbidden) {
             return Err(InstallError::UnsafePath(format!(
-                "{} è una cartella di sistema",
+                "{} is a system folder",
                 absolute.display()
             )));
         }
@@ -241,7 +241,7 @@ pub fn ensure_safe_target(path: &Path) -> InstallResult<PathBuf> {
 pub fn absolutize(path: &Path) -> InstallResult<PathBuf> {
     let trimmed = path.to_string_lossy().trim().to_string();
     if trimmed.is_empty() {
-        return Err(InstallError::UnsafePath("percorso vuoto".into()));
+        return Err(InstallError::UnsafePath("empty path".into()));
     }
     let candidate = PathBuf::from(trimmed);
     let absolute = if candidate.is_absolute() {

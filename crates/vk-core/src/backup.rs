@@ -91,7 +91,7 @@ pub async fn create_backup(
 
         let relative = fsx::relative_slash(&mod_root, source);
         progress(
-            ProgressUpdate::new(Phase::Backup, format!("Salvataggio di {relative}"))
+            ProgressUpdate::new(Phase::Backup, format!("Saving {relative}"))
                 .with_files(index as u32 + 1, total),
         );
 
@@ -142,11 +142,8 @@ pub async fn restore_backup(
         }
 
         progress(
-            ProgressUpdate::new(
-                Phase::Rollback,
-                format!("Ripristino di {}", file.relative_path),
-            )
-            .with_files(restored + 1, total),
+            ProgressUpdate::new(Phase::Rollback, format!("Restoring {}", file.relative_path))
+                .with_files(restored + 1, total),
         );
 
         fsx::copy_file(
@@ -170,7 +167,7 @@ async fn verify_restore(set: &BackupSet, mod_root: &Path) -> CoreResult<()> {
         let destination = mod_root.join(&file.relative_path);
         if !destination.is_file() {
             return Err(CoreError::RestoreFailed(format!(
-                "{} risulta mancante",
+                "{} is missing",
                 file.relative_path
             )));
         }
@@ -178,7 +175,7 @@ async fn verify_restore(set: &BackupSet, mod_root: &Path) -> CoreResult<()> {
         let actual = sha256_file(&destination).await?;
         if !hash_eq(&actual, &file.sha256) {
             return Err(CoreError::RestoreFailed(format!(
-                "l'hash di {} non corrisponde",
+                "the hash of {} does not match",
                 file.relative_path
             )));
         }

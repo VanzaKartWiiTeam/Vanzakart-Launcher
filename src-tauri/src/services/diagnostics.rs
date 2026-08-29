@@ -23,13 +23,13 @@ pub async fn collect(state: &Arc<AppState>) -> AppResult<Vec<DiagnosticEntry>> {
 
     let mut entries = vec![
         entry("Launcher", crate::state::LAUNCHER_VERSION, None),
-        entry("Piattaforma", crate::platform::platform_name(), None),
+        entry("Platform", crate::platform::platform_name(), None),
         entry(
-            "Cartella dati",
+            "Data folder",
             &redact_path(&state.paths.root().to_string_lossy()),
             Some(state.paths.root().is_dir()),
         ),
-        entry("Canale", channel.display_name(), None),
+        entry("Channel", channel.display_name(), None),
     ];
 
     entries.push(entry(
@@ -43,27 +43,27 @@ pub async fn collect(state: &Arc<AppState>) -> AppResult<Vec<DiagnosticEntry>> {
         Some(!settings.rom_path.is_empty() && settings.rom().is_file()),
     ));
     entries.push(entry(
-        "Cartella User",
+        "User folder",
         &redact_path(&settings.user_folder_path),
         Some(!settings.user_folder_path.is_empty() && settings.user_folder().is_dir()),
     ));
     entries.push(entry(
-        "Cartella modpack",
+        "Modpack folder",
         &redact_path(&layout.mod_root().to_string_lossy()),
         Some(layout.mod_root().is_dir()),
     ));
     entries.push(entry(
-        "Modpack installata",
-        if layout.is_installed() { "sì" } else { "no" },
+        "Modpack installed",
+        if layout.is_installed() { "yes" } else { "no" },
         Some(layout.is_installed()),
     ));
 
     for channel in [vk_core::Channel::Stable, vk_core::Channel::Beta] {
         let version = install_state.get(channel).version.clone();
         entries.push(entry(
-            &format!("Versione {}", channel.display_name()),
+            &format!("{} version", channel.display_name()),
             if version.trim().is_empty() {
-                "non installata"
+                "not installed"
             } else {
                 &version
             },
@@ -77,11 +77,11 @@ pub async fn collect(state: &Arc<AppState>) -> AppResult<Vec<DiagnosticEntry>> {
         Some(!endpoints.server_base_url.is_empty()),
     ));
     entries.push(entry(
-        "Token beta",
+        "Beta token",
         if state.secrets.read().await.has_beta_token() {
-            "presente"
+            "present"
         } else {
-            "assente"
+            "absent"
         },
         None,
     ));
@@ -104,7 +104,7 @@ pub async fn collect(state: &Arc<AppState>) -> AppResult<Vec<DiagnosticEntry>> {
 /// Ultime righe del log applicativo, già sanitizzate alla scrittura.
 pub async fn tail_log(state: &Arc<AppState>) -> AppResult<String> {
     let Some(path) = newest_log(state) else {
-        return Ok("Nessun file di log ancora prodotto.".into());
+        return Ok("No log file produced yet.".into());
     };
 
     let raw = tokio::fs::read_to_string(&path)
@@ -145,7 +145,7 @@ pub async fn backups(state: &Arc<AppState>) -> Vec<vk_core::backup::BackupSummar
 pub async fn purge_user_data(state: &Arc<AppState>, confirmation: &str) -> AppResult<Vec<String>> {
     if confirmation.trim() != "VanzaKart" {
         return Err(AppError::BadRequest(
-            "Digita VanzaKart per confermare la cancellazione.".into(),
+            "Type VanzaKart to confirm the deletion.".into(),
         ));
     }
 
@@ -172,7 +172,7 @@ fn entry(label: &str, value: &str, ok: Option<bool>) -> DiagnosticEntry {
     DiagnosticEntry {
         label: label.to_string(),
         value: if value.trim().is_empty() {
-            "non configurato".to_string()
+            "not configured".to_string()
         } else {
             value.to_string()
         },
@@ -212,12 +212,12 @@ mod tests {
 
         for expected in [
             "Launcher",
-            "Piattaforma",
+            "Platform",
             "Dolphin",
             "ROM",
-            "Cartella User",
-            "Modpack installata",
-            "Token beta",
+            "User folder",
+            "Modpack installed",
+            "Beta token",
         ] {
             assert!(labels.contains(&expected), "manca {expected}");
         }
@@ -230,7 +230,7 @@ mod tests {
 
         let entries = collect(&state).await.unwrap();
         let dolphin = entries.iter().find(|item| item.label == "Dolphin").unwrap();
-        assert_eq!(dolphin.value, "non configurato");
+        assert_eq!(dolphin.value, "not configured");
         assert_eq!(dolphin.ok, Some(false));
     }
 
@@ -243,9 +243,9 @@ mod tests {
         let entries = collect(&state).await.unwrap();
         let token = entries
             .iter()
-            .find(|item| item.label == "Token beta")
+            .find(|item| item.label == "Beta token")
             .unwrap();
-        assert_eq!(token.value, "presente");
+        assert_eq!(token.value, "present");
 
         let json = serde_json::to_string(&entries).unwrap();
         assert!(!json.contains("SUPERSEGRETO"));
@@ -257,7 +257,7 @@ mod tests {
         let state = state_with(dir.path()).await;
 
         let tail = tail_log(&state).await.unwrap();
-        assert!(tail.contains("Nessun file di log"));
+        assert!(tail.contains("No log file"));
     }
 
     #[tokio::test]

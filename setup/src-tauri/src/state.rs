@@ -238,7 +238,7 @@ fn solo_https(url: String) -> Option<String> {
 /// Errore da restituire quando manca il manifest e non c'è rete.
 pub fn offline_error() -> InstallError {
     InstallError::InvalidManifest(
-        "impossibile leggere l'elenco dei pacchetti dal server: controlla la connessione".into(),
+        "the package list could not be read from the server: check your connection".into(),
     )
 }
 

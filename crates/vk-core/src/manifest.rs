@@ -73,7 +73,7 @@ impl ModManifest {
 pub fn validate(manifest: &ModManifest) -> CoreResult<()> {
     if manifest.mod_version.trim().is_empty() || manifest.files.is_empty() {
         return Err(CoreError::InvalidManifest(
-            "il manifest della modpack è vuoto o non valido".into(),
+            "the modpack manifest is empty or invalid".into(),
         ));
     }
 
@@ -96,7 +96,7 @@ pub fn validate(manifest: &ModManifest) -> CoreResult<()> {
 
         if invalid || duplicate {
             return Err(CoreError::InvalidManifest(format!(
-                "voce di manifest non valida o duplicata: {}",
+                "invalid or duplicated manifest entry: {}",
                 file.path
             )));
         }
@@ -104,7 +104,7 @@ pub fn validate(manifest: &ModManifest) -> CoreResult<()> {
         // Un path assoluto Windows (`C:/...`) supera i controlli precedenti.
         if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
             return Err(CoreError::InvalidManifest(format!(
-                "voce di manifest con percorso assoluto: {}",
+                "manifest entry with an absolute path: {}",
                 file.path
             )));
         }
@@ -115,7 +115,7 @@ pub fn validate(manifest: &ModManifest) -> CoreResult<()> {
     let archive = manifest.archive_sha256.trim();
     if !archive.is_empty() && !is_valid_sha256(archive) {
         return Err(CoreError::InvalidManifest(
-            "l'hash dell'archivio nel manifest non è valido".into(),
+            "the archive hash in the manifest is not valid".into(),
         ));
     }
 

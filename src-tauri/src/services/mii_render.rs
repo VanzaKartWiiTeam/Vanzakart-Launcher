@@ -111,9 +111,9 @@ pub async fn status(state: &Arc<AppState>) -> MiiRendererStatus {
 
     MiiRendererStatus {
         message: if installed {
-            "Il runtime è installato: i Mii sincronizzati vengono disegnati dal gioco.".into()
+            "The runtime is installed: synced Miis are drawn by the game.".into()
         } else {
-            "Senza il runtime, Dolphin mostra i Mii sincronizzati come sagome vuote.".into()
+            "Without the runtime, Dolphin shows synced Miis as empty silhouettes.".into()
         },
         runtime_installed: installed,
         runtime_size_bytes: size,
@@ -164,7 +164,7 @@ async fn install_runtime_inner(
         .to_string();
     if url.is_empty() {
         return Err(AppError::Configuration(
-            "Nessun URL configurato per il runtime di rendering.".into(),
+            "No URL configured for the rendering runtime.".into(),
         ));
     }
 
@@ -177,7 +177,10 @@ async fn install_runtime_inner(
 
     progress(ProgressUpdate::new(
         Phase::Download,
-        format!("Download del runtime di rendering da {}...", host_of(&url)),
+        format!(
+            "Downloading the rendering runtime from {}...",
+            host_of(&url)
+        ),
     ));
 
     let download = state
@@ -193,7 +196,7 @@ async fn install_runtime_inner(
 
         progress(ProgressUpdate::new(
             Phase::Installing,
-            "Estrazione della risorsa di rendering...",
+            "Extracting the rendering resource...",
         ));
 
         // Una sola voce serve: estrarre l'intero archivio Miitomo occuperebbe
@@ -207,7 +210,7 @@ async fn install_runtime_inner(
 
         if (bytes.len() as u64) < MIN_RESOURCE_BYTES {
             return Err(AppError::BadRequest(format!(
-                "La risorsa di rendering scaricata è incompleta ({} byte).",
+                "The downloaded rendering resource is incomplete ({} bytes).",
                 bytes.len()
             )));
         }
@@ -222,7 +225,7 @@ async fn install_runtime_inner(
 
     progress(ProgressUpdate::new(
         Phase::Completed,
-        "Runtime di rendering installato.",
+        "Rendering runtime installed.",
     ));
     tracing::info!(size, "runtime di rendering Mii installato");
 
@@ -359,12 +362,12 @@ fn encode_component(value: &str) -> String {
 fn png_problem(bytes: &[u8]) -> Option<String> {
     if bytes.len() < MIN_PNG_BYTES {
         return Some(format!(
-            "il renderer ha restituito un'immagine troppo piccola ({} byte)",
+            "the renderer returned an image that is too small ({} bytes)",
             bytes.len()
         ));
     }
     if !bytes.starts_with(&PNG_SIGNATURE) {
-        return Some("il renderer non ha restituito un'immagine PNG".into());
+        return Some("the renderer did not return a PNG image".into());
     }
     None
 }
@@ -541,7 +544,7 @@ mod tests {
         let status = status(&state).await;
         assert!(!status.runtime_installed);
         assert_eq!(status.cached_avatars, 0);
-        assert!(status.message.contains("sagome"));
+        assert!(status.message.contains("silhouettes"));
     }
 
     #[tokio::test]

@@ -76,7 +76,7 @@ pub fn read(data: &[u8]) -> BTreeMap<u32, WiiMii> {
 pub fn verify_crc(data: &[u8]) -> SaveResult<()> {
     if data.len() < CRC_OFFSET + 2 {
         return Err(SaveError::InvalidSave(
-            "il database Mii è troppo corto per contenere il CRC".into(),
+            "the Mii database is too short to hold the CRC".into(),
         ));
     }
 
@@ -97,7 +97,7 @@ pub fn verify_crc(data: &[u8]) -> SaveResult<()> {
 pub fn write_crc(data: &mut [u8]) -> SaveResult<()> {
     if data.len() < CRC_OFFSET + 2 {
         return Err(SaveError::InvalidSave(
-            "il database Mii è troppo corto per contenere il CRC".into(),
+            "the Mii database is too short to hold the CRC".into(),
         ));
     }
 
@@ -163,28 +163,28 @@ pub fn find_empty_slot(data: &[u8]) -> Option<usize> {
 pub fn upsert(data: &mut [u8], block: &[u8]) -> SaveResult<usize> {
     if block.len() != mii::BLOCK_SIZE {
         return Err(SaveError::InvalidMii(format!(
-            "un blocco Mii Wii deve essere di {} byte, ricevuti {}",
+            "a Wii Mii block must be {} bytes, got {}",
             mii::BLOCK_SIZE,
             block.len()
         )));
     }
     if data.len() < DB_SIZE {
         return Err(SaveError::InvalidSave(
-            "il database Mii non ha la dimensione attesa".into(),
+            "the Mii database is not the expected size".into(),
         ));
     }
 
     let mii_id = u32::from_be_bytes([block[0x18], block[0x19], block[0x1A], block[0x1B]]);
     if mii_id == 0 {
         return Err(SaveError::InvalidMii(
-            "il Mii non ha un identificativo: non può entrare nel database".into(),
+            "the Mii has no identifier: it cannot go into the database".into(),
         ));
     }
 
     let offset = find_slot(data, mii_id)
         .or_else(|| find_empty_slot(data))
         .ok_or_else(|| {
-            SaveError::InvalidSave("il database Mii di Dolphin è pieno (100 Mii)".into())
+            SaveError::InvalidSave("Dolphin's Mii database is full (100 Miis)".into())
         })?;
 
     data[offset..offset + mii::BLOCK_SIZE].copy_from_slice(block);
@@ -196,7 +196,7 @@ pub fn upsert(data: &mut [u8], block: &[u8]) -> SaveResult<usize> {
 pub fn remove(data: &mut [u8], mii_id: u32) -> SaveResult<bool> {
     if data.len() < DB_SIZE {
         return Err(SaveError::InvalidSave(
-            "il database Mii non ha la dimensione attesa".into(),
+            "the Mii database is not the expected size".into(),
         ));
     }
 

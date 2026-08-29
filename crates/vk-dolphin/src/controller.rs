@@ -67,7 +67,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "⚡",
         title: "Drive",
-        description: "Accelera e parte dalla griglia",
+        description: "Accelerate and start from the grid",
         kind: BindingKind::Single,
         dolphin_keys: &["Buttons/A"],
     },
@@ -76,7 +76,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "◼",
         title: "Brake / Reverse",
-        description: "Frena e va in retromarcia · può condividere il tasto con Drift",
+        description: "Brake and reverse · may share its button with Drift",
         kind: BindingKind::Single,
         dolphin_keys: &["Buttons/B"],
     },
@@ -85,7 +85,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "↗",
         title: "Drift / Hop",
-        description: "Salta e derapa · può condividere il tasto con Brake",
+        description: "Hop and drift · may share its button with Brake",
         kind: BindingKind::Trigger,
         dolphin_keys: &["Triggers/R", "Triggers/R-Analog"],
     },
@@ -94,7 +94,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "◆",
         title: "Item",
-        description: "Usa o trascina un oggetto",
+        description: "Use or drag an item",
         kind: BindingKind::Trigger,
         dolphin_keys: &["Triggers/L", "Triggers/L-Analog"],
     },
@@ -103,7 +103,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "◉",
         title: "Look Back",
-        description: "Guarda dietro il veicolo",
+        description: "Look behind the vehicle",
         kind: BindingKind::Single,
         dolphin_keys: &["Buttons/X"],
     },
@@ -112,7 +112,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "RACING",
         icon: "Ⅱ",
         title: "Pause",
-        description: "Mette in pausa la gara",
+        description: "Pause the race",
         kind: BindingKind::Single,
         dolphin_keys: &["Buttons/Start"],
     },
@@ -121,7 +121,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "MOVEMENT",
         icon: "↔",
         title: "Steering",
-        description: "Sterza e naviga i menu",
+        description: "Steer, and move through the menus",
         kind: BindingKind::Steering,
         dolphin_keys: &[
             "Main Stick/Up",
@@ -135,7 +135,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "MOVEMENT",
         icon: "↑",
         title: "Trick Up",
-        description: "Impennata o trick verso l'alto",
+        description: "Wheelie, or an upward trick",
         kind: BindingKind::Single,
         dolphin_keys: &["D-Pad/Up"],
     },
@@ -144,7 +144,7 @@ pub const ACTIONS: &[MarioKartAction] = &[
         section: "MOVEMENT",
         icon: "↓",
         title: "Trick Down",
-        description: "Trick verso il basso",
+        description: "Downward trick",
         kind: BindingKind::Single,
         dolphin_keys: &["D-Pad/Down"],
     },
@@ -387,7 +387,7 @@ pub fn activate_mode(user_folder: &Path, mode: ControllerMode) -> DolphinResult<
     }
     if user_folder.as_os_str().is_empty() {
         return Err(DolphinError::InvalidUserFolder(
-            "seleziona prima la cartella User di Dolphin".into(),
+            "select the Dolphin User folder first".into(),
         ));
     }
 
@@ -406,7 +406,7 @@ pub fn activate_mode(user_folder: &Path, mode: ControllerMode) -> DolphinResult<
     for (key, value) in mode_source_settings(mode) {
         if ini::get(&written, "Core", key) != Some(value) {
             return Err(DolphinError::InvalidConfiguration(format!(
-                "Dolphin.ini non contiene Core/{key} = {value} dopo il salvataggio"
+                "Dolphin.ini does not hold Core/{key} = {value} after saving"
             )));
         }
     }
@@ -471,12 +471,12 @@ pub fn save_profile_to_dolphin(
 ) -> DolphinResult<()> {
     if user_folder.as_os_str().is_empty() {
         return Err(DolphinError::InvalidUserFolder(
-            "seleziona prima la cartella User di Dolphin".into(),
+            "select the Dolphin User folder first".into(),
         ));
     }
     if !profile.device.connected {
         return Err(DolphinError::InvalidConfiguration(
-            "il controller selezionato non è connesso".into(),
+            "the selected controller is not connected".into(),
         ));
     }
 
@@ -680,9 +680,9 @@ pub fn disconnected_device(configured: &str) -> DeviceRef {
     DeviceRef {
         dolphin_device: configured.trim().to_string(),
         display_name: if name.is_empty() {
-            format!("{backend}/{index} (non connesso)")
+            format!("{backend}/{index} (not connected)")
         } else {
-            format!("{name} (non connesso)")
+            format!("{name} (not connected)")
         },
         kind: DeviceKind::Generic,
         connected: false,
@@ -760,12 +760,12 @@ pub fn write_profile(
 ) -> DolphinResult<()> {
     if name.trim().is_empty() {
         return Err(DolphinError::InvalidConfiguration(
-            "il nome del profilo non può essere vuoto".into(),
+            "the profile name cannot be empty".into(),
         ));
     }
     if name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
         return Err(DolphinError::InvalidConfiguration(
-            "il nome del profilo contiene caratteri non consentiti".into(),
+            "the profile name holds characters that are not allowed".into(),
         ));
     }
 
@@ -1207,7 +1207,7 @@ mod tests {
         let device = disconnected_device("XInput/2/Gamepad");
         assert!(!device.connected);
         assert_eq!(device.xinput_slot, 2);
-        assert!(device.display_name.contains("non connesso"));
+        assert!(device.display_name.contains("not connected"));
     }
 
     #[test]

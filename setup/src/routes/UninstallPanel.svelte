@@ -21,6 +21,7 @@
     UninstallReport
   } from '$setup/lib/api';
   import { formatBytes } from '$setup/lib/format';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let { onBusyChange }: { onBusyChange: (busy: boolean) => void } = $props();
 
@@ -82,10 +83,10 @@
 
   async function run() {
     if (irreversible) {
-      const confirmed = await confirm(
-        'Verranno rimossi anche dati che non si possono recuperare: impostazioni, modpack o salvataggi, secondo quanto hai scelto. Procedo?',
-        { title: 'Disinstalla VanzaKart Launcher', kind: 'warning' }
-      );
+      const confirmed = await confirm(t('uninstall.confirm.body'), {
+        title: t('uninstall.confirm.title'),
+        kind: 'warning'
+      });
       if (!confirmed) return;
     }
 
@@ -115,23 +116,23 @@
 <div class="panel">
   <main>
     {#if phase === 'running'}
-      <StepProgress title="Rimozione in corso" {progress} {log} />
+      <StepProgress title={t('progress.removing')} {progress} {log} />
     {:else if phase === 'done' && report}
       <div class="vk-view-enter view">
         <header>
-          <p class="vk-eyebrow">Fatto</p>
-          <h1 class="vk-title">VanzaKart Launcher è stato rimosso</h1>
+          <p class="vk-eyebrow">{t('done.eyebrow')}</p>
+          <h1 class="vk-title">{t('uninstall.done.title')}</h1>
         </header>
 
         <section class="vk-card">
           <p class="vk-muted">
-            {report.removed.length} elementi rimossi · {formatBytes(report.bytesFreed)} liberati
+            {t('uninstall.done.summary', {
+              count: report.removed.length,
+              size: formatBytes(report.bytesFreed)
+            })}
           </p>
           {#if report.deferred}
-            <p class="vk-faint">
-              La cartella d'installazione viene cancellata alla chiusura di questa finestra:
-              contiene il programma che stai usando adesso.
-            </p>
+            <p class="vk-faint">{t('uninstall.done.deferred')}</p>
           {/if}
           {#if report.failed.length > 0}
             <ul class="failures">
@@ -145,24 +146,22 @@
           {/if}
         </section>
 
-        <p class="vk-faint">
-          Grazie per aver corso con noi. Puoi reinstallare quando vuoi dalla pagina dei download.
-        </p>
+        <p class="vk-faint">{t('uninstall.done.thanks')}</p>
       </div>
     {:else if phase === 'missing'}
       <div class="vk-empty">
         <Icon name="package" size={28} />
-        <p>Nessuna installazione di VanzaKart Launcher trovata su questo computer.</p>
+        <p>{t('uninstall.missing')}</p>
         <p class="vk-faint">{planError}</p>
       </div>
     {:else}
       <div class="vk-view-enter view">
         <header>
-          <p class="vk-eyebrow">Disinstallazione</p>
-          <h1 class="vk-title">Rimuovi VanzaKart Launcher</h1>
+          <p class="vk-eyebrow">{t('uninstall.eyebrow')}</p>
+          <h1 class="vk-title">{t('uninstall.title')}</h1>
           {#if plan}
             <p class="vk-subtitle">
-              {#if plan.version}Versione {plan.version} ·{/if}
+              {#if plan.version}{t('uninstall.version', { version: plan.version })}{/if}
               <span class="vk-mono">{plan.installDir}</span>
             </p>
           {/if}
@@ -173,24 +172,21 @@
         {/if}
 
         <section class="vk-card">
-          <p class="vk-eyebrow">Cosa rimuovere oltre al programma</p>
+          <p class="vk-eyebrow">{t('uninstall.what')}</p>
 
           <label class="check">
             <input type="checkbox" bind:checked={options.removeCacheAndLogs} />
             <span>
-              <strong>Cache, log e download interrotti</strong>
-              <span class="vk-faint">Si rigenerano da soli. Non contengono nulla di tuo.</span>
+              <strong>{t('uninstall.cache')}</strong>
+              <span class="vk-faint">{t('uninstall.cache.note')}</span>
             </span>
           </label>
 
           <label class="check">
             <input type="checkbox" bind:checked={options.removeLauncherData} />
             <span>
-              <strong>Impostazioni e dati del launcher</strong>
-              <span class="vk-faint">
-                Percorsi di Dolphin, preferenze, Mii importati. Reinstallando dovrai riconfigurare
-                tutto.
-              </span>
+              <strong>{t('uninstall.data')}</strong>
+              <span class="vk-faint">{t('uninstall.data.note')}</span>
             </span>
           </label>
 
@@ -201,11 +197,9 @@
               disabled={!plan?.hasModpacks}
             />
             <span>
-              <strong>Modpack installate in Dolphin</strong>
+              <strong>{t('uninstall.modpacks')}</strong>
               <span class="vk-faint">
-                {plan?.hasModpacks
-                  ? 'Le cartelle VanzaKart e VKBeta dentro Load/Riivolution.'
-                  : 'Nessuna modpack trovata: non c’è niente da togliere.'}
+                {plan?.hasModpacks ? t('uninstall.modpacks.note') : t('uninstall.modpacks.none')}
               </span>
             </span>
           </label>
@@ -217,10 +211,10 @@
               disabled={!plan?.hasModpacks}
             />
             <span>
-              <strong>Salvataggi e personalizzazioni della modpack</strong>
+              <strong>{t('uninstall.userData')}</strong>
               <span class="vk-faint">
-                I dati di gioco in <span class="vk-mono">*_UserData</span>: licenze, tempi, addon
-                locali. Non si recuperano.
+                {t('uninstall.userData.before')}
+                <span class="vk-mono">*_UserData</span>{t('uninstall.userData.after')}
               </span>
             </span>
           </label>
@@ -228,7 +222,7 @@
 
         <section class="vk-card vk-card--flush">
           <div class="plan-head">
-            <p class="vk-eyebrow">Verrà rimosso</p>
+            <p class="vk-eyebrow">{t('uninstall.willRemove')}</p>
             <p class="total">{formatBytes(plan?.totalBytes ?? 0)}</p>
           </div>
           <ul class="plan">
@@ -239,10 +233,12 @@
                   <strong>{item.label}</strong>
                   <span class="vk-mono">{item.path}</span>
                 </span>
-                <span class="size">{item.bytes > 0 ? formatBytes(item.bytes) : '—'}</span>
+                <span class="size">
+                  {item.bytes > 0 ? formatBytes(item.bytes) : t('common.dash')}
+                </span>
               </li>
             {:else}
-              <li class="vk-faint empty">Niente da rimuovere.</li>
+              <li class="vk-faint empty">{t('uninstall.nothing')}</li>
             {/each}
           </ul>
         </section>
@@ -253,18 +249,18 @@
   <footer>
     <p class="status">
       {#if plan && !plan.managed && phase === 'choose'}
-        Installazione non registrata: verranno tolti la cartella e le scorciatoie nei percorsi noti.
+        {t('uninstall.unmanaged')}
       {/if}
     </p>
 
     {#if phase === 'choose'}
-      <button class="vk-btn" onclick={close}>Annulla</button>
+      <button class="vk-btn" onclick={close}>{t('common.cancel')}</button>
       <button class="vk-btn vk-btn--danger" onclick={run} disabled={busy || !plan}>
         <Icon name="trash" size={14} />
-        Disinstalla
+        {t('uninstall.run')}
       </button>
     {:else if phase !== 'running'}
-      <button class="vk-btn vk-btn--primary" onclick={close}>Chiudi</button>
+      <button class="vk-btn vk-btn--primary" onclick={close}>{t('common.close')}</button>
     {/if}
   </footer>
 </div>

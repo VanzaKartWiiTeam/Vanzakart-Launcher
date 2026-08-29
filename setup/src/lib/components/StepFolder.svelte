@@ -2,6 +2,7 @@
   /** Secondo passo: dove installare, cosa creare, cosa salvare prima. */
   import Icon from '$lib/components/Icon.svelte';
   import type { Bootstrap, InstallOptionsInput } from '$setup/lib/api';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let {
     boot,
@@ -19,13 +20,13 @@
 
 <div class="vk-view-enter view">
   <header>
-    <p class="vk-eyebrow">Passo 2</p>
-    <h1 class="vk-title">Cartella e scorciatoie</h1>
+    <p class="vk-eyebrow">{t('folder.eyebrow')}</p>
+    <h1 class="vk-title">{t('folder.title')}</h1>
   </header>
 
   <section class="vk-card">
     <label class="field" for="install-dir">
-      <span class="vk-eyebrow">Cartella d'installazione</span>
+      <span class="vk-eyebrow">{t('folder.installDir')}</span>
       <div class="vk-row">
         <input
           id="install-dir"
@@ -36,14 +37,14 @@
         />
         <button class="vk-btn" onclick={onBrowseInstall} type="button">
           <Icon name="folder" size={14} />
-          Sfoglia
+          {t('common.browse')}
         </button>
       </div>
     </label>
 
     {#if boot.suggestedInstallDirs.length > 1}
       <div class="suggestions">
-        <span class="vk-faint">Proposte:</span>
+        <span class="vk-faint">{t('folder.suggestions')}</span>
         {#each boot.suggestedInstallDirs as suggestion (suggestion)}
           <button
             class="chip"
@@ -59,22 +60,19 @@
 
     {#if boot.existing}
       <fieldset class="modes">
-        <legend class="vk-eyebrow">C'è già un'installazione qui</legend>
+        <legend class="vk-eyebrow">{t('folder.modes')}</legend>
         <label class="choice">
           <input type="radio" bind:group={options.mode} value="update" />
           <span>
-            <strong>Aggiorna</strong>
-            <span class="vk-faint">Sostituisce i file del programma e lascia il resto dov'è.</span>
+            <strong>{t('folder.mode.update')}</strong>
+            <span class="vk-faint">{t('folder.mode.update.note')}</span>
           </span>
         </label>
         <label class="choice">
           <input type="radio" bind:group={options.mode} value="clean-reinstall" />
           <span>
-            <strong>Reinstallazione pulita</strong>
-            <span class="vk-faint">
-              Svuota la cartella prima di installare. Impostazioni, modpack e salvataggi stanno
-              altrove e non vengono toccati.
-            </span>
+            <strong>{t('folder.mode.clean')}</strong>
+            <span class="vk-faint">{t('folder.mode.clean.note')}</span>
           </span>
         </label>
       </fieldset>
@@ -83,14 +81,14 @@
 
   <div class="vk-grid-2">
     <section class="vk-card">
-      <p class="vk-eyebrow">Scorciatoie</p>
+      <p class="vk-eyebrow">{t('folder.shortcuts')}</p>
       <label class="check">
         <input type="checkbox" bind:checked={options.desktopShortcut} />
-        <span>Sul desktop</span>
+        <span>{t('folder.shortcut.desktop')}</span>
       </label>
       <label class="check">
         <input type="checkbox" bind:checked={options.startMenuShortcut} />
-        <span>Nel menu applicazioni</span>
+        <span>{t('folder.shortcut.startMenu')}</span>
       </label>
       <label class="check">
         <input
@@ -98,30 +96,35 @@
           bind:checked={options.uninstallEntry}
           disabled={!options.startMenuShortcut}
         />
-        <span>Voce per disinstallare</span>
+        <span>{t('folder.shortcut.uninstallEntry')}</span>
       </label>
       {#if boot.supportsQuickLaunch}
         <label class="check">
           <input type="checkbox" bind:checked={options.quickLaunchShortcut} />
-          <span>Nella barra di avvio veloce</span>
+          <span>{t('folder.shortcut.quickLaunch')}</span>
         </label>
       {/if}
       {#if boot.supportsPathSymlink}
         <label class="check">
           <input type="checkbox" bind:checked={options.pathSymlink} />
-          <span>Comando <code>vanzakart-launcher</code> in <code>~/.local/bin</code></span>
+          <span>
+            {t('folder.shortcut.symlinkBefore')}
+            <code>vanzakart-launcher</code>
+            {t('folder.shortcut.symlinkMiddle')}
+            <code>~/.local/bin</code>
+          </span>
         </label>
       {/if}
     </section>
 
     <section class="vk-card">
-      <p class="vk-eyebrow">Prima di procedere</p>
+      <p class="vk-eyebrow">{t('folder.before')}</p>
       <label class="check">
         <input type="checkbox" bind:checked={options.backupData} />
-        <span>Copia le impostazioni del launcher</span>
+        <span>{t('folder.backupData')}</span>
       </label>
       <label class="field" for="backup-dir">
-        <span class="vk-faint">Cartella del backup</span>
+        <span class="vk-faint">{t('folder.backupDir')}</span>
         <div class="vk-row">
           <input
             id="backup-dir"
@@ -138,14 +141,11 @@
             disabled={!options.backupData}
           >
             <Icon name="folder" size={14} />
-            Sfoglia
+            {t('common.browse')}
           </button>
         </div>
       </label>
-      <p class="vk-faint note">
-        Vengono copiate le impostazioni e i percorsi configurati. Il token della beta non viene
-        copiato.
-      </p>
+      <p class="vk-faint note">{t('folder.backupNote')}</p>
     </section>
   </div>
 </div>

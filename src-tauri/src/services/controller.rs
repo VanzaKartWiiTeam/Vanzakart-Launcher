@@ -321,7 +321,7 @@ pub async fn save_profile(state: &Arc<AppState>, profile: &ControllerProfile) ->
     let conflicts = profile.conflicts();
     if !conflicts.is_empty() {
         return Err(AppError::BadRequest(format!(
-            "Alcune azioni condividono lo stesso input: {}. Solo Brake e Drift possono farlo.",
+            "Some actions share the same input: {}. Only Brake and Drift may do that.",
             conflicts
                 .iter()
                 .map(|group| group.join(" + "))
@@ -370,7 +370,7 @@ pub async fn list_profiles(state: &Arc<AppState>) -> Vec<String> {
 fn require_user_folder(user_folder: &std::path::Path) -> AppResult<()> {
     if user_folder.as_os_str().is_empty() || !user_folder.is_dir() {
         return Err(AppError::Configuration(
-            "Seleziona prima la cartella User di Dolphin.".into(),
+            "Select the Dolphin User folder first.".into(),
         ));
     }
     Ok(())
@@ -517,7 +517,7 @@ mod tests {
 
         let error = save_profile(&state, &profile).await.unwrap_err();
         assert_eq!(error.code(), "bad-request");
-        assert!(error.to_string().contains("stesso input"));
+        assert!(error.to_string().contains("same input"));
     }
 
     #[tokio::test]

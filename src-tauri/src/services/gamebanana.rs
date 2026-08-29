@@ -169,7 +169,7 @@ fn require_allowed_url(url: &str) -> AppResult<()> {
         Ok(())
     } else {
         Err(AppError::BadRequest(format!(
-            "GameBanana ha indicato un URL fuori dagli host consentiti: {}",
+            "GameBanana returned a URL outside the allowed hosts: {}",
             vk_core::redact::redact_url(url)
         )))
     }
@@ -755,29 +755,29 @@ async fn install_inner(
     let layout = state.layout(state.channel().await).await;
     if !layout.is_installed() {
         return Err(AppError::Configuration(
-            "Installa prima la modpack: gli addon vanno dentro la sua cartella My Stuff.".into(),
+            "Install the modpack first: addons go inside its My Stuff folder.".into(),
         ));
     }
 
     progress(ProgressUpdate::new(
         Phase::Connecting,
-        "Lettura della mod da GameBanana...",
+        "Reading the mod from GameBanana...",
     ));
 
     let item = fetch_mod(state, mod_id)
         .await?
-        .ok_or_else(|| AppError::BadRequest("Mod non disponibile su GameBanana.".into()))?;
+        .ok_or_else(|| AppError::BadRequest("Mod not available on GameBanana.".into()))?;
 
     let file = item
         .files
         .iter()
         .find(|file| file.file_id == file_id)
-        .ok_or_else(|| AppError::BadRequest("File non trovato in questa mod.".into()))?;
+        .ok_or_else(|| AppError::BadRequest("File not found in this mod.".into()))?;
 
     require_allowed_url(&file.download_url)?;
     if !addons::is_supported_archive(&file.file_name) {
         return Err(AppError::BadRequest(format!(
-            "'{}' non è un archivio che il launcher sa aprire.",
+            "'{}' is not an archive the launcher can open.",
             file.file_name
         )));
     }
@@ -813,7 +813,7 @@ async fn install_inner(
 
         progress(ProgressUpdate::new(
             Phase::Installing,
-            "Estrazione dell'addon...",
+            "Extracting the addon...",
         ));
 
         addons::import_archive_as(
@@ -838,7 +838,7 @@ async fn install_inner(
 
     progress(ProgressUpdate::new(
         Phase::Completed,
-        format!("{} installato: {} file.", addon.name, addon.file_count),
+        format!("{} installed: {} files.", addon.name, addon.file_count),
     ));
     tracing::info!(
         mod_id,

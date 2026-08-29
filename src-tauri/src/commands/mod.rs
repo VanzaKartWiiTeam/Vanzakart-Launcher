@@ -554,7 +554,7 @@ pub async fn open_known_folder(
         other => state
             .paths
             .well_known(other)
-            .ok_or_else(|| AppError::BadRequest(format!("cartella sconosciuta: {key}")))?,
+            .ok_or_else(|| AppError::BadRequest(format!("unknown folder: {key}")))?,
     };
 
     std::fs::create_dir_all(&path).map_err(|error| AppError::io(&path, error))?;
@@ -572,7 +572,7 @@ pub async fn open_external(app: AppHandle, url: String) -> AppResult<()> {
     use tauri_plugin_opener::OpenerExt;
 
     vk_core::endpoints::require_safe_endpoint(&url)
-        .map_err(|_| AppError::BadRequest("URL non consentito".into()))?;
+        .map_err(|_| AppError::BadRequest("URL not allowed".into()))?;
 
     if crate::platform::open_with_system_handler(&url) {
         return Ok(());
@@ -811,9 +811,7 @@ pub async fn mii_delete(state: Shared<'_>, id: String) -> AppResult<()> {
 pub async fn mii_import(state: Shared<'_>, source: String) -> AppResult<services::mii::MiiView> {
     let path = std::path::PathBuf::from(source.trim());
     if !services::mii::is_supported_source(&path) {
-        return Err(AppError::BadRequest(
-            "formato di file Mii non supportato".into(),
-        ));
+        return Err(AppError::BadRequest("unsupported Mii file format".into()));
     }
     services::mii::import_file(&state.inner().clone(), &path).await
 }
@@ -822,7 +820,7 @@ pub async fn mii_import(state: Shared<'_>, source: String) -> AppResult<services
 pub async fn mii_export(state: Shared<'_>, id: String, destination: String) -> AppResult<String> {
     let path = std::path::PathBuf::from(destination.trim());
     if path.as_os_str().is_empty() {
-        return Err(AppError::BadRequest("percorso di export vuoto".into()));
+        return Err(AppError::BadRequest("empty export path".into()));
     }
     services::mii::export(&state.inner().clone(), &id, &path).await
 }
@@ -951,7 +949,7 @@ pub async fn addons_import(
         .is_some_and(|value| value.eq_ignore_ascii_case("zip"))
     {
         return Err(AppError::BadRequest(
-            "sono supportati solo archivi .zip".into(),
+            "only .zip archives are supported".into(),
         ));
     }
 

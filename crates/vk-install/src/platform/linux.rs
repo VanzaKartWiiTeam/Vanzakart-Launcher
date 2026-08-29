@@ -54,8 +54,8 @@ pub fn create_shortcuts(request: &ShortcutRequest) -> Vec<Artifact> {
                 if let Some(uninstaller) = request.uninstaller {
                     let path = applications.join(UNINSTALL_DESKTOP_FILE_NAME);
                     let uninstall_entry = DesktopEntry {
-                        name: "Disinstalla VanzaKart Launcher",
-                        comment: "Rimuove il launcher VanzaKart da questo computer",
+                        name: "Uninstall VanzaKart Launcher",
+                        comment: "Removes the VanzaKart launcher from this computer",
                         executable: uninstaller,
                         arguments: "--uninstall",
                         icon: &icon,
@@ -206,7 +206,7 @@ fn install_icon(source: &Path) -> InstallResult<PathBuf> {
         .map(|value| value.to_string_lossy().to_string())
         .unwrap_or_else(|| "png".to_string());
     let target = dirs::data_dir()
-        .ok_or_else(|| InstallError::platform("cartella dati dell'utente non determinabile"))?
+        .ok_or_else(|| InstallError::platform("the user data folder could not be determined"))?
         .join("icons")
         .join("hicolor")
         .join("256x256")

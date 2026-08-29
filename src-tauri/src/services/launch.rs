@@ -41,7 +41,7 @@ pub async fn preflight(state: &Arc<AppState>) -> AppResult<Option<LaunchBlocker>
         return Ok(Some(LaunchBlocker {
             code: "mod-not-installed".into(),
             message: format!(
-                "Installa la modpack {} prima di avviare. L'altro canale resta invariato.",
+                "Install the {} modpack before starting. The other channel is left alone.",
                 channel.display_name()
             ),
             navigate_to: "mods".into(),
@@ -91,7 +91,7 @@ pub async fn preflight(state: &Arc<AppState>) -> AppResult<Option<LaunchBlocker>
         return Ok(Some(LaunchBlocker {
             code: "dolphin-is-file-manager".into(),
             message: format!(
-                "{} è il gestore di file di KDE, non l'emulatore. Quello che serve                  si chiama `dolphin-emu`: installalo con il gestore di pacchetti                  della tua distribuzione, oppure scarica l'AppImage da dolphin-emu.org                  e indicala qui.",
+                "{} is the KDE file manager, not the emulator. The one you need                  is called `dolphin-emu`: install it with your distribution's package                  manager, or download the AppImage from dolphin-emu.org and point                  the launcher at it.",
                 executable.display()
             ),
             navigate_to: "settings".into(),

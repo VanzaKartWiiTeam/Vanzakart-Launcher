@@ -91,7 +91,7 @@ pub fn versions_url(endpoints: &EndpointsInfo) -> AppResult<String> {
     };
 
     vk_core::endpoints::require_safe_endpoint(&candidate)
-        .map_err(|_| AppError::Configuration("URL di versions.json non valido".into()))?;
+        .map_err(|_| AppError::Configuration("invalid versions.json URL".into()))?;
     Ok(candidate)
 }
 
@@ -135,7 +135,7 @@ mod tests {
         ] {
             assert!(
                 vk_core::endpoints::is_safe_endpoint(url),
-                "{name} non è un endpoint sicuro: {url}"
+                "{name} is not a secure endpoint: {url}"
             );
         }
     }

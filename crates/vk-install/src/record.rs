@@ -45,14 +45,14 @@ impl ArtifactKind {
     /// Etichetta mostrata nel riepilogo della disinstallazione.
     pub const fn label(self) -> &'static str {
         match self {
-            Self::DesktopShortcut => "Collegamento sul desktop",
-            Self::StartMenuShortcut => "Voce nel menu applicazioni",
-            Self::UninstallShortcut => "Voce di disinstallazione",
-            Self::QuickLaunchShortcut => "Avvio veloce",
-            Self::Icon => "Icona dell'applicazione",
-            Self::Symlink => "Collegamento nel PATH",
-            Self::RegistryKey => "Registrazione fra i programmi installati",
-            Self::Record => "Registro dell'installazione",
+            Self::DesktopShortcut => "Desktop shortcut",
+            Self::StartMenuShortcut => "Applications menu entry",
+            Self::UninstallShortcut => "Uninstall entry",
+            Self::QuickLaunchShortcut => "Quick Launch",
+            Self::Icon => "Application icon",
+            Self::Symlink => "Command in PATH",
+            Self::RegistryKey => "Installed programs entry",
+            Self::Record => "Installation record",
         }
     }
 }
@@ -169,7 +169,7 @@ impl InstallRecord {
             .map_err(|error| InstallError::InvalidManifest(error.to_string()))?;
         if record.install_dir.as_os_str().is_empty() {
             return Err(InstallError::InvalidManifest(
-                "registro senza cartella d'installazione".into(),
+                "record without an install folder".into(),
             ));
         }
         Ok(record)

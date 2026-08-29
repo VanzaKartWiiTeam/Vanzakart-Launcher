@@ -31,12 +31,12 @@ pub async fn check_updates(state: &Arc<AppState>) -> AppResult<ModStatus> {
             let mut remote = state.remote.write().await;
             remote.info = info;
             remote.checked = true;
-            remote.message = format!("Ultimo controllo: {}", short_time());
+            remote.message = format!("Last check: {}", short_time());
         }
         Err(error) => {
             let mut remote = state.remote.write().await;
             remote.checked = false;
-            remote.message = "Controllo aggiornamenti non riuscito.".into();
+            remote.message = "Update check failed.".into();
             tracing::warn!(error = %vk_core::redact::redact(&error.to_string()), "versions.json non raggiungibile");
         }
     }
@@ -276,7 +276,7 @@ async fn install_inner(
 
     progress(ProgressUpdate::new(
         Phase::Connecting,
-        format!("Preparazione del canale {}...", channel.display_name()),
+        format!("Preparing the {} channel...", channel.display_name()),
     ));
 
     let mut context = UpdateContext::new(
@@ -296,7 +296,7 @@ async fn install_inner(
     let backup: Option<BackupSet> = if is_update {
         progress(ProgressUpdate::new(
             Phase::Backup,
-            "Salvataggio di licenze, Mii e profili...",
+            "Saving licences, Miis and profiles...",
         ));
         let set =
             vk_core::backup::create_backup(&layout, &state.paths.backups_dir(), progress, cancel)
@@ -327,7 +327,7 @@ async fn install_inner(
         Some(manifest) => {
             progress(ProgressUpdate::new(
                 Phase::Verifying,
-                "Confronto con l'installazione locale...",
+                "Comparing with the local installation...",
             ));
             match update::apply_differential(
                 &state.downloader,
@@ -345,12 +345,10 @@ async fn install_inner(
                     let reason = vk_core::redact::redact(&error.to_string());
                     tracing::warn!(%reason, "aggiornamento differenziale fallito: si passa all'archivio completo");
                     fallback_reason = Some(reason.clone());
-                    warnings.push(format!(
-                        "Aggiornamento differenziale non riuscito: {reason}"
-                    ));
+                    warnings.push(format!("Differential update failed: {reason}"));
                     progress(ProgressUpdate::new(
                         Phase::Recovery,
-                        "Aggiornamento differenziale non riuscito. Download del pacchetto completo...",
+                        "Differential update failed. Downloading the full package...",
                     ));
                     full_archive(state, &context, progress, cancel).await
                 }
@@ -366,7 +364,7 @@ async fn install_inner(
             if let Some(set) = backup.as_ref().filter(|set| !set.is_empty()) {
                 progress(ProgressUpdate::new(
                     Phase::Rollback,
-                    "Errore: ripristino dei dati utente...",
+                    "Error: restoring your data...",
                 ));
                 match vk_core::backup::restore_backup(set, progress, &CancelToken::new()).await {
                     Ok(count) => tracing::info!(
@@ -381,8 +379,8 @@ async fn install_inner(
                             "rollback fallito: i dati restano nella cartella di backup"
                         );
                         return Err(AppError::Storage(format!(
-                            "L'aggiornamento è fallito e il ripristino automatico non è riuscito. \
-                             I tuoi dati sono al sicuro nel backup {}. Copiali manualmente prima di riprovare.",
+                            "The update failed and the automatic restore did not work. \
+                             Your data is safe in backup {}. Copy it back by hand before trying again.",
                             set.backup_id
                         )));
                     }
@@ -508,7 +506,7 @@ async fn fetch_manifest(state: &Arc<AppState>, channel: Channel) -> Option<ModMa
 pub async fn set_channel(state: &Arc<AppState>, channel: Channel) -> AppResult<ModStatus> {
     if channel == Channel::Beta && !state.secrets.read().await.has_beta_token() {
         return Err(AppError::Configuration(
-            "Il canale Beta richiede un token di accesso valido.".into(),
+            "The Beta channel needs a valid access token.".into(),
         ));
     }
 
@@ -527,7 +525,7 @@ pub async fn verify_integrity(state: &Arc<AppState>) -> AppResult<IntegrityRepor
     if !layout.is_installed() {
         return Ok(IntegrityReport {
             checked: false,
-            message: "La modpack non è installata.".into(),
+            message: "The modpack is not installed.".into(),
             ..Default::default()
         });
     }
@@ -535,7 +533,7 @@ pub async fn verify_integrity(state: &Arc<AppState>) -> AppResult<IntegrityRepor
     let Some(manifest) = fetch_manifest(state, channel).await else {
         return Ok(IntegrityReport {
             checked: false,
-            message: "Manifest non disponibile: impossibile verificare l'integrità.".into(),
+            message: "Manifest unavailable: the installation cannot be checked.".into(),
             ..Default::default()
         });
     };
@@ -549,10 +547,10 @@ pub async fn verify_integrity(state: &Arc<AppState>) -> AppResult<IntegrityRepor
         mismatched: plan.to_download.iter().map(|f| f.path.clone()).collect(),
         obsolete: plan.to_delete.clone(),
         message: if plan.is_noop() {
-            "L'installazione corrisponde al manifest.".into()
+            "The installation matches the manifest.".into()
         } else {
             format!(
-                "{} file da ripristinare, {} obsoleti.",
+                "{} files to restore, {} obsolete.",
                 plan.to_download.len(),
                 plan.to_delete.len()
             )
@@ -683,7 +681,7 @@ mod tests {
         assert!(broken.installed);
         assert!(broken.needs_repair);
         assert!(
-            broken.repair_reason.contains("nessuna patch"),
+            broken.repair_reason.contains("holds no patch"),
             "{}",
             broken.repair_reason
         );
@@ -857,7 +855,7 @@ mod tests {
 
         let report = verify_integrity(&state).await.unwrap();
         assert!(!report.checked);
-        assert!(report.message.contains("non è installata"));
+        assert!(report.message.contains("not installed"));
     }
 
     #[tokio::test]

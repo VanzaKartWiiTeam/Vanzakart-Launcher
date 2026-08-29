@@ -131,28 +131,28 @@ fn flag(object: &Map<String, Value>, name: &str) -> bool {
 pub fn seed() -> Vec<NewsItem> {
     vec![
         NewsItem {
-            title: "Nuovo launcher VanzaKart".into(),
+            title: "The new VanzaKart launcher".into(),
             category: "UPDATE".into(),
             version: format!("Launcher v{}", crate::state::LAUNCHER_VERSION),
-            date_label: "Locale".into(),
+            date_label: "Local".into(),
             is_pinned: true,
-            summary: "# Launcher riscritto\n\
-                      Il launcher è ora nativo su **Windows, macOS e Linux**.\n\n\
-                      - **Aggiornamenti differenziali**: si scaricano solo i file cambiati.\n\
-                      - **Dati al sicuro**: backup automatico e ripristino verificato prima di ogni aggiornamento.\n\
-                      - *Il canale Stable e il canale Beta restano installati in parallelo.*"
+            summary: "# The launcher, rewritten\n\
+                      The launcher is now native on **Windows, macOS and Linux**.\n\n\
+                      - **Differential updates**: only the changed files are downloaded.\n\
+                      - **Your data is safe**: automatic backup and a verified restore before every update.\n\
+                      - *The Stable channel and the Beta channel stay installed side by side.*"
                 .into(),
             ..Default::default()
         },
         NewsItem {
-            title: "Le news torneranno appena il server risponde".into(),
+            title: "The news will be back as soon as the server answers".into(),
             category: "INFO".into(),
             version: String::new(),
             date_label: "Offline".into(),
             is_pinned: false,
-            summary: "Non è stato possibile leggere `news.json`. \
-                      Il launcher continua a funzionare normalmente: modpack, \
-                      impostazioni e avvio del gioco non dipendono da questa pagina."
+            summary: "`news.json` could not be read. \
+                      The launcher keeps working as usual: the modpack, the \
+                      settings and starting the game do not depend on this page."
                 .into(),
             ..Default::default()
         },

@@ -50,7 +50,7 @@ pub async fn run_legacy_import(paths: &AppPaths, sources: &[PathBuf]) -> AppResu
 
     let Some(source) = sources.iter().find(|dir| has_legacy_data(dir)) else {
         return Ok(ImportReport {
-            notes: vec!["nessuna installazione legacy trovata".into()],
+            notes: vec!["no legacy installation found".into()],
             ..Default::default()
         });
     };

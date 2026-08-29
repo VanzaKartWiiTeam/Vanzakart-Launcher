@@ -599,3 +599,37 @@ a:hover {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ---- Effetti ridotti ---- */
+
+/*
+ * Quello che si muove da solo costa un ridisegno per fotogramma: lo sfondo
+ * animato, i gradienti che scorrono sui bordi e sul pulsante PLAY, lo
+ * scintillio degli scheletri. Su una macchina che fatica — tipicamente una
+ * webview di sistema su schermo Retina — questa modalità li spegne tutti in
+ * un colpo, e non tocca né i colori né le transizioni brevi (§D-082).
+ *
+ * I selettori sono globali di proposito: le classi originali restano nel DOM
+ * anche quando Svelte le ambita, quindi da qui si raggiungono anche le
+ * animazioni dichiarate dentro i componenti.
+ */
+:root[data-effects='reduced'] .backdrop {
+  display: none;
+}
+
+:root[data-effects='reduced'] .vk-btn--primary,
+:root[data-effects='reduced'] .vk-play,
+:root[data-effects='reduced'] .vk-skeleton,
+:root[data-effects='reduced'] .hero-art img,
+:root[data-effects='reduced'] .shot.active,
+:root[data-effects='reduced'] .rail-item.active,
+:root[data-effects='reduced'] .option.selected,
+:root[data-effects='reduced'] .chip.active,
+:root[data-effects='reduced'] .channel.active {
+  animation: none;
+}
+
+:root[data-effects='reduced'] .vk-progress__fill::after {
+  animation: none;
+  opacity: 0;
+}

@@ -41,9 +41,9 @@ pub async fn status(state: &Arc<AppState>) -> BetaStatus {
         masked_token: secrets.masked_beta_token(),
         verified: false,
         message: if secrets.has_beta_token() {
-            "Token salvato.".into()
+            "Token saved.".into()
         } else {
-            "Nessun token salvato.".into()
+            "No token saved.".into()
         },
         network_error: false,
     }
@@ -53,9 +53,7 @@ pub async fn status(state: &Arc<AppState>) -> BetaStatus {
 pub async fn verify_and_store(state: &Arc<AppState>, token: &str) -> AppResult<BetaStatus> {
     let token = token.trim().to_string();
     if token.is_empty() {
-        return Err(AppError::BadRequest(
-            "Inserisci un token di accesso.".into(),
-        ));
+        return Err(AppError::BadRequest("Enter an access token.".into()));
     }
 
     let outcome = verify(state, &token).await;
@@ -137,7 +135,7 @@ async fn verify(state: &Arc<AppState>, token: &str) -> BetaStatus {
     if url.trim().is_empty() {
         return BetaStatus {
             verified: false,
-            message: "Endpoint di verifica non configurato.".into(),
+            message: "Verification endpoint not configured.".into(),
             network_error: true,
             ..Default::default()
         };
@@ -151,7 +149,7 @@ async fn verify(state: &Arc<AppState>, token: &str) -> BetaStatus {
                 Ok(response) if response.success => BetaStatus {
                     verified: true,
                     message: if response.message.trim().is_empty() {
-                        "Token valido.".into()
+                        "Token valid.".into()
                     } else {
                         response.message
                     },
@@ -160,7 +158,7 @@ async fn verify(state: &Arc<AppState>, token: &str) -> BetaStatus {
                 Ok(response) => BetaStatus {
                     verified: false,
                     message: if response.error.trim().is_empty() {
-                        "Token di accesso non valido.".into()
+                        "Invalid access token.".into()
                     } else {
                         response.error
                     },
@@ -168,7 +166,7 @@ async fn verify(state: &Arc<AppState>, token: &str) -> BetaStatus {
                 },
                 Err(_) => BetaStatus {
                     verified: false,
-                    message: "Risposta non valida dal server di verifica.".into(),
+                    message: "Invalid response from the verification server.".into(),
                     network_error: true,
                     ..Default::default()
                 },
@@ -181,7 +179,7 @@ async fn verify(state: &Arc<AppState>, token: &str) -> BetaStatus {
             );
             BetaStatus {
                 verified: false,
-                message: "Server di verifica non raggiungibile. Riprova più tardi.".into(),
+                message: "Verification server unreachable. Try again later.".into(),
                 network_error: true,
                 ..Default::default()
             }

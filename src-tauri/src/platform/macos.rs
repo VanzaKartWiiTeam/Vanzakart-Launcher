@@ -16,15 +16,14 @@ pub fn degrade_graphics() {}
 /// errore che parla di connessioni, non di permessi (§D-067).
 pub fn preflight() -> Result<(), String> {
     if super::launched_as_root() {
-        return Err("Il launcher è stato avviato come root (sudo).
+        return Err("The launcher was started as root (sudo).
 
-Un'applicazione grafica avviata con sudo non riesce a collegarsi a WindowServer
-e non apre nessuna finestra; in più impostazioni e salvataggi finirebbero nella
-cartella di root invece che nella tua.
+A graphical application started with sudo cannot talk to WindowServer and opens
+no window; on top of that, settings and saves would end up in root's folder
+instead of yours.
 
-Riavvialo normalmente, con un doppio clic o con \"open -a\". Il launcher non ha
-bisogno di privilegi di amministratore. Se vuoi comunque proseguire, imposta
-VK_ALLOW_ROOT=1."
+Start it normally, with a double click or with \"open -a\". The launcher needs no
+administrator rights. If you want to continue anyway, set VK_ALLOW_ROOT=1."
             .into());
     }
 

@@ -1,10 +1,13 @@
 /** Formattazione dei numeri mostrati nella procedura guidata. */
 
+import { i18n } from '$setup/lib/i18n/store.svelte';
+
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB'];
 
 /**
  * Byte in forma leggibile, con la stessa scala del backend
- * (`vk_core::progress::format_bytes`) e la virgola decimale italiana.
+ * (`vk_core::progress::format_bytes`) e il separatore decimale della lingua
+ * scelta: 1,5 GB in italiano, 1.5 GB in inglese.
  */
 export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes <= 0) return '0 B';
@@ -17,7 +20,7 @@ export function formatBytes(bytes: number): string {
   }
 
   const decimals = size >= 100 || unit === 0 ? 0 : 1;
-  return `${size.toLocaleString('it-IT', {
+  return `${size.toLocaleString(i18n.tag, {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
   })} ${UNITS[unit]}`;
@@ -28,7 +31,7 @@ export function formatDate(value: string): string {
   if (!value) return '';
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString('it-IT', {
+  return parsed.toLocaleDateString(i18n.tag, {
     day: '2-digit',
     month: 'long',
     year: 'numeric'

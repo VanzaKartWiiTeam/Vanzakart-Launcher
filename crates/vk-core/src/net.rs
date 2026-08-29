@@ -41,7 +41,7 @@ impl DownloadOutcome {
     pub fn summary(&self, label: &str) -> String {
         let seconds = self.elapsed.as_secs_f64().max(0.001);
         format!(
-            "{label}: {} in {:.2}s ({}/s), tentativi={}, retry={}, sorgente={}",
+            "{label}: {} in {:.2}s ({}/s), attempts={}, retries={}, source={}",
             crate::progress::format_bytes(self.bytes_received),
             self.elapsed.as_secs_f64(),
             crate::progress::format_bytes((self.bytes_received as f64 / seconds) as u64),
@@ -271,7 +271,7 @@ impl Downloader {
         let candidates = dedupe_urls(urls);
         if candidates.is_empty() {
             return Err(CoreError::InvalidUrl(
-                "serve almeno un URL di download".into(),
+                "at least one download URL is needed".into(),
             ));
         }
 
@@ -282,10 +282,7 @@ impl Downloader {
             cancel.check()?;
 
             if self.require_allowed_source(url).is_err() {
-                errors.push(format!(
-                    "{} -> URL non sicuro",
-                    crate::redact::redact_url(url)
-                ));
+                errors.push(format!("{} -> unsafe URL", crate::redact::redact_url(url)));
                 continue;
             }
 
@@ -336,7 +333,7 @@ impl Downloader {
         let mut request = self.client.get(url);
         if existing > 0 {
             let value = HeaderValue::from_str(&format!("bytes={existing}-"))
-                .map_err(|_| CoreError::InvalidUrl("intestazione Range non valida".into()))?;
+                .map_err(|_| CoreError::InvalidUrl("invalid Range header".into()))?;
             request = request.header(RANGE, value);
         }
 
@@ -349,7 +346,7 @@ impl Downloader {
             if let Some(total) = content_range_total(response.headers().get(CONTENT_RANGE)) {
                 if total == existing {
                     progress(
-                        ProgressUpdate::new(crate::progress::Phase::Download, "Già scaricato")
+                        ProgressUpdate::new(crate::progress::Phase::Download, "Already downloaded")
                             .with_bytes(existing, existing),
                     );
                     return Ok(Transfer {
@@ -412,7 +409,7 @@ impl Downloader {
             if since_last_report >= DOWNLOAD_BUFFER_SIZE {
                 since_last_report = 0;
                 progress(
-                    ProgressUpdate::new(crate::progress::Phase::Download, "Download in corso")
+                    ProgressUpdate::new(crate::progress::Phase::Download, "Downloading")
                         .with_bytes(current, total.max(current)),
                 );
             }
@@ -423,7 +420,7 @@ impl Downloader {
             .map_err(|e| CoreError::io(destination, e))?;
 
         progress(
-            ProgressUpdate::new(crate::progress::Phase::Download, "Download completato")
+            ProgressUpdate::new(crate::progress::Phase::Download, "Download complete")
                 .with_bytes(current, total.max(current)),
         );
 

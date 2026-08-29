@@ -106,7 +106,7 @@ pub fn read(path: &Path) -> DolphinResult<ModXml> {
     let metadata = std::fs::metadata(path).map_err(|error| DolphinError::io(path, error))?;
     if metadata.len() > MAX_XML_BYTES {
         return Err(DolphinError::ModIncomplete(format!(
-            "{}: il descrittore Riivolution è troppo grande ({} byte)",
+            "{}: the Riivolution descriptor is too large ({} bytes)",
             file_name(path),
             metadata.len()
         )));
@@ -125,21 +125,21 @@ pub fn validate(path: &Path, section: &str) -> DolphinResult<()> {
 
     if !xml.has_wiidisc || xml.patches == 0 {
         return Err(DolphinError::ModIncomplete(format!(
-            "{}: il descrittore Riivolution non contiene nessuna patch",
+            "{}: the Riivolution descriptor holds no patch",
             file_name(path)
         )));
     }
 
     if !xml.has_section(section) {
         return Err(DolphinError::ModIncomplete(format!(
-            "{}: il descrittore Riivolution non dichiara la sezione «{section}»",
+            "{}: the Riivolution descriptor declares no «{section}» section",
             file_name(path)
         )));
     }
 
     if !xml.has_option(section, crate::riivolution::PACK_OPTION) {
         return Err(DolphinError::ModIncomplete(format!(
-            "{}: la sezione «{section}» non dichiara l'opzione «{}»",
+            "{}: the «{section}» section declares no «{}» option",
             file_name(path),
             crate::riivolution::PACK_OPTION
         )));
@@ -445,7 +445,7 @@ mod tests {
 
         let error = validate(&path, "VanzaKart").unwrap_err();
         assert!(matches!(error, DolphinError::ModIncomplete(_)));
-        assert!(error.to_string().contains("nessuna patch"), "{error}");
+        assert!(error.to_string().contains("holds no patch"), "{error}");
     }
 
     #[test]

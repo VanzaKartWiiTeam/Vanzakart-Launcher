@@ -506,6 +506,14 @@ export const en: Dictionary = {
   'debug.purgeFailed': 'Could not clear the data',
   'debug.installState': 'Installation state',
   'debug.copyReport': 'Copy report',
+  'debug.performance': 'Window performance',
+  'debug.performanceBody':
+    'Frames per second being drawn right now. If they stay low, turn the effects below off and see whether they climb.',
+  'debug.fps': '{fps} fps',
+  'debug.pixelRatio': 'Screen pixels per point',
+  'debug.reducedEffects': 'Reduced visual effects',
+  'debug.reducedEffectsBody':
+    'Turns off the animated backdrop and the scrolling gradients. Colours and layout stay as they are.',
   'debug.log': 'Launcher log',
   'debug.backups': 'User data backups',
   'debug.openFolder': 'Open folder',

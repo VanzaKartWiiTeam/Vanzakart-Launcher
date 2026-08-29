@@ -251,7 +251,7 @@ pub fn setup_launch(executable: String) -> SetupResult<()> {
     if !path.exists() {
         return Err(SetupError::new(
             "executable-not-found",
-            format!("{} non esiste", path.display()),
+            format!("{} does not exist", path.display()),
         ));
     }
     platform::launch_detached(&path)?;

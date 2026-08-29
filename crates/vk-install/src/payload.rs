@@ -62,7 +62,7 @@ fn extract_zip(
 ) -> InstallResult<Vec<PathBuf>> {
     progress(ProgressUpdate::new(
         Phase::Installing,
-        "Estrazione del pacchetto",
+        "Extracting the package",
     ));
 
     let options = vk_core::zipx::ExtractOptions {
@@ -85,7 +85,7 @@ fn extract_tar_gz(
 ) -> InstallResult<Vec<PathBuf>> {
     progress(ProgressUpdate::new(
         Phase::Installing,
-        "Estrazione del bundle",
+        "Extracting the bundle",
     ));
 
     let file = std::fs::File::open(archive).map_err(|error| InstallError::io(archive, error))?;

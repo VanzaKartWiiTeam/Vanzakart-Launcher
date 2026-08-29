@@ -304,7 +304,7 @@ pub fn detect_crc_mode(data: &[u8]) -> Option<Crc32Mode> {
 pub fn write_global_crc(data: &mut [u8], mode: Crc32Mode) -> SaveResult<()> {
     if data.len() < GLOBAL_CRC_OFFSET + 4 {
         return Err(SaveError::InvalidSave(
-            "il salvataggio è troppo corto per contenere il CRC globale".into(),
+            "the save file is too short to hold the global CRC".into(),
         ));
     }
 
@@ -317,19 +317,18 @@ pub fn write_global_crc(data: &mut [u8], mode: Crc32Mode) -> SaveResult<()> {
 fn writable_license(data: &[u8], license: usize) -> SaveResult<(usize, Crc32Mode)> {
     if !has_rksys_magic(data) {
         return Err(SaveError::InvalidSave(
-            "il file selezionato non è un salvataggio di Mario Kart Wii".into(),
+            "the selected file is not a Mario Kart Wii save".into(),
         ));
     }
 
     let mode = detect_crc_mode(data).ok_or_else(|| {
         SaveError::InvalidSave(
-            "il checksum del salvataggio non è verificabile: il file non è stato modificato".into(),
+            "the save checksum cannot be verified: the file was not changed".into(),
         )
     })?;
 
-    let base = license_base(data, license).ok_or_else(|| {
-        SaveError::InvalidSave("la licenza selezionata è vuota o non valida".into())
-    })?;
+    let base = license_base(data, license)
+        .ok_or_else(|| SaveError::InvalidSave("the selected licence is empty or invalid".into()))?;
 
     Ok((base, mode))
 }
@@ -346,7 +345,7 @@ fn writable_license(data: &[u8], license: usize) -> SaveResult<(usize, Crc32Mode
 pub fn add_friend(data: &mut [u8], license: usize, profile_id: u32) -> SaveResult<usize> {
     if profile_id == 0 {
         return Err(SaveError::InvalidFriendCode(
-            "il friend code non è valido".into(),
+            "the friend code is not valid".into(),
         ));
     }
 
@@ -357,7 +356,7 @@ pub fn add_friend(data: &mut [u8], license: usize, profile_id: u32) -> SaveResul
         .any(|friend| friend.profile_id == profile_id)
     {
         return Err(SaveError::InvalidFriendCode(
-            "questo amico è già nella lista".into(),
+            "this friend is already on the list".into(),
         ));
     }
 
@@ -367,7 +366,7 @@ pub fn add_friend(data: &mut [u8], license: usize, profile_id: u32) -> SaveResul
     let slot = (0..FRIEND_SLOTS)
         .find(|slot| read_u32(data, main_base + slot * FRIEND_STRIDE + FRIEND_PROFILE_ID) == 0)
         .ok_or_else(|| {
-            SaveError::InvalidSave("la lista amici è piena (massimo 30 amici)".into())
+            SaveError::InvalidSave("the friend list is full (30 friends at most)".into())
         })?;
 
     let pointer = main_base + slot * FRIEND_STRIDE;
@@ -446,7 +445,7 @@ pub fn update_license_mii(
 ) -> SaveResult<()> {
     if block.len() != mii::BLOCK_SIZE {
         return Err(SaveError::InvalidMii(format!(
-            "un blocco Mii Wii deve essere di {} byte, ricevuti {}",
+            "a Wii Mii block must be {} bytes, got {}",
             mii::BLOCK_SIZE,
             block.len()
         )));
@@ -463,7 +462,7 @@ pub fn update_license_mii(
     };
     if mii_id == 0 {
         return Err(SaveError::InvalidMii(
-            "il Mii selezionato non ha un identificativo valido".into(),
+            "the selected Mii has no valid identifier".into(),
         ));
     }
 
@@ -512,7 +511,7 @@ pub fn has_rksys_magic(data: &[u8]) -> bool {
 pub fn verify_global_crc(data: &[u8]) -> SaveResult<()> {
     if data.len() < GLOBAL_CRC_OFFSET + 4 {
         return Err(SaveError::InvalidSave(
-            "il file è troppo corto per contenere il CRC globale".into(),
+            "the file is too short to hold the global CRC".into(),
         ));
     }
 

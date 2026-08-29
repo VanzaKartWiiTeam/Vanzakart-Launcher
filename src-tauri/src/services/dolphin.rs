@@ -80,7 +80,7 @@ pub async fn update_paths(
             let path = PathBuf::from(value.trim());
             if !value.trim().is_empty() && !path.exists() {
                 return Err(AppError::BadRequest(
-                    "il percorso di Dolphin indicato non esiste".into(),
+                    "the Dolphin path does not exist".into(),
                 ));
             }
             settings.dolphin_path = value;
@@ -90,12 +90,10 @@ pub async fn update_paths(
             let path = PathBuf::from(value.trim());
             if !value.trim().is_empty() {
                 if !path.is_file() {
-                    return Err(AppError::BadRequest("il file della ROM non esiste".into()));
+                    return Err(AppError::BadRequest("the ROM file does not exist".into()));
                 }
                 if !vk_dolphin::riivolution::has_rom_extension(&path) {
-                    return Err(AppError::BadRequest(
-                        "estensione della ROM non supportata".into(),
-                    ));
+                    return Err(AppError::BadRequest("unsupported ROM extension".into()));
                 }
             }
             settings.rom_path = value;
@@ -105,7 +103,7 @@ pub async fn update_paths(
             let path = PathBuf::from(value.trim());
             if !value.trim().is_empty() && !path.is_dir() {
                 return Err(AppError::BadRequest(
-                    "la cartella User indicata non esiste".into(),
+                    "the User folder does not exist".into(),
                 ));
             }
             settings.user_folder_path = value;
@@ -165,7 +163,7 @@ pub async fn backup_config(state: &Arc<AppState>) -> AppResult<String> {
     let config = ConfigPaths::from_user_folder(&user_folder).config_dir;
     if !config.is_dir() {
         return Err(AppError::Configuration(
-            "la cartella Config di Dolphin non esiste".into(),
+            "the Dolphin Config folder does not exist".into(),
         ));
     }
 
@@ -196,7 +194,7 @@ pub async fn restore_config(state: &Arc<AppState>, archive: &Path) -> AppResult<
 
     if !archive.is_file() {
         return Err(AppError::BadRequest(
-            "il file di backup indicato non esiste".into(),
+            "the backup file does not exist".into(),
         ));
     }
 
@@ -256,7 +254,7 @@ pub async fn delete_game_settings(state: &Arc<AppState>) -> AppResult<Vec<String
 fn require_user_folder(user_folder: &Path) -> AppResult<()> {
     if user_folder.as_os_str().is_empty() || !user_folder.is_dir() {
         return Err(AppError::Configuration(
-            "Seleziona prima la cartella User di Dolphin.".into(),
+            "Select the Dolphin User folder first.".into(),
         ));
     }
     Ok(())
@@ -347,7 +345,7 @@ mod tests {
         let error = update_paths(&state, None, Some(rom.to_string_lossy().to_string()), None)
             .await
             .unwrap_err();
-        assert!(error.to_string().contains("estensione"));
+        assert!(error.to_string().contains("extension"));
     }
 
     #[tokio::test]

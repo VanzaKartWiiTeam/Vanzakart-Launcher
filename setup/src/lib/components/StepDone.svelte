@@ -3,6 +3,7 @@
   import Icon from '$lib/components/Icon.svelte';
   import type { InstallReport } from '$setup/lib/api';
   import { formatBytes } from '$setup/lib/format';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let { report, launchAfter = $bindable() }: { report: InstallReport; launchAfter: boolean } =
     $props();
@@ -16,32 +17,30 @@
 
 <div class="vk-view-enter view">
   <header>
-    <p class="vk-eyebrow">Fatto</p>
-    <h1 class="vk-title">VanzaKart Launcher {report.version} è installato</h1>
-    <p class="vk-subtitle">
-      Al primo avvio il launcher chiede dove sono Dolphin e la ROM, poi scarica la modpack.
-    </p>
+    <p class="vk-eyebrow">{t('done.eyebrow')}</p>
+    <h1 class="vk-title">{t('done.title', { version: report.version })}</h1>
+    <p class="vk-subtitle">{t('done.subtitle')}</p>
   </header>
 
   <section class="vk-card">
     <dl class="summary">
       <div>
-        <dt>Cartella</dt>
+        <dt>{t('done.folder')}</dt>
         <dd class="vk-mono">{report.installDir}</dd>
       </div>
       <div>
-        <dt>Spazio occupato</dt>
+        <dt>{t('done.size')}</dt>
         <dd>{formatBytes(report.bytes)}</dd>
       </div>
       {#if report.uninstaller}
         <div>
-          <dt>Disinstallatore</dt>
+          <dt>{t('done.uninstaller')}</dt>
           <dd class="vk-mono">{report.uninstaller}</dd>
         </div>
       {/if}
       {#if report.backup}
         <div>
-          <dt>Backup delle impostazioni</dt>
+          <dt>{t('done.backup')}</dt>
           <dd class="vk-mono">{report.backup}</dd>
         </div>
       {/if}
@@ -61,7 +60,7 @@
 
   <label class="launch">
     <input type="checkbox" bind:checked={launchAfter} />
-    <span>Avvia VanzaKart Launcher alla chiusura</span>
+    <span>{t('done.launchAfter')}</span>
   </label>
 </div>
 

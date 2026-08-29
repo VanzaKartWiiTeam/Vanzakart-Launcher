@@ -12,6 +12,7 @@
 
   import Icon from '$lib/components/Icon.svelte';
   import logo from '$lib/assets/logo.png';
+  import { i18n, t, LOCALES, LOCALE_LABELS } from '$setup/lib/i18n/store.svelte';
 
   let { subtitle = '', busy = false }: { subtitle?: string; busy?: boolean } = $props();
 
@@ -36,15 +37,33 @@
   </div>
 
   <div class="controls">
-    <button class="chrome" onclick={minimize} aria-label="Riduci a icona">
+    <!--
+      La lingua si sceglie qui: l'installer non ha una pagina impostazioni, e
+      la prima schermata deve poter cambiare lingua senza cercarla (§D-081).
+    -->
+    <div class="languages" role="group" aria-label={t('titlebar.language')}>
+      {#each LOCALES as code (code)}
+        <button
+          class="lang"
+          class:lang--active={i18n.locale === code}
+          onclick={() => i18n.set(code)}
+          lang={code}
+          title={LOCALE_LABELS[code]}
+        >
+          {code.toUpperCase()}
+        </button>
+      {/each}
+    </div>
+
+    <button class="chrome" onclick={minimize} aria-label={t('titlebar.minimize')}>
       <Icon name="minimize" size={14} />
     </button>
     <button
       class="chrome chrome--close"
       onclick={close}
-      aria-label="Chiudi"
+      aria-label={t('titlebar.close')}
       disabled={busy}
-      title={busy ? 'Attendi la fine dell’operazione in corso' : 'Chiudi'}
+      title={busy ? t('titlebar.busy') : t('titlebar.close')}
     >
       <Icon name="close" size={13} />
     </button>
@@ -86,7 +105,37 @@
 
   .controls {
     display: flex;
+    align-items: center;
     gap: 2px;
+  }
+
+  .languages {
+    display: flex;
+    gap: 2px;
+    margin-right: 8px;
+  }
+
+  .lang {
+    padding: 4px 8px;
+    border: 1px solid transparent;
+    border-radius: var(--vk-radius-badge);
+    background: transparent;
+    color: var(--vk-text-faint);
+    font-size: var(--vk-fs-micro);
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    transition:
+      color var(--vk-dur-fast) var(--vk-ease),
+      border-color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .lang:hover {
+    color: var(--vk-text);
+  }
+
+  .lang--active {
+    color: var(--vk-text);
+    border-color: var(--vk-cyan);
   }
 
   .chrome {

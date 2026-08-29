@@ -24,7 +24,7 @@ impl SetupError {
     }
 
     pub fn busy() -> Self {
-        Self::new("busy", "Un'operazione è già in corso.")
+        Self::new("busy", "An operation is already running.")
     }
 
     pub fn code(&self) -> &str {
@@ -67,7 +67,9 @@ mod tests {
     fn an_install_error_keeps_its_code() {
         let error: SetupError = InstallError::NotInstalled.into();
         assert_eq!(error.code(), "not-installed");
-        assert!(error.to_string().contains("nessuna installazione"));
+        assert!(error
+            .to_string()
+            .contains("no VanzaKart Launcher installation"));
     }
 
     #[test]

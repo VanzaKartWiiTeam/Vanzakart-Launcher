@@ -18,7 +18,7 @@ impl AppPaths {
     /// Radice predefinita per la piattaforma corrente.
     pub fn discover() -> AppResult<Self> {
         let base = dirs::data_dir().ok_or_else(|| {
-            AppError::Storage("impossibile determinare la cartella dati dell'utente".into())
+            AppError::Storage("the user data folder could not be determined".into())
         })?;
         Ok(Self::at(base.join("VanzaKart").join("Launcher")))
     }

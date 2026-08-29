@@ -312,7 +312,7 @@ pub fn require_safe_endpoint(candidate: &str) -> CoreResult<url::Url> {
     if !is_safe_endpoint(candidate) {
         return Err(CoreError::InvalidUrl(crate::redact::redact_url(candidate)));
     }
-    url::Url::parse(candidate.trim()).map_err(|_| CoreError::InvalidUrl("URL non valido".into()))
+    url::Url::parse(candidate.trim()).map_err(|_| CoreError::InvalidUrl("invalid URL".into()))
 }
 
 // ---------------------------------------------------------------------------

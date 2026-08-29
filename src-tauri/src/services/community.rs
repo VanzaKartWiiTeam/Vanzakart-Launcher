@@ -192,20 +192,18 @@ pub async fn rooms(state: &Arc<AppState>) -> AppResult<RoomsSummary> {
     let url = state.endpoints.read().await.rooms_api_url.clone();
     if url.trim().is_empty() {
         return Err(AppError::Configuration(
-            "endpoint delle stanze non configurato".into(),
+            "rooms endpoint not configured".into(),
         ));
     }
 
     let raw = state.downloader.get_string(&url).await?;
-    let payload: Value =
-        serde_json::from_str(vk_core::json::strip_leading_noise(&raw)).map_err(|error| {
-            AppError::Internal(format!("risposta delle stanze non valida: {error}"))
-        })?;
+    let payload: Value = serde_json::from_str(vk_core::json::strip_leading_noise(&raw))
+        .map_err(|error| AppError::Internal(format!("invalid rooms response: {error}")))?;
 
     let listed = loose::pick(&payload, &["rooms"]).is_some();
     if !loose::flag(&payload, &["success"]) && !listed {
         return Err(AppError::Internal(
-            "il server ha restituito una risposta non valida".into(),
+            "the server returned an invalid response".into(),
         ));
     }
 
@@ -313,7 +311,7 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
     let base = state.endpoints.read().await.leaderboard_api_url.clone();
     if base.trim().is_empty() {
         return Err(AppError::Configuration(
-            "endpoint della classifica non configurato".into(),
+            "leaderboard endpoint not configured".into(),
         ));
     }
 
@@ -321,10 +319,8 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
     let url = format!("{base}{separator}limit={LEADERBOARD_PAGE_SIZE}&offset={offset}");
 
     let raw = state.downloader.get_string(&url).await?;
-    let payload: Value =
-        serde_json::from_str(vk_core::json::strip_leading_noise(&raw)).map_err(|error| {
-            AppError::Internal(format!("risposta della classifica non valida: {error}"))
-        })?;
+    let payload: Value = serde_json::from_str(vk_core::json::strip_leading_noise(&raw))
+        .map_err(|error| AppError::Internal(format!("invalid leaderboard response: {error}")))?;
 
     let mut entries: Vec<LeaderboardEntry> = loose::array(&payload, &["players"])
         .iter()

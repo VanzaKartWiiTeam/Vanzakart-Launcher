@@ -49,8 +49,8 @@
     "resources": ["resources/*"],
     "copyright": "VanzaKart",
     "category": "Utility",
-    "shortDescription": "Installa e disinstalla VanzaKart Launcher",
-    "longDescription": "Scarica e installa VanzaKart Launcher sul computer, crea le scorciatoie e lo rimuove quando serve.",
+    "shortDescription": "Installs and uninstalls VanzaKart Launcher",
+    "longDescription": "Downloads and installs VanzaKart Launcher on this computer, creates the shortcuts, and removes it when you no longer need it.",
     "publisher": "VanzaKart",
     "linux": {
       "deb": {

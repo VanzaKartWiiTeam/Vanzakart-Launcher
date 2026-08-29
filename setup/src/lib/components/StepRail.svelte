@@ -5,6 +5,7 @@
    * quelli futuri sono spenti.
    */
   import Icon from '$lib/components/Icon.svelte';
+  import { t } from '$setup/lib/i18n/store.svelte';
 
   let {
     steps,
@@ -12,7 +13,7 @@
   }: { steps: { key: string; label: string; hint: string }[]; current: number } = $props();
 </script>
 
-<nav class="rail" aria-label="Passi dell'installazione">
+<nav class="rail" aria-label={t('rail.nav')}>
   <ol>
     {#each steps as step, index (step.key)}
       <li

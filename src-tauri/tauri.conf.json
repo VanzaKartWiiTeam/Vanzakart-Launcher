@@ -58,8 +58,8 @@
     "resources": ["resources/*"],
     "copyright": "VanzaKart",
     "category": "Game",
-    "shortDescription": "Launcher per la modpack VanzaKart di Mario Kart Wii",
-    "longDescription": "Installa, aggiorna e avvia la modpack VanzaKart su Dolphin con patch Riivolution, gestione dei Mii e delle licenze.",
+    "shortDescription": "Launcher for the VanzaKart Mario Kart Wii modpack",
+    "longDescription": "Installs, updates and starts the VanzaKart modpack on Dolphin with Riivolution patches, Mii and licence management.",
     "publisher": "VanzaKart",
     "windows": {
       "nsis": {

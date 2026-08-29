@@ -33,13 +33,13 @@ pub fn run() {
     platform::handle_probe_if_requested();
 
     // Poi, prima di tutto il resto: se la finestra non può aprirsi lo si dice
-    // qui, in italiano, invece di lasciare che sia GTK a morire con un panic
+    // qui, per esteso, invece di lasciare che sia GTK a morire con un panic
     // (§D-067). Va prima anche della cartella dati, così un avvio da root non
     // lascia file di root in giro.
     if let Err(reason) = platform::preflight() {
         eprintln!(
             "
-VanzaKart Launcher non può avviarsi.
+VanzaKart Launcher cannot start.
 
 {reason}
 "
@@ -53,7 +53,7 @@ VanzaKart Launcher non può avviarsi.
     let paths = match storage::paths::AppPaths::discover() {
         Ok(paths) => paths,
         Err(error) => {
-            eprintln!("Impossibile determinare la cartella dati: {error}");
+            eprintln!("The data folder could not be determined: {error}");
             std::process::exit(1);
         }
     };
@@ -71,7 +71,7 @@ VanzaKart Launcher non può avviarsi.
     let state = runtime
         .block_on(state::AppState::bootstrap(paths))
         .unwrap_or_else(|error| {
-            eprintln!("Avvio non riuscito: {error}");
+            eprintln!("Startup failed: {error}");
             std::process::exit(1);
         });
 

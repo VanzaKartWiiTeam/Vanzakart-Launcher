@@ -103,7 +103,7 @@ impl ReleasePackage {
             .or_else(|| PackageFormat::infer(&self.url))
             .ok_or_else(|| {
                 InstallError::InvalidManifest(format!(
-                    "formato del pacchetto non riconoscibile da {}",
+                    "package format not recognisable from {}",
                     vk_core::redact::redact_url(&self.url)
                 ))
             })
@@ -111,21 +111,19 @@ impl ReleasePackage {
 
     fn validate(&self, key: &str) -> InstallResult<()> {
         if self.url.trim().is_empty() {
-            return Err(InstallError::InvalidManifest(format!(
-                "{key}: url mancante"
-            )));
+            return Err(InstallError::InvalidManifest(format!("{key}: url missing")));
         }
         for url in self.urls() {
             if !is_acceptable_source(&url) {
                 return Err(InstallError::InvalidManifest(format!(
-                    "{key}: gli URL devono essere https, trovato {}",
+                    "{key}: URLs must be https, found {}",
                     vk_core::redact::redact_url(&url)
                 )));
             }
         }
         if !self.sha256.is_empty() && !vk_core::hash::is_valid_sha256(&self.sha256) {
             return Err(InstallError::InvalidManifest(format!(
-                "{key}: sha256 non valido"
+                "{key}: invalid sha256"
             )));
         }
         self.format()?;
@@ -178,14 +176,12 @@ impl ReleaseManifest {
     pub fn validate(&self) -> InstallResult<()> {
         if !is_valid_version(&self.version) {
             return Err(InstallError::InvalidManifest(format!(
-                "versione non valida: {}",
+                "invalid version: {}",
                 self.version
             )));
         }
         if self.platforms.is_empty() {
-            return Err(InstallError::InvalidManifest(
-                "nessuna piattaforma dichiarata".into(),
-            ));
+            return Err(InstallError::InvalidManifest("no platform declared".into()));
         }
         for (key, package) in &self.platforms {
             package.validate(key)?;
@@ -193,7 +189,7 @@ impl ReleaseManifest {
         for (key, download) in &self.setup {
             if !is_acceptable_source(&download.url) {
                 return Err(InstallError::InvalidManifest(format!(
-                    "setup/{key}: gli URL devono essere https"
+                    "setup/{key}: URLs must be https"
                 )));
             }
         }
@@ -349,14 +345,14 @@ mod tests {
     fn an_unknown_extension_is_refused() {
         let raw = SAMPLE.replace(".zip", ".bin");
         let error = ReleaseManifest::parse(&raw).expect_err("formato");
-        assert!(error.to_string().contains("formato"));
+        assert!(error.to_string().contains("format"));
     }
 
     #[test]
     fn an_empty_manifest_is_refused() {
         let error = ReleaseManifest::parse(r#"{"version":"2.0.0","platforms":{}}"#)
             .expect_err("piattaforme");
-        assert!(error.to_string().contains("nessuna piattaforma"));
+        assert!(error.to_string().contains("no platform"));
     }
 
     #[test]

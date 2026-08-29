@@ -103,7 +103,7 @@ pub async fn status(state: &Arc<AppState>) -> AppResult<MusicPackStatus> {
 
     let blocker = if !layout.is_installed() {
         format!(
-            "Installa prima la modpack {}: il music pack va dentro la sua cartella My Stuff.",
+            "Install the {} modpack first: the music pack goes inside its My Stuff folder.",
             channel.display_name()
         )
     } else {
@@ -154,7 +154,7 @@ async fn install_inner(
 
     if !layout.is_installed() {
         return Err(AppError::Configuration(format!(
-            "Installa prima la modpack {}: il music pack va dentro la sua cartella My Stuff.",
+            "Install the {} modpack first: the music pack goes inside its My Stuff folder.",
             channel.display_name()
         )));
     }
@@ -178,9 +178,9 @@ async fn install_inner(
     progress(ProgressUpdate::new(
         Phase::Connecting,
         if already_installed {
-            "Controllo degli aggiornamenti del music pack..."
+            "Checking for music pack updates..."
         } else {
-            "Preparazione del music pack..."
+            "Preparing the music pack..."
         },
     ));
 
@@ -209,7 +209,7 @@ async fn install_inner(
                     tracing::warn!(%reason, "aggiornamento differenziale del music pack fallito: archivio completo");
                     progress(ProgressUpdate::new(
                         Phase::Recovery,
-                        "Aggiornamento differenziale non riuscito. Download del pacchetto completo...",
+                        "Differential update failed. Downloading the full package...",
                     ));
                 }
             }
@@ -250,7 +250,7 @@ async fn install_full(
     let candidates = plan.archive_candidates();
     if candidates.is_empty() {
         return Err(AppError::Configuration(
-            "Nessun URL configurato per il music pack.".into(),
+            "No URL configured for the music pack.".into(),
         ));
     }
 
@@ -261,7 +261,7 @@ async fn install_full(
 
     progress(ProgressUpdate::new(
         Phase::Download,
-        "Download del music pack ufficiale...",
+        "Downloading the official music pack...",
     ));
 
     let download = state
@@ -274,7 +274,7 @@ async fn install_full(
 
         progress(ProgressUpdate::new(
             Phase::Verifying,
-            "Verifica dell'integrità dell'archivio...",
+            "Verifying the archive...",
         ));
 
         let expected = state
@@ -298,7 +298,7 @@ async fn install_full(
 
         progress(ProgressUpdate::new(
             Phase::Installing,
-            "Estrazione e installazione in My Stuff...",
+            "Extracting and installing into My Stuff...",
         ));
 
         let addon = addons::import_archive_as(
@@ -330,7 +330,7 @@ async fn install_full(
         version: String::new(),
         files_written: addon.file_count as u32,
         files_pruned: 0,
-        summary: format!("Music pack installato: {} file.", addon.file_count),
+        summary: format!("Music pack installed: {} files.", addon.file_count),
     })
 }
 
@@ -384,7 +384,7 @@ async fn update_differential(
 
     progress(ProgressUpdate::new(
         Phase::Verifying,
-        "Confronto con i file già installati...",
+        "Comparing with the files already installed...",
     ));
 
     let changed = changed_files(&payload, manifest, cancel).await?;
@@ -396,7 +396,7 @@ async fn update_differential(
             version: manifest.mod_version.clone(),
             files_written: 0,
             files_pruned: 0,
-            summary: "Il music pack è già aggiornato.".into(),
+            summary: "The music pack is already up to date.".into(),
         });
     }
 
@@ -428,7 +428,7 @@ async fn update_differential(
         files_written: changed.len() as u32,
         files_pruned: obsolete.len() as u32,
         summary: format!(
-            "Music pack aggiornato: {} file scaricati, {} rimossi.",
+            "Music pack updated: {} files downloaded, {} removed.",
             changed.len(),
             obsolete.len()
         ),
@@ -539,7 +539,7 @@ async fn download_changed(
     }
 
     progress(
-        ProgressUpdate::new(Phase::Verifying, "Tutti i file scaricati e verificati.")
+        ProgressUpdate::new(Phase::Verifying, "All files downloaded and verified.")
             .with_bytes(done_bytes, total_bytes.max(1))
             .with_files(changed.len() as u32, changed.len() as u32),
     );
@@ -561,7 +561,7 @@ async fn apply_staged(
 ) -> AppResult<()> {
     progress(ProgressUpdate::new(
         Phase::Installing,
-        "Applicazione dell'aggiornamento...",
+        "Applying the update...",
     ));
 
     let mut addon = addons::read_manifest(layout, OFFICIAL_MUSIC_PACK_ID).await?;

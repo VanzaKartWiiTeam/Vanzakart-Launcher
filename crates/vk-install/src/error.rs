@@ -22,31 +22,31 @@ pub enum InstallError {
         source: std::io::Error,
     },
 
-    #[error("manifest di rilascio non valido: {0}")]
+    #[error("invalid release manifest: {0}")]
     InvalidManifest(String),
 
-    #[error("nessun pacchetto disponibile per {0}")]
+    #[error("no package available for {0}")]
     UnsupportedTarget(String),
 
-    #[error("impronta del pacchetto non corrispondente: attesa {expected}, calcolata {actual}")]
+    #[error("package checksum mismatch: expected {expected}, computed {actual}")]
     HashMismatch { expected: String, actual: String },
 
-    #[error("eseguibile del launcher non trovato dopo l'estrazione di {0}")]
+    #[error("launcher executable not found after extracting {0}")]
     ExecutableNotFound(PathBuf),
 
-    #[error("percorso non adatto a un'installazione: {0}")]
+    #[error("path not suitable for an installation: {0}")]
     UnsafePath(String),
 
-    #[error("spazio insufficiente: servono {required} byte, ne restano {available}")]
+    #[error("not enough space: {required} bytes needed, {available} left")]
     NotEnoughSpace { required: u64, available: u64 },
 
-    #[error("nessuna installazione di VanzaKart Launcher trovata")]
+    #[error("no VanzaKart Launcher installation found")]
     NotInstalled,
 
-    #[error("il launcher è in esecuzione: chiudilo e riprova")]
+    #[error("the launcher is running: close it and try again")]
     LauncherRunning,
 
-    #[error("operazione annullata")]
+    #[error("operation cancelled")]
     Cancelled,
 
     #[error("{0}")]

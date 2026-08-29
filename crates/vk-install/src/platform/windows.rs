@@ -23,7 +23,7 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 /// Nome del collegamento, uguale a quello del launcher legacy: chi aggiorna
 /// non si ritrova due icone diverse sul desktop.
 const SHORTCUT_FILE_NAME: &str = "VanzaKart Launcher.lnk";
-const UNINSTALL_SHORTCUT_FILE_NAME: &str = "Disinstalla VanzaKart Launcher.lnk";
+const UNINSTALL_SHORTCUT_FILE_NAME: &str = "Uninstall VanzaKart Launcher.lnk";
 
 pub fn create_shortcuts(request: &ShortcutRequest) -> Vec<Artifact> {
     let mut artifacts = Vec::new();
@@ -266,7 +266,7 @@ pub fn schedule_removal(paths: &[PathBuf]) -> InstallResult<bool> {
         .any(|path| path.contains('%') || path.contains('"'))
     {
         return Err(InstallError::platform(
-            "il percorso contiene caratteri che non si possono passare a uno script di rimozione",
+            "the path contains characters that cannot be passed to a removal script",
         ));
     }
 
@@ -333,7 +333,7 @@ fn write_shortcut(
     let target_text = quotable(target)?;
     let working_text = quotable(working_dir)?;
     if arguments.contains('"') {
-        return Err(InstallError::platform("argomenti non validi"));
+        return Err(InstallError::platform("invalid arguments"));
     }
 
     crate::fsops::remove_path_best_effort(link);
@@ -348,7 +348,7 @@ fn write_shortcut(
         Ok(())
     } else {
         Err(InstallError::platform(format!(
-            "collegamento non creato: {}",
+            "shortcut not created: {}",
             link.display()
         )))
     }
@@ -428,7 +428,7 @@ fn run_temp_script(
     match status? {
         status if status.success() => Ok(()),
         status => Err(InstallError::platform(format!(
-            "lo script di collegamento è uscito con {status}"
+            "the shortcut script exited with {status}"
         ))),
     }
 }
@@ -439,7 +439,7 @@ fn quotable(path: &Path) -> InstallResult<String> {
     let text = path.to_string_lossy().to_string();
     if text.contains('"') || text.contains('\'') || text.contains('\n') || text.contains('\r') {
         return Err(InstallError::platform(format!(
-            "percorso non utilizzabile in un collegamento: {text}"
+            "path not usable in a shortcut: {text}"
         )));
     }
     Ok(text)

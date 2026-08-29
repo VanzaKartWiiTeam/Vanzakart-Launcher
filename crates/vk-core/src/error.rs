@@ -4,7 +4,7 @@ use std::path::PathBuf;
 /// includono URL passano prima da [`crate::redact::redact`].
 #[derive(Debug, thiserror::Error)]
 pub enum CoreError {
-    #[error("I/O su {path}: {source}")]
+    #[error("I/O on {path}: {source}")]
     Io {
         path: PathBuf,
         #[source]
@@ -14,44 +14,44 @@ pub enum CoreError {
     #[error("I/O: {0}")]
     PlainIo(#[from] std::io::Error),
 
-    #[error("errore di rete: {0}")]
+    #[error("network error: {0}")]
     Network(String),
 
-    #[error("tutti i mirror hanno fallito: {0}")]
+    #[error("every mirror failed: {0}")]
     AllMirrorsFailed(String),
 
-    #[error("HTTP {status} per {url}")]
+    #[error("HTTP {status} for {url}")]
     HttpStatus { status: u16, url: String },
 
-    #[error("URL non valido: {0}")]
+    #[error("invalid URL: {0}")]
     InvalidUrl(String),
 
-    #[error("JSON non valido: {0}")]
+    #[error("invalid JSON: {0}")]
     Json(#[from] serde_json::Error),
 
-    #[error("manifest non valido: {0}")]
+    #[error("invalid manifest: {0}")]
     InvalidManifest(String),
 
-    #[error("hash non corrispondente per {path}: atteso {expected}, ottenuto {actual}")]
+    #[error("hash mismatch for {path}: expected {expected}, got {actual}")]
     HashMismatch {
         path: String,
         expected: String,
         actual: String,
     },
 
-    #[error("archivio non valido: {0}")]
+    #[error("invalid archive: {0}")]
     InvalidArchive(String),
 
-    #[error("voce di archivio non sicura: {0}")]
+    #[error("unsafe archive entry: {0}")]
     UnsafeArchiveEntry(String),
 
-    #[error("percorso non sicuro: {0}")]
+    #[error("unsafe path: {0}")]
     UnsafePath(String),
 
-    #[error("ripristino del backup fallito: {0}")]
+    #[error("backup restore failed: {0}")]
     RestoreFailed(String),
 
-    #[error("operazione annullata")]
+    #[error("operation cancelled")]
     Cancelled,
 }
 

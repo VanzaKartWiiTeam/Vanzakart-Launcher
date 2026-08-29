@@ -150,10 +150,10 @@ pub async fn read_manifest(layout: &vk_core::ModLayout, id: &str) -> AppResult<A
     let path = manifest_path(layout, id);
     let raw = vk_core::fsx::read_text_opt(&path)
         .await?
-        .ok_or_else(|| AppError::BadRequest(format!("addon sconosciuto: {id}")))?;
+        .ok_or_else(|| AppError::BadRequest(format!("unknown addon: {id}")))?;
 
     serde_json::from_str(&raw)
-        .map_err(|error| AppError::Storage(format!("manifest di {id} non valido: {error}")))
+        .map_err(|error| AppError::Storage(format!("invalid manifest for {id}: {error}")))
 }
 
 /// Scrive il manifest di un addon in modo atomico.
@@ -201,7 +201,7 @@ pub async fn import_archive(
 ) -> AppResult<AddonView> {
     let id = slug(name);
     if id.is_empty() {
-        return Err(AppError::BadRequest("nome dell'addon non valido".into()));
+        return Err(AppError::BadRequest("invalid addon name".into()));
     }
 
     import_archive_as(
@@ -229,20 +229,20 @@ pub async fn import_archive_as(
     request: ImportRequest,
 ) -> AppResult<AddonView> {
     if !archive.is_file() {
-        return Err(AppError::BadRequest("il file indicato non esiste".into()));
+        return Err(AppError::BadRequest("the file does not exist".into()));
     }
 
     let id = request.id.trim().to_string();
     if id.is_empty() || id != slug(&id) {
         return Err(AppError::BadRequest(format!(
-            "identificatore di addon non valido: '{id}'"
+            "invalid addon identifier: '{id}'"
         )));
     }
 
     if manifest_path(layout, &id).exists() {
         if !request.replace_existing {
             return Err(AppError::BadRequest(format!(
-                "esiste già un addon con identificatore '{id}'"
+                "an addon with identifier '{id}' already exists"
             )));
         }
         remove(layout, &id).await?;
@@ -292,7 +292,7 @@ pub async fn import_archive_as(
             let _ = tokio::fs::remove_dir_all(addon_dir(layout, &id)).await;
             result?;
             return Err(AppError::BadRequest(
-                "l'archivio non contiene alcun file utilizzabile".into(),
+                "the archive holds no usable file".into(),
             ));
         }
     };
@@ -420,7 +420,7 @@ pub async fn set_enabled(
 
     if !manifest.is_managed {
         return Err(AppError::BadRequest(
-            "questo addon non è gestito dal launcher: rimuovilo a mano da My Stuff".into(),
+            "this addon is not managed by the launcher: remove it by hand from My Stuff".into(),
         ));
     }
     if manifest.is_enabled == enabled {
@@ -436,7 +436,7 @@ pub async fn set_enabled(
         // meglio fermarsi che sovrascrivere silenziosamente.
         if let Some(collision) = first_collision(layout, id, &manifest.files).await {
             return Err(AppError::BadRequest(format!(
-                "'{collision}' è già fornito da un altro addon attivo. Disattivalo prima."
+                "'{collision}' is already provided by another active addon. Turn that one off first."
             )));
         }
 
