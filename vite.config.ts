@@ -23,7 +23,7 @@ export default defineConfig({
     }
   },
   build: {
-    target: 'esnext',
+    target: ['es2021', 'chrome105', 'safari14'],
     sourcemap: true,
     // Il bundle finisce dentro una webview locale: niente code splitting
     // aggressivo, un solo chunk si carica più in fretta.

@@ -32,7 +32,7 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
-    target: 'esnext',
+    target: ['es2021', 'chrome105', 'safari14'],
     sourcemap: true,
     chunkSizeWarningLimit: 1500
   }
