@@ -57,6 +57,7 @@ pub fn extra_search_roots() -> Vec<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::platform::launched_as_root;
 
     #[test]
     fn there_is_nothing_to_read_from_a_registry() {
@@ -67,7 +68,7 @@ mod tests {
     #[test]
     fn a_normal_user_can_start_the_launcher() {
         // La suite non gira da root: il preflight non ha niente da dire.
-        if !super::launched_as_root() {
+        if !launched_as_root() {
             assert!(preflight().is_ok());
         }
     }
