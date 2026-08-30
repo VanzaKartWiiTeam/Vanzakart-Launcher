@@ -369,7 +369,7 @@ mod tests {
 
     #[test]
     fn the_messages_say_what_to_do() {
-        assert!(ROOT_MESSAGE.contains("senza sudo"));
+        assert!(ROOT_MESSAGE.contains("without sudo"));
         assert!(ROOT_MESSAGE.contains("VK_ALLOW_ROOT"));
         assert!(DISPLAY_MESSAGE.contains("WAYLAND_DISPLAY"));
         assert!(GTK_MESSAGE.contains("appimage-extract-and-run"));
