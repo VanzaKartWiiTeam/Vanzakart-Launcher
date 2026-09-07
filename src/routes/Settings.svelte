@@ -26,6 +26,68 @@
   let betaToken = $state('');
   let betaBusy = $state(false);
   let betaMessage = $state('');
+  let betaInput = $state<HTMLInputElement | null>(null);
+
+  // Il dialogo si apre con il cursore già nel campo: Ctrl+V basta e avanza.
+  $effect(() => {
+    if (betaModalOpen) betaInput?.focus();
+  });
+
+  /**
+   * Scrive nel campo un token arrivato dagli appunti.
+   *
+   * Un token si incolla intero, non a pezzi: il campo prende tutto il testo,
+   * ripulito dagli a capo e dagli spazi che si porta dietro un copia-incolla
+   * da chat o da mail. Torna `false` se negli appunti non c'era testo.
+   */
+  function fillBetaToken(text: string): boolean {
+    const clean = text.trim();
+    if (!clean) return false;
+    betaToken = clean;
+    return true;
+  }
+
+  /**
+   * Incolla da tastiera.
+   *
+   * L'evento `paste` porta con sé il testo degli appunti senza chiedere
+   * permessi, e arriva anche quando il fuoco non è nel campo: finché il
+   * dialogo è aperto, un Ctrl+V ovunque riempie il token.
+   */
+  function onBetaPaste(event: ClipboardEvent) {
+    if (!betaModalOpen || betaBusy) return;
+
+    // Un altro campo a fuoco si tiene il suo incolla.
+    const target = event.target;
+    if (
+      target !== betaInput &&
+      (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement)
+    )
+      return;
+
+    if (!fillBetaToken(event.clipboardData?.getData('text') ?? '')) return;
+
+    event.preventDefault();
+    betaMessage = t('settings.betaPasted');
+    betaInput?.focus();
+  }
+
+  /**
+   * Incolla dal pulsante, per chi non ha la tastiera sotto mano o si trova su
+   * una webview che il Ctrl+V non lo passa. Se gli appunti non si lasciano
+   * leggere resta la scorciatoia, e il messaggio lo dice.
+   */
+  async function pasteBetaToken() {
+    try {
+      const text = await navigator.clipboard.readText();
+      betaMessage = fillBetaToken(text)
+        ? t('settings.betaPasted')
+        : t('settings.betaClipboardEmpty');
+    } catch {
+      betaMessage = t('settings.betaPasteFailed');
+    }
+    betaInput?.focus();
+  }
 
   const channel = $derived(app.modState?.channel ?? 'Stable');
 
@@ -770,6 +832,8 @@
   {/if}
 </div>
 
+<svelte:window onpaste={onBetaPaste} />
+
 <Modal
   open={betaModalOpen}
   title={t('settings.betaTitle')}
@@ -783,13 +847,21 @@
   }}
 >
   <p>{t('settings.betaBody')}</p>
-  <input
-    class="vk-input"
-    type="password"
-    bind:value={betaToken}
-    placeholder={t('settings.betaPlaceholder')}
-    autocomplete="off"
-  />
+  <div class="beta-row">
+    <input
+      class="vk-input"
+      type="password"
+      bind:value={betaToken}
+      bind:this={betaInput}
+      placeholder={t('settings.betaPlaceholder')}
+      autocomplete="off"
+      spellcheck="false"
+    />
+    <button class="vk-btn" type="button" onclick={pasteBetaToken} disabled={betaBusy}>
+      <Icon name="copy" size={16} />
+      {t('settings.betaPaste')}
+    </button>
+  </div>
   {#if betaMessage}
     <p class="modal-message">{betaMessage}</p>
   {/if}
@@ -961,6 +1033,16 @@
 
   .channel.active .channel-note {
     color: rgb(255 255 255 / 0.85);
+  }
+
+  .beta-row {
+    display: flex;
+    gap: 8px;
+  }
+
+  .beta-row .vk-input {
+    flex: 1;
+    min-width: 0;
   }
 
   .modal-message {

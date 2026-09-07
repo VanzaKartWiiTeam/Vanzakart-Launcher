@@ -45,11 +45,18 @@ button {
   cursor: pointer;
 }
 
+/*
+ * Il `user-select: none` del body serve a non far sembrare l'interfaccia una
+ * pagina web, ma i campi di testo lo ereditano e certe webview, ereditandolo,
+ * smettono di far selezionare e incollare: qui torna quello di sempre.
+ */
 input,
 select,
 textarea {
   font: inherit;
   color: inherit;
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 a {

@@ -295,6 +295,10 @@ export const en: Dictionary = {
   'settings.betaVerify': 'Verify',
   'settings.betaBody': 'The Beta channel needs a token handed out by the VanzaKart staff.',
   'settings.betaPlaceholder': 'Paste the token here',
+  'settings.betaPaste': 'Paste',
+  'settings.betaPasted': 'Token pasted from the clipboard.',
+  'settings.betaClipboardEmpty': 'There is no text in the clipboard.',
+  'settings.betaPasteFailed': 'Clipboard not readable: press Ctrl+V in the field.',
 
   // ── Team ────────────────────────────────────────────────────────────────
   'team.project': 'The project',

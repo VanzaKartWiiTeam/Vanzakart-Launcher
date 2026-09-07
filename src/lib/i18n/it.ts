@@ -293,6 +293,10 @@ export const it = {
   'settings.betaVerify': 'Verifica',
   'settings.betaBody': 'Il canale Beta richiede un token fornito dallo staff VanzaKart.',
   'settings.betaPlaceholder': 'Incolla qui il token',
+  'settings.betaPaste': 'Incolla',
+  'settings.betaPasted': 'Token incollato dagli appunti.',
+  'settings.betaClipboardEmpty': 'Negli appunti non c’è del testo.',
+  'settings.betaPasteFailed': 'Appunti non leggibili: premi Ctrl+V nel campo.',
 
   // ── Team ────────────────────────────────────────────────────────────────
   'team.project': 'Il progetto',
