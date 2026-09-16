@@ -23,7 +23,6 @@
     "dialog:allow-message",
     "dialog:allow-confirm",
     "opener:allow-open-url",
-    "process:allow-restart",
-    "updater:default"
+    "process:allow-restart"
   ]
 }

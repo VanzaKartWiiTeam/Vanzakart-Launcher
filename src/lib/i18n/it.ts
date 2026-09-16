@@ -478,26 +478,32 @@ export const it = {
   'gb.next': 'Successiva',
 
   // ── Aggiornamento del launcher ──────────────────────────────────────────
-  'updater.linuxNote':
-    'L’aggiornamento automatico funziona solo con l’AppImage. Se hai installato il pacchetto .deb o .rpm, aggiorna dal gestore di pacchetti o riscarica il launcher dal sito.',
   'updater.checking': 'Controllo in corso…',
-  'updater.downloadingVersion': 'Download della versione {version}',
+  'updater.downloadingVersion': 'Aggiornamento alla versione {version}',
   'updater.installing': 'Installazione in corso',
   'updater.done': 'Installato: riavvio…',
   'updater.available': 'Versione {version} disponibile',
+  'updater.upToDate': 'Il launcher è aggiornato',
   'updater.checkingBody': 'Sto chiedendo al server se c’è una versione più recente.',
-  'updater.unavailableBody':
-    'dichiara la {latest} — questa è la {current} — ma il pacchetto firmato non è disponibile, quindi non posso installarlo da qui.',
+  'updater.upToDateBody': 'Stai usando la {current}, l’ultima versione pubblicata.',
+  'updater.blockedTitle': 'Questa copia non può aggiornarsi da sola',
+  'updater.blockedBody':
+    'Scarica la versione nuova dal sito e installala come hai installato questa.',
   'updater.openDownloadPage': 'Apri la pagina di download',
   'updater.doneBody': 'Il launcher si riapre da solo fra un istante.',
   'updater.installingBody':
-    'Il pacchetto è stato verificato e si sta installando. Non chiudere la finestra.',
+    'Sto sostituendo i file installati. Non chiudere la finestra e non spegnere il computer.',
   'updater.downloadingBody':
-    'Download in corso. Il pacchetto viene verificato prima di essere installato.',
+    'Download in corso. Il pacchetto viene verificato prima di sostituire qualunque cosa.',
   'updater.received': '{bytes} ricevuti',
   'updater.readyBody':
-    'La versione {latest} sostituisce la {current}. Il pacchetto viene verificato con la firma prima di essere installato, poi il launcher si riavvia.',
+    'La versione {latest} sostituisce la {current}, nella cartella in cui il launcher è già installato. Collegamenti, impostazioni e modpack restano dove sono.',
+  'updater.installsInto': 'Si installa in',
+  'updater.packageSize': 'Pacchetto',
+  'updater.checkedPackage': 'Impronta e firma verificate prima di installare',
+  'updater.unsignedPackage': 'Questo rilascio non è firmato: si può verificare solo l’impronta',
   'updater.installAndRestart': 'Aggiorna e riavvia',
+  'updater.retry': 'Controlla di nuovo',
 
   // ── Debug ───────────────────────────────────────────────────────────────
   'debug.unavailable': 'Diagnostica non disponibile',

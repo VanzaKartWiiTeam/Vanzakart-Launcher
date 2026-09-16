@@ -77,6 +77,11 @@ pub struct ReleasePackage {
     /// Impronta SHA-256 in esadecimale. Vuota solo per i rilasci di prova.
     #[serde(default)]
     pub sha256: String,
+    /// Firma minisign del pacchetto, nella forma del file `.sig` (§D-084).
+    /// Vuota per i rilasci non firmati, che si installano lo stesso ma non
+    /// dimostrano chi li ha pubblicati.
+    #[serde(default)]
+    pub signature: String,
     /// Dimensione dichiarata, per la stima del tempo e dello spazio.
     #[serde(default)]
     pub size: u64,
@@ -124,6 +129,13 @@ impl ReleasePackage {
         if !self.sha256.is_empty() && !vk_core::hash::is_valid_sha256(&self.sha256) {
             return Err(InstallError::InvalidManifest(format!(
                 "{key}: invalid sha256"
+            )));
+        }
+        if !self.signature.trim().is_empty()
+            && !crate::signing::looks_like_signature(&self.signature)
+        {
+            return Err(InstallError::InvalidManifest(format!(
+                "{key}: invalid signature"
             )));
         }
         self.format()?;
@@ -339,6 +351,16 @@ mod tests {
         );
         let error = ReleaseManifest::parse(&raw).expect_err("hash");
         assert!(error.to_string().contains("sha256"));
+    }
+
+    #[test]
+    fn a_signature_that_is_not_a_signature_is_refused() {
+        let raw = SAMPLE.replace(
+            r#""size": 24117248,"#,
+            r#""size": 24117248, "signature": "questo non è un documento minisign","#,
+        );
+        let error = ReleaseManifest::parse(&raw).expect_err("firma");
+        assert!(error.to_string().contains("signature"));
     }
 
     #[test]

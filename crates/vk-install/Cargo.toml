@@ -19,6 +19,10 @@ sysinfo.workspace = true
 time.workspace = true
 flate2.workspace = true
 tar.workspace = true
+# Verifica della firma Ed25519 dei pacchetti (§D-084). Sono le stesse firme
+# che produce `tauri signer sign`: il formato è minisign.
+minisign-verify = "0.2"
+base64 = "0.22"
 
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

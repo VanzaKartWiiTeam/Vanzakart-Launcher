@@ -14,7 +14,7 @@ use crate::storage::paths::AppPaths;
 const DEFAULT_ENDPOINTS_JSON: &str = include_str!("../../resources/endpoints.default.json");
 
 /// URL di `versions.json`, non presente in `endpoints.json`.
-pub const DEFAULT_VERSIONS_URL: &str = "https://sitodaking.it:8443/Launcher/versions.json";
+pub const DEFAULT_VERSIONS_URL: &str = "https://vanzakart.net:8443/Launcher/versions.json";
 
 /// Endpoint di default, dal file compilato nel binario.
 pub fn defaults() -> EndpointsInfo {
@@ -28,6 +28,16 @@ pub fn defaults() -> EndpointsInfo {
 /// Endpoint effettivi: default fusi con l'ultima copia remota valida.
 pub async fn load(paths: &AppPaths) -> AppResult<EndpointsInfo> {
     let mut resolved = defaults();
+
+    // Una cache di una generazione precedente non si legge e non si tiene:
+    // i suoi indirizzi vincerebbero sui default e punterebbero a un server
+    // che non c'è più (§D-083).
+    for stale in paths.stale_endpoints_cache_files() {
+        if stale.exists() {
+            tracing::info!(file = %stale.display(), "cache degli endpoint superata: la tolgo");
+            let _ = std::fs::remove_file(&stale);
+        }
+    }
 
     if let Some(raw) = vk_core::fsx::read_text_opt(&paths.endpoints_cache_file()).await? {
         match EndpointsInfo::parse(&raw) {
@@ -106,15 +116,15 @@ mod tests {
 
         assert_eq!(
             endpoints.mod_url,
-            "https://sitodaking.it:8443/Modpack/VanzaKart.zip"
+            "https://vanzakart.net:8443/Modpack/VanzaKart.zip"
         );
         assert_eq!(
             endpoints.beta_mod_url,
-            "https://sitodaking.it:8443/VanzakartBeta/VKBeta.zip"
+            "https://vanzakart.net:8443/VanzakartBeta/VKBeta.zip"
         );
         assert_eq!(
             endpoints.hash_files_url_for(Channel::Stable),
-            "https://sitodaking.it:8443/Modpack/_by_sha256/"
+            "https://vanzakart.net:8443/Modpack/_by_sha256/"
         );
         assert!(!endpoints.leaderboard_api_url.is_empty());
         assert!(!endpoints.rooms_api_url.is_empty());
@@ -172,7 +182,7 @@ mod tests {
         // I campi non presenti nella cache restano ai default.
         assert_eq!(
             endpoints.beta_mod_url,
-            "https://sitodaking.it:8443/VanzakartBeta/VKBeta.zip"
+            "https://vanzakart.net:8443/VanzakartBeta/VKBeta.zip"
         );
     }
 
@@ -190,8 +200,27 @@ mod tests {
 
         assert_eq!(
             load(&paths).await.unwrap().mod_url,
-            "https://sitodaking.it:8443/Modpack/VanzaKart.zip"
+            "https://vanzakart.net:8443/Modpack/VanzaKart.zip"
         );
+    }
+
+    /// Una cache scritta prima del passaggio di dominio non deve nemmeno
+    /// essere letta: i suoi indirizzi vincerebbero sui default (§D-083).
+    #[tokio::test]
+    async fn a_cache_from_a_previous_generation_is_dropped() {
+        let dir = tempfile::tempdir().unwrap();
+        let paths = AppPaths::at(dir.path());
+        paths.ensure().unwrap();
+
+        let stale = paths.stale_endpoints_cache_files().remove(0);
+        std::fs::write(
+            &stale,
+            r#"{"mod_url":"https://vecchio.example/VanzaKart.zip"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(load(&paths).await.unwrap().mod_url, defaults().mod_url);
+        assert!(!stale.exists(), "la cache superata va cancellata");
     }
 
     #[tokio::test]

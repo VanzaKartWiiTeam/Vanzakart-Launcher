@@ -670,6 +670,25 @@ pub async fn launcher_update_status(
     services::launcher::status(&state.inner().clone()).await
 }
 
+/// Legge `install.json` e dice se c'è un aggiornamento, quanto pesa e dove
+/// finirebbe. Contatta il server.
+#[tauri::command]
+pub async fn launcher_update_check(
+    state: Shared<'_>,
+) -> AppResult<services::launcher::LauncherUpdateOffer> {
+    services::launcher::check(&state.inner().clone()).await
+}
+
+/// Scarica e installa l'aggiornamento nella cartella in cui il launcher gira.
+#[tauri::command]
+pub async fn launcher_update_install(
+    app: AppHandle,
+    state: Shared<'_>,
+) -> AppResult<services::launcher::LauncherUpdateOutcome> {
+    let sink = progress_sink(app, "launcher");
+    services::launcher::install(&state.inner().clone(), sink).await
+}
+
 #[tauri::command]
 pub async fn saves_overview(state: Shared<'_>) -> AppResult<services::saves::SaveOverview> {
     services::saves::overview(&state.inner().clone()).await

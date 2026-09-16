@@ -479,25 +479,31 @@ export const en: Dictionary = {
   'gb.next': 'Next',
 
   // ── Launcher update ─────────────────────────────────────────────────────
-  'updater.linuxNote':
-    'Automatic updates only work with the AppImage. If you installed the .deb or .rpm package, update from your package manager or download the launcher again from the site.',
   'updater.checking': 'Checking…',
-  'updater.downloadingVersion': 'Downloading version {version}',
+  'updater.downloadingVersion': 'Updating to version {version}',
   'updater.installing': 'Installing',
   'updater.done': 'Installed: restarting…',
   'updater.available': 'Version {version} available',
+  'updater.upToDate': 'The launcher is up to date',
   'updater.checkingBody': 'Asking the server whether a newer version exists.',
-  'updater.unavailableBody':
-    'declares {latest} — this one is {current} — but the signed package is not available, so it cannot be installed from here.',
+  'updater.upToDateBody': 'You are running {current}, the most recent version published.',
+  'updater.blockedTitle': 'This copy cannot update itself',
+  'updater.blockedBody':
+    'Download the new version from the site and install it the same way you installed this one.',
   'updater.openDownloadPage': 'Open the download page',
   'updater.doneBody': 'The launcher reopens by itself in a moment.',
   'updater.installingBody':
-    'The package has been verified and is being installed. Do not close this window.',
-  'updater.downloadingBody': 'Downloading. The package is verified before being installed.',
+    'Replacing the installed files. Do not close this window and do not turn the computer off.',
+  'updater.downloadingBody': 'Downloading. The package is verified before anything is replaced.',
   'updater.received': '{bytes} received',
   'updater.readyBody':
-    'Version {latest} replaces {current}. The package is checked against its signature before being installed, then the launcher restarts.',
+    'Version {latest} replaces {current}, in the folder where the launcher is already installed. Shortcuts, settings and the modpack stay where they are.',
+  'updater.installsInto': 'Installs into',
+  'updater.packageSize': 'Package',
+  'updater.checkedPackage': 'Checksum and signature verified before installing',
+  'updater.unsignedPackage': 'This release is not signed: only the checksum can be verified',
   'updater.installAndRestart': 'Update and restart',
+  'updater.retry': 'Check again',
 
   // ── Debug ───────────────────────────────────────────────────────────────
   'debug.unavailable': 'Diagnostics not available',

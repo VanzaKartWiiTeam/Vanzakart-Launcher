@@ -32,8 +32,10 @@ pub mod payload;
 pub mod platform;
 pub mod record;
 pub mod release;
+pub mod signing;
 pub mod target;
 pub mod uninstall;
+pub mod update;
 
 pub use error::{InstallError, InstallResult};
 pub use install::{InstallMode, InstallOptions, InstallReport, Installer};
@@ -41,6 +43,7 @@ pub use record::{Artifact, ArtifactKind, InstallRecord};
 pub use release::{PackageFormat, ReleaseManifest, ReleasePackage};
 pub use target::Target;
 pub use uninstall::{RemovalItem, UninstallOptions, UninstallReport};
+pub use update::{UpdatePlan, UpdateReport, UpdateTarget};
 
 /// Nome del prodotto, usato ovunque compaia all'utente.
 pub const PRODUCT_NAME: &str = "VanzaKart Launcher";
@@ -50,10 +53,17 @@ pub const PUBLISHER: &str = "VanzaKart";
 
 /// Identificatore del bundle, uguale a quello di `tauri.conf.json`.
 ///
-/// Su Windows è anche il nome della chiave di disinstallazione: è la stessa
-/// che userebbe l'installer NSIS di Tauri, così i due non si sdoppiano fra i
+/// Su Windows è anche il nome della chiave di disinstallazione: una sola
+/// chiave, scritta da un solo installer, così il launcher non si sdoppia fra i
 /// programmi installati (§D-052).
-pub const BUNDLE_IDENTIFIER: &str = "it.sitodaking.vanzakart.launcher";
+pub const BUNDLE_IDENTIFIER: &str = "net.vanzakart.launcher";
+
+/// Identificatori usati prima del passaggio di dominio (§D-083).
+///
+/// Non servono a installare: servono a **ritrovare** ciò che le versioni
+/// precedenti hanno registrato, per aggiornarlo al posto giusto e per non
+/// lasciare una voce orfana fra i programmi installati.
+pub const PREVIOUS_BUNDLE_IDENTIFIERS: &[&str] = &["it.sitodaking.vanzakart.launcher"];
 
 /// User-Agent delle richieste HTTP dell'installer.
 pub fn user_agent(version: &str) -> String {

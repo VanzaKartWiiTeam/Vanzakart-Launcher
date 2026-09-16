@@ -14,8 +14,8 @@ non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
 | --- | --- | --- |
 | Piattaforme | Windows | Windows, macOS, Linux |
 | UI | WPF | Svelte 5 in una webview, stessa identità grafica |
-| Aggiornamento del launcher | script PowerShell non firmato | updater Tauri con firma Ed25519 |
-| Installazione | Setup e Uninstaller in WPF, solo Windows | stessa procedura guidata su Windows, macOS e Linux (`setup/`), più i pacchetti nativi NSIS, DMG, AppImage, deb, rpm |
+| Aggiornamento del launcher | script PowerShell non firmato | in loco, nella cartella d’installazione, con impronta e firma Ed25519 verificate prima |
+| Installazione | Setup e Uninstaller in WPF, solo Windows | stessa procedura guidata su Windows, macOS e Linux (`setup/`), con lo stesso pacchetto che usa l’aggiornamento |
 | Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
 | Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
 | Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |
@@ -179,5 +179,5 @@ l'import.
 | [`docs/migration.md`](docs/migration.md) | compatibilità file, import non distruttivo, rollback |
 | [`docs/decisions.md`](docs/decisions.md) | 55 decisioni tecniche con l'alternativa scartata |
 | [`docs/ui-parity.md`](docs/ui-parity.md) | token di design estratti dallo XAML e differenze motivate |
-| [`docs/release.md`](docs/release.md) | build, firma, updater, pubblicazione |
+| [`docs/release.md`](docs/release.md) | build, firma dei pacchetti, pubblicazione |
 | [`docs/installer.md`](docs/installer.md) | installer e disinstallatore: cosa fanno, contratto `install.json`, come si pubblicano |

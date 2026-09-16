@@ -3,29 +3,35 @@
     Prepara un rilascio completo: pacchetti, installer e i due manifest.
 
 .DESCRIPTION
-    Un rilascio serve due pubblici, e questo script prepara tutto per
-    entrambi:
+    Un rilascio è **un pacchetto per piattaforma e un manifest solo**.
 
-      · chi installa da zero legge `install.json` e scarica un pacchetto
-        **portabile** (zip su Windows, `.app.tar.gz` su macOS, AppImage su
-        Linux). A metterlo al suo posto ci pensa l'installer, che è l'unico
-        a creare scorciatoie e registrazioni;
+    Il pacchetto è portabile — zip su Windows, `.app.tar.gz` su macOS,
+    AppImage su Linux — e serve a tutti e due i pubblici:
 
-      · chi ha già il launcher legge `updater/<target>-<arch>.json` e scarica
-        il pacchetto **nativo firmato** (NSIS su Windows; su macOS e Linux è
-        lo stesso file del portabile).
+      · chi installa da zero lo scarica con l'installer, che lo mette al suo
+        posto, crea le scorciatoie e registra il programma;
+
+      · chi ha già il launcher lo scarica dal launcher stesso, che lo srotola
+        **nella cartella in cui è già installato** senza creare niente di
+        nuovo (decisions.md §D-084).
+
+    Non esistono più né il pacchetto NSIS né i manifest `updater/*.json`:
+    erano un secondo installer che si installava per conto suo in
+    `%LOCALAPPDATA%` e lasciava un secondo disinstallatore sul computer.
 
     Ogni esecuzione produce ciò che riguarda il **sistema su cui gira**, e poi
-    rigenera i manifest con tutto quello che trova nella cartella di uscita.
-    Il giro completo per le tre piattaforme lo fa la CI
+    rigenera `install.json` con tutto quello che trova nella cartella di
+    uscita. Il giro completo per le tre piattaforme lo fa la CI
     (`.github/workflows/release.yml`), che esegue questo stesso script su
     Windows, macOS e Linux e poi lo riesegue una volta con `-SkipBuild` per
     unire i risultati.
 
-    Le firme dell'updater richiedono `TAURI_SIGNING_PRIVATE_KEY` e
-    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` nell'ambiente. Senza, i pacchetti si
-    costruiscono lo stesso ma non sono aggiornabili: lo script lo dice e
-    `install.json` resta valido comunque.
+    Le firme richiedono `TAURI_SIGNING_PRIVATE_KEY` e
+    `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` nell'ambiente, e viaggiano come file
+    `.sig` accanto al pacchetto: è così che il lavoro di tre macchine diverse
+    si ricompone in un manifest solo. Senza chiave i pacchetti si costruiscono
+    lo stesso e si installano lo stesso, ma nessuno può dimostrare chi li ha
+    pubblicati.
 
 .PARAMETER OutputDir
     Dove scrivere ciò che va caricato sul server.
@@ -54,7 +60,7 @@
 [CmdletBinding()]
 param(
     [string]$OutputDir = './dist-launcher',
-    [string]$BaseUrl = 'https://sitodaking.it:8443/Launcher/releases',
+    [string]$BaseUrl = 'https://vanzakart.net:8443/Launcher/releases',
     [string]$Notes = '',
     [switch]$SkipBuild,
     [switch]$SkipSetupApp
@@ -77,14 +83,44 @@ function Warn([string]$message) {
     Write-Host "  $message" -ForegroundColor Yellow
 }
 
-# Copia un artefatto nella cartella di rilascio, portandosi dietro la firma
-# `.sig` se c'è. Restituisce il nome del file copiato.
+# Copia un artefatto nella cartella di rilascio e lo firma. Restituisce il
+# nome del file copiato.
+#
+# La firma sta accanto al pacchetto, in un `.sig`: è così che arriva alla
+# macchina che scrive `install.json`, che nella CI è un'altra e non ha la
+# chiave privata.
 function Copy-Artifact([string]$source, [string]$destination) {
     Copy-Item $source $destination -Force
-    if (Test-Path "$source.sig") {
-        Copy-Item "$source.sig" "$destination.sig" -Force
-    }
+    Add-Signature $destination | Out-Null
     Split-Path -Leaf $destination
+}
+
+# Firma un pacchetto con la chiave dell'updater, se c'è.
+#
+# Senza chiave non è un errore: il pacchetto resta installabile, e a dirlo
+# sarà `install.json`, che semplicemente non dichiarerà nessuna firma.
+function Add-Signature([string]$path) {
+    if (-not $env:TAURI_SIGNING_PRIVATE_KEY) {
+        return $false
+    }
+
+    Remove-Item "$path.sig" -Force -ErrorAction SilentlyContinue
+    $global:LASTEXITCODE = 0
+    try {
+        npx tauri signer sign $path 2>&1 | Out-Null
+    }
+    catch {
+        $global:LASTEXITCODE = 1
+    }
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$path.sig")) {
+        $global:LASTEXITCODE = 0
+        Warn "firma non riuscita per $(Split-Path -Leaf $path): il pacchetto resta installabile ma non autenticato"
+        return $false
+    }
+
+    Write-Host "  firmato:   $(Split-Path -Leaf $path).sig"
+    return $true
 }
 
 # --- AppImage: quello che linuxdeploy si porta dietro e non dovrebbe -------
@@ -242,29 +278,8 @@ function Repair-AppImageInner([string]$appImagePath) {
         return $appImagePath
     }
 
-    # La firma dell'updater vale per il file che Tauri ha prodotto, non per
-    # quello riconfezionato: va rifatta **prima** di sostituire l'originale.
-    # Se non si può rifare, si tiene l'originale con la sua firma valida: un
-    # aggiornamento che il launcher rifiuta sarebbe peggio del difetto.
-    if (Test-Path "$appImagePath.sig") {
-        $global:LASTEXITCODE = 0
-        try {
-            npx tauri signer sign $nuovoFile 2>&1 | Out-Null
-        }
-        catch {
-            $global:LASTEXITCODE = 1
-        }
-
-        if ($LASTEXITCODE -ne 0 -or -not (Test-Path "$nuovoFile.sig")) {
-            Warn 'firma della AppImage corretta non riuscita: pubblico quella originale'
-            Remove-Item $nuovoFile -Force -ErrorAction SilentlyContinue
-            Remove-Item "$nuovoFile.sig" -Force -ErrorAction SilentlyContinue
-            return $appImagePath
-        }
-        Move-Item "$nuovoFile.sig" "$appImagePath.sig" -Force
-        Write-Host '  firma dell updater rifatta sul file corretto'
-    }
-
+    # La firma si fa dopo, sul file definitivo: qui non c'e' ancora niente da
+    # rifare.
     Move-Item $nuovoFile $appImagePath -Force
     chmod +x $appImagePath
     Write-Host '  AppImage riconfezionata'
@@ -318,17 +333,10 @@ New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 Write-Host "VanzaKart Launcher $version → $releaseDir"
 
 if (-not $SkipBuild -and -not $env:TAURI_SIGNING_PRIVATE_KEY) {
-    Warn 'TAURI_SIGNING_PRIVATE_KEY non impostata: i pacchetti non saranno firmati'
-    Warn "e l'aggiornamento dal launcher non li accettera. L'installazione da zero"
-    Warn 'funziona lo stesso.'
+    Warn 'TAURI_SIGNING_PRIVATE_KEY non impostata: i pacchetti non saranno firmati.'
+    Warn 'Si installano e si aggiornano lo stesso, verificati con l impronta,'
+    Warn 'ma nessuno puo dimostrare chi li ha pubblicati.'
 }
-
-# `true` quando si puo firmare. Senza chiave privata `tauri build` si rifiuta
-# di produrre gli artefatti dell'updater — la configurazione dichiara una
-# chiave pubblica e non potrebbe firmarli — e allora si compila con la
-# configurazione che non li chiede: i pacchetti portabili, quelli che scarica
-# l'installer, non hanno bisogno di nessuna firma.
-$puoFirmare = [bool]$env:TAURI_SIGNING_PRIVATE_KEY
 
 # --- 2. Piattaforma corrente ----------------------------------------------
 $targetKey = if ($IsWindows) { 'windows-x86_64' }
@@ -345,17 +353,10 @@ if (-not $SkipBuild) {
     if ($LASTEXITCODE -ne 0) { Fail 'build del frontend non riuscita' }
 
     if ($IsWindows) {
-        # NSIS serve all'aggiornamento in-app; il portabile lo si costruisce
-        # qui sotto dall'eseguibile che la stessa build ha prodotto.
-        # Le due righe sono scritte per intero di proposito: passare gli
-        # argomenti in un array li fa arrivare a `npx` come un argomento solo
-        # ("unexpected argument '--config src-tauri/…'").
-        if ($puoFirmare) {
-            npx tauri build --bundles nsis
-        }
-        else {
-            npx tauri build --bundles nsis --config src-tauri/tauri.local.conf.json
-        }
+        # Nessun bundle: su Windows il pacchetto è uno zip con dentro
+        # l'eseguibile e le risorse, ed è l'installer (o l'aggiornamento in
+        # loco) a metterlo al suo posto.
+        npx tauri build --no-bundle
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $binary = 'target/release/vanzakart-launcher.exe'
@@ -365,9 +366,10 @@ if (-not $SkipBuild) {
         Remove-Item -Recurse -Force $staging -ErrorAction SilentlyContinue
         New-Item -ItemType Directory -Force -Path $staging | Out-Null
 
-        # Il nome è quello del prodotto, lo stesso che installa il pacchetto
-        # NSIS: chi aggiorna dall'updater sovrascrive questo file invece di
-        # affiancargliene un secondo (decisions.md §D-052).
+        # Il nome è quello del prodotto, lo stesso che il launcher già
+        # installato si ritrova sul disco: l'aggiornamento sostituisce
+        # *quel* file invece di affiancargliene un secondo (decisions.md
+        # §D-052, §D-084).
         Copy-Item $binary (Join-Path $staging 'VanzaKart Launcher.exe')
         Copy-Item 'src-tauri/resources' (Join-Path $staging 'resources') -Recurse
 
@@ -375,61 +377,28 @@ if (-not $SkipBuild) {
         Remove-Item -Force $payload -ErrorAction SilentlyContinue
         Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $payload
         Remove-Item -Recurse -Force $staging
-        Write-Host "  portabile: $(Split-Path -Leaf $payload)"
-
-        $nsis = Get-ChildItem -Path 'target' -Recurse -Filter '*-setup.exe' -File |
-            Sort-Object LastWriteTime -Descending | Select-Object -First 1
-        if ($nsis) {
-            $name = Copy-Artifact $nsis.FullName (Join-Path $releaseDir "VanzaKart-Update_${version}_$targetKey.exe")
-            Write-Host "  nativo:    $name"
-        }
-        else {
-            Warn 'pacchetto NSIS non trovato: nessun aggiornamento in-app per Windows'
-        }
+        Write-Host "  pacchetto: $(Split-Path -Leaf $payload)"
+        Add-Signature $payload | Out-Null
     }
     elseif ($IsMacOS) {
-        # `app` produce il bundle e il suo `.app.tar.gz`, che è insieme il
-        # pacchetto dell'updater e quello che scarica l'installer: su macOS i
-        # due canali usano lo stesso file.
-        if ($puoFirmare) {
-            npx tauri build --target universal-apple-darwin --bundles app
-        }
-        else {
-            npx tauri build --target universal-apple-darwin --bundles app --config src-tauri/tauri.local.conf.json
-        }
+        npx tauri build --target universal-apple-darwin --bundles app
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $payload = Join-Path $releaseDir "VanzaKart-Launcher_${version}_$targetKey.tar.gz"
-        $tarball = Get-ChildItem -Path 'target' -Recurse -Filter '*.app.tar.gz' -File |
+        $bundle = Get-ChildItem -Path 'target' -Recurse -Filter 'VanzaKart Launcher.app' -Directory |
             Sort-Object LastWriteTime -Descending | Select-Object -First 1
+        if (-not $bundle) { Fail 'bundle .app non trovato' }
 
-        if ($tarball) {
-            $name = Copy-Artifact $tarball.FullName $payload
-            Write-Host "  pacchetto: $name"
-        }
-        else {
-            # Tauri produce il `.app.tar.gz` solo quando genera gli artefatti
-            # dell'updater. Se non c'e, il bundle si impacchetta qui: serve
-            # comunque all'installer, che non chiede nessuna firma.
-            Warn 'archivio .app.tar.gz non prodotto dalla build: lo creo dal bundle'
-            $bundle = Get-ChildItem -Path 'target' -Recurse -Filter 'VanzaKart Launcher.app' -Directory |
-                Sort-Object LastWriteTime -Descending | Select-Object -First 1
-            if (-not $bundle) { Fail 'bundle .app non trovato' }
-
-            # `tar` di sistema: preserva permessi e collegamenti simbolici del
-            # bundle, che uno zip perderebbe rendendo l'app non avviabile.
-            tar -czf $payload -C $bundle.Parent.FullName $bundle.Name
-            if ($LASTEXITCODE -ne 0) { Fail 'creazione del tar.gz non riuscita' }
-            Write-Host "  pacchetto: $(Split-Path -Leaf $payload)"
-        }
+        # `tar` di sistema: preserva permessi e collegamenti simbolici del
+        # bundle, che uno zip perderebbe rendendo l'app non avviabile.
+        Remove-Item -Force $payload -ErrorAction SilentlyContinue
+        tar -czf $payload -C $bundle.Parent.FullName $bundle.Name
+        if ($LASTEXITCODE -ne 0) { Fail 'creazione del tar.gz non riuscita' }
+        Write-Host "  pacchetto: $(Split-Path -Leaf $payload)"
+        Add-Signature $payload | Out-Null
     }
     else {
-        if ($puoFirmare) {
-            npx tauri build --bundles appimage
-        }
-        else {
-            npx tauri build --bundles appimage --config src-tauri/tauri.local.conf.json
-        }
+        npx tauri build --bundles appimage
         if ($LASTEXITCODE -ne 0) { Fail 'build del launcher non riuscita' }
 
         $appimage = Get-ChildItem -Path 'target' -Recurse -Filter '*.AppImage' -File |
@@ -522,7 +491,7 @@ foreach ($file in $payloads) {
         'AppImage' { 'app-image' }
     }
 
-    $platforms[$key] = [ordered]@{
+    $voce = [ordered]@{
         url        = "$($BaseUrl.TrimEnd('/'))/$version/$($file.Name)"
         sha256     = (Get-FileHash -Algorithm SHA256 -Path $file.FullName).Hash.ToLowerInvariant()
         size       = $file.Length
@@ -530,7 +499,20 @@ foreach ($file in $payloads) {
         executable = $eseguibili[$osName]
     }
 
-    Write-Host "  $key → $($file.Name) ($([math]::Round($file.Length / 1MB, 1)) MB)"
+    # La firma è nel `.sig` accanto al pacchetto, prodotto dalla macchina che
+    # lo ha compilato. Senza, il pacchetto resta installabile: si verifica
+    # l'impronta e basta.
+    $firma = "$($file.FullName).sig"
+    if (Test-Path $firma) {
+        $voce['signature'] = (Get-Content $firma -Raw).Trim()
+    }
+    else {
+        Warn "$($file.Name) non ha la firma: il pacchetto non sara autenticato"
+    }
+
+    $platforms[$key] = $voce
+    $firmato = if ($voce.Contains('signature')) { 'firmato' } else { 'NON firmato' }
+    Write-Host "  $key → $($file.Name) ($([math]::Round($file.Length / 1MB, 1)) MB, $firmato)"
 }
 
 if ($platforms.Count -eq 0) {
@@ -574,75 +556,26 @@ $manifestPath = Join-Path $OutputDir 'install.json'
 $manifest | ConvertTo-Json -Depth 6 | Set-Content -Path $manifestPath -Encoding utf8NoBOM
 Write-Host "  scritto: $manifestPath"
 
-# --- 6. Manifest dell'aggiornamento ---------------------------------------
-Step 'Manifest updater'
-
-$updaterDir = Join-Path $OutputDir 'updater'
-New-Item -ItemType Directory -Force -Path $updaterDir | Out-Null
-
-# Su Windows l'updater installa il pacchetto NSIS; su macOS e Linux lo stesso
-# file che scarica l'installer. Si guarda quindi in due posti.
-$updatable = @()
-$updatable += Get-ChildItem -Path $releaseDir -File |
-    Where-Object { $_.Name -like "VanzaKart-Update_${version}_*" -and $_.Extension -ne '.sig' }
-$updatable += $payloads | Where-Object { $_.Name -notlike '*windows*' }
-
-$written = 0
-foreach ($file in $updatable) {
-    if ($file.Name -notmatch "_(?<target>[a-z0-9]+-[a-z0-9_]+)\.(?:exe|zip|tar\.gz|AppImage)$") {
-        continue
-    }
-    $key = $Matches['target']
-
-    $signaturePath = "$($file.FullName).sig"
-    if (-not (Test-Path $signaturePath)) {
-        Warn "$($file.Name) non ha la firma: niente aggiornamento in-app per $key"
-        continue
-    }
-    $signature = (Get-Content $signaturePath -Raw).Trim()
-
-    # `darwin-universal` non è un bersaglio che l'updater conosce: costruisce
-    # l'indirizzo con l'architettura della macchina, quindi lo stesso pacchetto
-    # va dichiarato per tutte e due.
-    $targets = if ($key -eq 'darwin-universal') { @('darwin-aarch64', 'darwin-x86_64') } else { @($key) }
-
-    foreach ($target in $targets) {
-        $document = [ordered]@{
-            version   = $version
-            notes     = $Notes
-            pub_date  = $manifest.pub_date
-            platforms = [ordered]@{
-                $target = [ordered]@{
-                    signature = $signature
-                    url       = "$($BaseUrl.TrimEnd('/'))/$version/$($file.Name)"
-                }
-            }
-        }
-        $path = Join-Path $updaterDir "$target.json"
-        $document | ConvertTo-Json -Depth 6 | Set-Content -Path $path -Encoding utf8NoBOM
-        Write-Host "  $target → $($file.Name)"
-        $written++
-    }
-}
-
-if ($written -eq 0) {
-    Warn 'nessun manifest di aggiornamento: mancano le firme (§5 di release.md)'
-}
-
-# --- 7. Cosa caricare, e in che ordine ------------------------------------
+# --- 6. Cosa caricare, e in che ordine ------------------------------------
 Write-Host ''
 Write-Host 'Da caricare sul server, in questo ordine:' -ForegroundColor Green
 Write-Host "  1. $releaseDir/*  →  /Launcher/releases/$version/"
-if ($written -gt 0) {
-    Write-Host "  2. $updaterDir/*.json  →  /Launcher/updater/     (aggiornamento dal launcher)"
-    Write-Host "  3. $manifestPath  →  /Launcher/install.json      (installazione da zero)"
-}
-else {
-    Write-Host "  2. $manifestPath  →  /Launcher/install.json      (installazione da zero)"
-}
+Write-Host "  2. $manifestPath  →  /Launcher/install.json"
 Write-Host ''
-Write-Host 'Prima i pacchetti, poi i manifest: al contrario, chi controlla nel'
+Write-Host 'Prima i pacchetti, poi il manifest: al contrario, chi controlla nel'
 Write-Host 'mezzo leggerebbe un indirizzo che non esiste ancora.'
+Write-Host ''
+Write-Host 'Lo stesso install.json serve a chi installa da zero e a chi aggiorna'
+Write-Host 'dal launcher: non c e un secondo manifest da ricordarsi.'
+
+$nonFirmati = @($platforms.Values | Where-Object { -not $_.Contains('signature') }).Count
+if ($nonFirmati -gt 0) {
+    Write-Host ''
+    Warn "$nonFirmati pacchetti su $($platforms.Count) non sono firmati."
+    Write-Host 'Si installano e si aggiornano lo stesso, verificati con l impronta,'
+    Write-Host 'ma nessuno puo dimostrare chi li ha pubblicati. Imposta'
+    Write-Host 'TAURI_SIGNING_PRIVATE_KEY e rilancia (release.md §5).'
+}
 
 if ($platforms.Count -lt 3) {
     $parola = if ($platforms.Count -eq 1) { 'piattaforma' } else { 'piattaforme' }

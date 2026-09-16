@@ -139,16 +139,7 @@ impl Downloader {
 
     /// GET che restituisce il corpo come stringa.
     pub async fn get_string(&self, url: &str) -> CoreResult<String> {
-        self.require_allowed_source(url)?;
-        let response = self.client.get(url).send().await?;
-        let status = response.status();
-        if !status.is_success() {
-            return Err(CoreError::HttpStatus {
-                status: status.as_u16(),
-                url: crate::redact::redact_url(url),
-            });
-        }
-        Ok(response.text().await?)
+        Ok(self.get_success(url).await?.text().await?)
     }
 
     /// GET che restituisce il corpo grezzo.
@@ -156,7 +147,23 @@ impl Downloader {
     /// Per risposte piccole e non riprendibili — un'immagine renderizzata,
     /// un'icona — dove aprire un file temporaneo costerebbe più del download.
     pub async fn get_bytes(&self, url: &str) -> CoreResult<Vec<u8>> {
+        Ok(self.get_success(url).await?.bytes().await?.to_vec())
+    }
+
+    /// POST JSON che restituisce il corpo come stringa.
+    pub async fn post_json(&self, url: &str, body: &serde_json::Value) -> CoreResult<String> {
         self.require_allowed_source(url)?;
+        let response = self.client.post(url).json(body).send().await?;
+        Ok(response.text().await?)
+    }
+
+    /// GET che accetta solo una risposta 2xx.
+    async fn get_success(&self, url: &str) -> CoreResult<reqwest::Response> {
+        self.require_allowed_source(url)?;
+        self.get_success_once(url).await
+    }
+
+    async fn get_success_once(&self, url: &str) -> CoreResult<reqwest::Response> {
         let response = self.client.get(url).send().await?;
         let status = response.status();
         if !status.is_success() {
@@ -165,14 +172,7 @@ impl Downloader {
                 url: crate::redact::redact_url(url),
             });
         }
-        Ok(response.bytes().await?.to_vec())
-    }
-
-    /// POST JSON che restituisce il corpo come stringa.
-    pub async fn post_json(&self, url: &str, body: &serde_json::Value) -> CoreResult<String> {
-        self.require_allowed_source(url)?;
-        let response = self.client.post(url).json(body).send().await?;
-        Ok(response.text().await?)
+        Ok(response)
     }
 
     /// Scarica su file con resume e retry, da una singola sorgente.

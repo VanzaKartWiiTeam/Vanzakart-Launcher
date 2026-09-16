@@ -472,8 +472,8 @@ async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResult<us
         let url = format!("{}/rank-{rank}.png", base.trim_end_matches('/'));
         match state
             .downloader
-            .download_with_resume(
-                &url,
+            .download_with_mirrors(
+                std::slice::from_ref(&url),
                 &destination,
                 &vk_core::progress::noop_sink(),
                 &vk_core::progress::CancelToken::new(),

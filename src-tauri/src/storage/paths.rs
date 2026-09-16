@@ -48,8 +48,20 @@ impl AppPaths {
         self.root.join("secrets.json")
     }
 
+    /// Ultimo `endpoints.json` valido scaricato dal server.
+    ///
+    /// Il nome porta la generazione: la cache scritta prima del passaggio di
+    /// dominio contiene indirizzi che non esistono più, e vincerebbe sui
+    /// default compilati (§D-004, §D-083). Cambiando nome, quella vecchia non
+    /// viene più letta e [`Self::stale_endpoints_cache_files`] la toglie di
+    /// mezzo.
     pub fn endpoints_cache_file(&self) -> PathBuf {
-        self.root.join("endpoints.cache.json")
+        self.root.join("endpoints.cache.v2.json")
+    }
+
+    /// Cache degli endpoint di generazioni precedenti, da cancellare.
+    pub fn stale_endpoints_cache_files(&self) -> Vec<PathBuf> {
+        vec![self.root.join("endpoints.cache.json")]
     }
 
     /// Modpack locale usata quando la cartella User non è configurata.

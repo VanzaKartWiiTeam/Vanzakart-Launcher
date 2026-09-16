@@ -306,7 +306,7 @@ mod tests {
 
     #[test]
     fn the_host_is_extracted_from_a_url() {
-        assert_eq!(host_of("https://sitodaking.it:8443/"), "sitodaking.it");
+        assert_eq!(host_of("https://vanzakart.net:8443/"), "vanzakart.net");
         assert_eq!(host_of("non un url"), "");
     }
 }

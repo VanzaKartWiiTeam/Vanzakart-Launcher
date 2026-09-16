@@ -60,6 +60,11 @@ VanzaKart Launcher cannot start.
 
     let _guard = init_tracing(&paths);
 
+    // Se l'avvio precedente è stato un aggiornamento, la versione vecchia può
+    // aver lasciato un file che allora era in uso e adesso non lo è più
+    // (§D-084). Si fa qui e non prima perché il log dica cosa è sparito.
+    services::launcher::sweep_previous_version();
+
     // Un avvio precedente morto prima della finestra è quasi sempre lo stack
     // grafico: si riparte con le impostazioni più prudenti (§D-072).
     if begin_startup(&paths) {
@@ -96,9 +101,6 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_process::init());
-
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
 
     builder
         .manage(state)
@@ -164,6 +166,8 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::controller_mode_set,
             commands::controller_actions,
             commands::launcher_update_status,
+            commands::launcher_update_check,
+            commands::launcher_update_install,
             commands::licenses_list,
             commands::licenses_set_mii,
             commands::saves_overview,

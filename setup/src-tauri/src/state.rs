@@ -19,12 +19,12 @@ pub const SETUP_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// L'unico indirizzo che l'installer deve conoscere per forza: da qui legge
 /// tutti gli altri. È l'elenco degli indirizzi del progetto, lo stesso che
 /// usa il launcher.
-const ENDPOINTS_URL: &str = "https://sitodaking.it:8443/Launcher/endpoints.json";
+const ENDPOINTS_URL: &str = "https://vanzakart.net:8443/Launcher/endpoints.json";
 
 /// Ricadute, usate solo quando `endpoints.json` non risponde o non dichiara
 /// la chiave. Devono restare allineate al file sul server.
-const INSTALL_MANIFEST_URL: &str = "https://sitodaking.it:8443/Launcher/install.json";
-const DOWNLOAD_PAGE_URL: &str = "https://vwfc.sitodaking.it/";
+const INSTALL_MANIFEST_URL: &str = "https://vanzakart.net:8443/Launcher/install.json";
+const DOWNLOAD_PAGE_URL: &str = "https://vwfc.vanzakart.net/";
 
 /// In quale veste è stato avviato il programma.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

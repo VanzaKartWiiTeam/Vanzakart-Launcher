@@ -31,6 +31,12 @@ pub enum InstallError {
     #[error("package checksum mismatch: expected {expected}, computed {actual}")]
     HashMismatch { expected: String, actual: String },
 
+    #[error("the package signature is not valid: {0}")]
+    InvalidSignature(String),
+
+    #[error("this copy of the launcher cannot update itself: {0}")]
+    NotUpdatable(String),
+
     #[error("launcher executable not found after extracting {0}")]
     ExecutableNotFound(PathBuf),
 
@@ -74,6 +80,8 @@ impl InstallError {
             Self::InvalidManifest(_) => "manifest",
             Self::UnsupportedTarget(_) => "unsupported-target",
             Self::HashMismatch { .. } => "hash-mismatch",
+            Self::InvalidSignature(_) => "invalid-signature",
+            Self::NotUpdatable(_) => "not-updatable",
             Self::ExecutableNotFound(_) => "executable-not-found",
             Self::UnsafePath(_) => "unsafe-path",
             Self::NotEnoughSpace { .. } => "not-enough-space",

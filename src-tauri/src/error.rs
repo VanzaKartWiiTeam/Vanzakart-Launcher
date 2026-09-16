@@ -22,6 +22,9 @@ pub enum AppError {
     #[error("{0}")]
     Save(#[from] vk_save::SaveError),
 
+    #[error("{0}")]
+    Install(#[from] vk_install::InstallError),
+
     #[error("storage: {0}")]
     Storage(String),
 
@@ -67,6 +70,9 @@ impl AppError {
             Self::Dolphin(vk_dolphin::DolphinError::ModIncomplete(_)) => "mod-incomplete",
             Self::Dolphin(_) => "dolphin",
             Self::Save(_) => "save",
+            // I codici dell'installer sono già stabili e già pensati per la
+            // UI: si passano tali e quali invece di appiattirli su uno solo.
+            Self::Install(error) => error.code(),
             Self::Storage(_) => "storage",
             Self::Configuration(_) => "configuration",
             Self::BadRequest(_) => "bad-request",
@@ -118,6 +124,10 @@ mod tests {
             "network"
         );
         assert_eq!(AppError::Busy.code(), "busy");
+        assert_eq!(
+            AppError::Install(vk_install::InstallError::NotUpdatable("x".into())).code(),
+            "not-updatable"
+        );
     }
 
     #[test]

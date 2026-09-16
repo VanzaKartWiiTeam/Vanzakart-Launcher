@@ -284,6 +284,45 @@ export interface LauncherUpdateStatus {
   message: string;
 }
 
+/**
+ * Offerta di aggiornamento, da `install.json`.
+ *
+ * È il manifest che legge anche l'installer: il pacchetto è lo stesso, e
+ * l'aggiornamento finisce nella cartella in cui il launcher è installato.
+ */
+export interface LauncherUpdateOffer {
+  current: string;
+  latest: string;
+  available: boolean;
+  notes: string;
+  pubDate: string;
+  /** Cartella d'installazione: quella scelta a suo tempo, non una nuova. */
+  installDir: string;
+  sizeBytes: number;
+  sizeLabel: string;
+  enoughSpace: boolean;
+  /** Il pacchetto dichiara un'impronta SHA-256. */
+  verifiable: boolean;
+  /** Il pacchetto è firmato: si sa chi lo ha pubblicato. */
+  signed: boolean;
+  /** L'installazione ha il registro scritto dall'installer. */
+  managed: boolean;
+  canInstall: boolean;
+  downloadPage: string;
+  /** Perché da qui non si può aggiornare; vuoto quando si può. */
+  blocked: string;
+  blockedCode: string;
+}
+
+/** Esito dell'aggiornamento del launcher. */
+export interface LauncherUpdateOutcome {
+  version: string;
+  installDir: string;
+  bytes: number;
+  /** Qualcosa della versione precedente sparirà al prossimo avvio. */
+  cleanupPending: boolean;
+}
+
 /** Un amico salvato dentro una licenza. */
 /**
  * Come va un giocatore secondo il server: le stesse righe della classifica.

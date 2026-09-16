@@ -35,6 +35,8 @@ import type {
   MarioKartAction,
   MiiEditorState,
   MiiView,
+  LauncherUpdateOffer,
+  LauncherUpdateOutcome,
   LauncherUpdateStatus,
   MiiRendererStatus,
   ModStatus,
@@ -202,6 +204,15 @@ export const rumbleController = (device: string) => call<boolean>('controller_ru
 
 /** Stato dell'aggiornamento del launcher: legge l'ultimo controllo, non la rete. */
 export const getLauncherUpdateStatus = () => call<LauncherUpdateStatus>('launcher_update_status');
+
+/** Legge `install.json` dal server e dice cosa comporterebbe aggiornare. */
+export const checkLauncherUpdate = () => call<LauncherUpdateOffer>('launcher_update_check');
+
+/**
+ * Scarica e installa l'aggiornamento **nella cartella in cui il launcher
+ * gira**. I progressi arrivano su `PROGRESS_EVENT` con `operation: 'launcher'`.
+ */
+export const installLauncherUpdate = () => call<LauncherUpdateOutcome>('launcher_update_install');
 
 // --- Licenze e salvataggi -------------------------------------------------
 

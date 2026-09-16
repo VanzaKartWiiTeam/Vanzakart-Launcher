@@ -208,7 +208,7 @@ export const app = new AppStore();
  * impostazioni: due copie dello stesso indirizzo invecchiano in modo diverso.
  */
 export const TEAM_LINKS = {
-  website: 'https://vwfc.sitodaking.it/',
+  website: 'https://vwfc.vanzakart.net/',
   discord: 'https://discord.gg/2UGhrCNV8t',
   paypal: 'https://www.paypal.com/paypalme/SossioStorto'
 } as const;

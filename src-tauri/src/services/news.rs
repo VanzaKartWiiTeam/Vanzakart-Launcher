@@ -175,8 +175,12 @@ pub fn normalize_media_url(url: &str) -> String {
         return url.trim().to_string();
     };
 
+    let project_host = parsed
+        .host_str()
+        .is_some_and(vk_core::endpoints::is_project_host);
+
     if parsed.scheme() == "https"
-        && parsed.host_str() == Some("sitodaking.it")
+        && project_host
         && parsed.port().is_none()
         && parsed.set_port(Some(8443)).is_ok()
     {
@@ -224,7 +228,7 @@ mod tests {
         let items = parse(
             r##"[{"Title":"Novità","Category":"UPDATE","Version":"v1.1.3",
                   "DateLabel":"Live","IsPinned":true,"Summary":"# testo",
-                  "MediaPath":"https://sitodaking.it/media/clip.mp4"}]"##,
+                  "MediaPath":"https://vanzakart.net/media/clip.mp4"}]"##,
         )
         .unwrap();
 
@@ -238,7 +242,7 @@ mod tests {
         assert_eq!(items[0].media_kind.as_deref(), Some("video"));
         assert_eq!(
             items[0].media_path.as_deref(),
-            Some("https://sitodaking.it:8443/media/clip.mp4")
+            Some("https://vanzakart.net:8443/media/clip.mp4")
         );
     }
 
@@ -290,14 +294,27 @@ mod tests {
     }
 
     #[test]
+    fn media_urls_on_the_project_domain_get_the_media_port() {
+        assert_eq!(
+            normalize_media_url("https://vanzakart.net/media/a.png"),
+            "https://vanzakart.net:8443/media/a.png"
+        );
+        // Vale anche per i sottodomini del progetto.
+        assert_eq!(
+            normalize_media_url("https://cdn.vanzakart.net/media/a.png"),
+            "https://cdn.vanzakart.net:8443/media/a.png"
+        );
+    }
+
+    #[test]
     fn media_urls_on_other_hosts_are_untouched() {
         assert_eq!(
             normalize_media_url("https://altro.example/clip.mp4"),
             "https://altro.example/clip.mp4"
         );
         assert_eq!(
-            normalize_media_url("https://sitodaking.it:9000/clip.mp4"),
-            "https://sitodaking.it:9000/clip.mp4"
+            normalize_media_url("https://vanzakart.net:9000/clip.mp4"),
+            "https://vanzakart.net:9000/clip.mp4"
         );
         assert_eq!(normalize_media_url("non un url"), "non un url");
     }

@@ -122,7 +122,7 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
     write("DisplayIcon", &registration.executable.to_string_lossy())?;
     write("UninstallString", &command)?;
     write("QuietUninstallString", &format!("{command} --quiet"))?;
-    write("URLInfoAbout", "https://vwfc.sitodaking.it/")?;
+    write("URLInfoAbout", "https://vwfc.vanzakart.net/")?;
     write("InstallDate", &install_date())?;
 
     let size_kb = u32::try_from(registration.size_bytes / 1024)
@@ -135,6 +135,14 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
     ] {
         key.set_value(name, &value)
             .map_err(|error| InstallError::platform(format!("{name}: {error}")))?;
+    }
+
+    // Le installazioni fatte prima del rinominamento hanno la loro chiave:
+    // lasciarla vorrebbe dire due voci per un programma solo (§D-083).
+    for previous in crate::PREVIOUS_BUNDLE_IDENTIFIERS {
+        if *previous != crate::BUNDLE_IDENTIFIER {
+            delete_key_tree(&format!(r"HKCU\{UNINSTALL_ROOT}\{previous}"));
+        }
     }
 
     let mut artifacts = vec![Artifact::new(
@@ -173,7 +181,16 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
 /// come risposta il launcher vecchio. Per proporre una cartella esiste
 /// [`legacy_install_dir`], che il disinstallatore non chiama mai.
 pub fn registered_install_dir() -> Option<PathBuf> {
-    read_install_location(crate::BUNDLE_IDENTIFIER)
+    uninstall_key_names().find_map(|name| read_install_location(&name))
+}
+
+/// I nomi sotto cui la chiave di disinstallazione può stare, dal più recente.
+fn uninstall_key_names() -> impl Iterator<Item = String> {
+    std::iter::once(crate::BUNDLE_IDENTIFIER.to_string()).chain(
+        crate::PREVIOUS_BUNDLE_IDENTIFIERS
+            .iter()
+            .map(|k| (*k).to_string()),
+    )
 }
 
 /// Cartella del launcher legacy in C#, dalla chiave che scriveva il suo setup.
@@ -196,14 +213,13 @@ fn read_install_location(key_name: &str) -> Option<PathBuf> {
 
 /// Versione registrata dall'installazione corrente, se c'è.
 pub fn registered_version() -> Option<String> {
-    RegKey::predef(HKEY_CURRENT_USER)
-        .open_subkey_with_flags(
-            format!(r"{UNINSTALL_ROOT}\{}", crate::BUNDLE_IDENTIFIER),
-            KEY_READ,
-        )
-        .ok()?
-        .get_value::<String, _>("DisplayVersion")
-        .ok()
+    uninstall_key_names().find_map(|name| {
+        RegKey::predef(HKEY_CURRENT_USER)
+            .open_subkey_with_flags(format!(r"{UNINSTALL_ROOT}\{name}"), KEY_READ)
+            .ok()?
+            .get_value::<String, _>("DisplayVersion")
+            .ok()
+    })
 }
 
 /// Toglie la registrazione di **questa** installazione.
@@ -213,10 +229,10 @@ pub fn registered_version() -> Option<String> {
 /// ancora sul disco. Cancellarla farebbe sparire il launcher vecchio da "App e
 /// funzionalità" lasciandolo installato.
 pub fn unregister_uninstall(executable_name: Option<&str>) -> bool {
-    let mut removed = delete_key_tree(&format!(
-        r"HKCU\{UNINSTALL_ROOT}\{}",
-        crate::BUNDLE_IDENTIFIER
-    ));
+    let mut removed = false;
+    for name in uninstall_key_names() {
+        removed |= delete_key_tree(&format!(r"HKCU\{UNINSTALL_ROOT}\{name}"));
+    }
     if let Some(name) = executable_name {
         removed |= delete_key_tree(&format!(r"HKCU\{APP_PATHS_ROOT}\{name}"));
     }
@@ -485,6 +501,17 @@ mod tests {
         // facessero, disinstallare il launcher nuovo porterebbe via la
         // registrazione di quello vecchio (§D-055).
         assert_ne!(crate::BUNDLE_IDENTIFIER, LEGACY_UNINSTALL_KEY);
+        assert!(!crate::PREVIOUS_BUNDLE_IDENTIFIERS.contains(&LEGACY_UNINSTALL_KEY));
+    }
+
+    #[test]
+    fn the_current_key_is_tried_before_the_ones_it_replaced() {
+        let names: Vec<String> = uninstall_key_names().collect();
+        assert_eq!(
+            names.first().map(String::as_str),
+            Some(crate::BUNDLE_IDENTIFIER)
+        );
+        assert_eq!(names.len(), 1 + crate::PREVIOUS_BUNDLE_IDENTIFIERS.len());
     }
 
     #[test]

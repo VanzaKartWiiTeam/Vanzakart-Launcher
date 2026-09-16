@@ -316,6 +316,35 @@ pub fn require_safe_endpoint(candidate: &str) -> CoreResult<url::Url> {
 }
 
 // ---------------------------------------------------------------------------
+// Dominio del progetto
+// ---------------------------------------------------------------------------
+
+/// Il dominio del server. Unico: il passaggio da quello precedente è chiuso
+/// (§D-083).
+pub const PRIMARY_DOMAIN: &str = "vanzakart.net";
+
+/// `true` se l'host appartiene al progetto, sottodomini compresi.
+///
+/// Serve a riconoscere gli indirizzi su cui valgono le regole di casa — la
+/// porta 8443 dei media, per esempio — senza doverle applicare a GameBanana o
+/// all'archivio Miitomo.
+pub fn is_project_url(candidate: &str) -> bool {
+    url::Url::parse(candidate.trim())
+        .ok()
+        .and_then(|parsed| parsed.host_str().map(str::to_ascii_lowercase))
+        .is_some_and(|host| is_project_host(&host))
+}
+
+/// Come [`is_project_url`], ma a partire dall'host già estratto.
+pub fn is_project_host(host: &str) -> bool {
+    let host = host.trim().trim_end_matches('.').to_ascii_lowercase();
+    host == PRIMARY_DOMAIN
+        || host
+            .strip_suffix(PRIMARY_DOMAIN)
+            .is_some_and(|prefix| prefix.ends_with('.'))
+}
+
+// ---------------------------------------------------------------------------
 // Costruzione delle liste di mirror
 // ---------------------------------------------------------------------------
 
@@ -572,16 +601,16 @@ mod tests {
         let endpoints = EndpointsInfo::parse(raw).unwrap();
         assert_eq!(
             endpoints.mod_url,
-            "https://sitodaking.it:8443/Modpack/VanzaKart.zip"
+            "https://vanzakart.net:8443/Modpack/VanzaKart.zip"
         );
         assert_eq!(
             endpoints.resolved_news_url(),
-            "https://sitodaking.it:8443/Launcher/news.json"
+            "https://vanzakart.net:8443/Launcher/news.json"
         );
         assert!(endpoints.mod_mirrors.is_empty());
         assert_eq!(
             endpoints.hash_files_url_for(Channel::Beta),
-            "https://sitodaking.it:8443/VanzakartBeta/_by_sha256/"
+            "https://vanzakart.net:8443/VanzakartBeta/_by_sha256/"
         );
     }
 
@@ -716,6 +745,25 @@ mod tests {
         assert!(!is_safe_endpoint("https://user:pw@a.example/x"));
         assert!(!is_safe_endpoint("not a url"));
         assert!(!is_safe_endpoint(""));
+    }
+
+    #[test]
+    fn the_project_owns_its_domain_and_its_subdomains() {
+        assert!(is_project_url(
+            "https://vanzakart.net:8443/Launcher/versions.json?t=1"
+        ));
+        assert!(is_project_url("https://VWFC.VanzaKart.NET/"));
+        assert!(is_project_host("vanzakart.net"));
+    }
+
+    #[test]
+    fn a_host_that_merely_ends_with_the_domain_is_not_ours() {
+        assert!(!is_project_url("https://gamebanana.com/x"));
+        // Nessun accorpamento per suffisso: `notvanzakart.net` è di qualcun
+        // altro, e `vanzakart.net.example` pure.
+        assert!(!is_project_url("https://notvanzakart.net/x"));
+        assert!(!is_project_url("https://vanzakart.net.example/x"));
+        assert!(!is_project_url("non un url"));
     }
 
     #[test]

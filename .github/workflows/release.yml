@@ -94,9 +94,9 @@ jobs:
       - run: npm ci
         working-directory: ${{ steps.progetto.outputs.dir }}
 
-      # Lo stesso script che si usa in locale: compila il pacchetto portabile
-      # per l'installer, quello nativo firmato per l'aggiornamento in-app, e
-      # l'installer stesso.
+      # Lo stesso script che si usa in locale: compila il pacchetto della
+      # piattaforma — quello che serve sia a installare da zero sia ad
+      # aggiornare dal launcher — lo firma, e compila l'installer.
       - name: Compila e impacchetta
         shell: pwsh
         working-directory: ${{ steps.progetto.outputs.dir }}
@@ -154,8 +154,9 @@ jobs:
           merge-multiple: true
           path: ${{ steps.progetto.outputs.dir }}/dist-launcher/releases
 
-      # Nessuna compilazione: solo impronte, firme e i due manifest.
-      - name: Scrivi install.json e i manifest dell'updater
+      # Nessuna compilazione: impronte, firme già prodotte dalle tre macchine
+      # e il manifest che le mette insieme.
+      - name: Scrivi install.json
         shell: pwsh
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: |
@@ -178,10 +179,9 @@ jobs:
             "| Cosa | Dove |",
             "| --- | --- |",
             "| ``releases/$version/*`` | ``/Launcher/releases/$version/`` |",
-            "| ``updater/*.json`` | ``/Launcher/updater/`` |",
             "| ``install.json`` | ``/Launcher/install.json`` |",
             "",
-            "**In quest'ordine**: prima i pacchetti, poi i manifest. Al contrario, chi",
+            "**In quest'ordine**: prima i pacchetti, poi il manifest. Al contrario, chi",
             "controlla nel mezzo legge un indirizzo che non esiste ancora.",
             "",
             "I file ``VanzaKart-Setup_*`` sono quelli da mettere sul sito come download."

@@ -126,6 +126,9 @@ pub struct InstallReport {
 /// Il motore. Si costruisce una volta e serve tutta la procedura.
 #[derive(Debug)]
 pub struct Installer {
+    /// Versione dell'applicazione che lo sta usando: l'installer quando
+    /// installa, il launcher quando si aggiorna da sé.
+    pub(crate) app_version: String,
     downloader: Downloader,
     /// Icona da installare nel tema su Linux, se l'installer ne porta una.
     icon: Option<PathBuf>,
@@ -136,6 +139,7 @@ pub struct Installer {
 impl Installer {
     pub fn new(app_version: &str, icon: Option<PathBuf>) -> InstallResult<Self> {
         Ok(Self {
+            app_version: app_version.trim().to_string(),
             downloader: Downloader::new(&crate::user_agent(app_version))?,
             icon: icon.filter(|path| path.exists()),
             setup_bundle: platform::self_bundle_path()?,
@@ -354,7 +358,7 @@ impl Installer {
         })
     }
 
-    async fn download_and_verify(
+    pub(crate) async fn download_and_verify(
         &self,
         package: &ReleasePackage,
         archive: &Path,
@@ -390,6 +394,31 @@ impl Installer {
             }
         } else {
             tracing::warn!("il manifest non dichiara un'impronta: pacchetto non verificabile");
+        }
+
+        // La firma viene dopo l'impronta perché è la domanda successiva: il
+        // file è quello descritto dal manifest, e il manifest l'ha scritto
+        // chi ha la chiave privata? Un pacchetto che non la supera viene
+        // cancellato, non solo rifiutato (§D-084).
+        if !package.signature.trim().is_empty() {
+            progress(ProgressUpdate::new(
+                Phase::Verifying,
+                "Verifying the package signature",
+            ));
+            let archive_path = archive.to_path_buf();
+            let signature = package.signature.clone();
+            let verified = tokio::task::spawn_blocking(move || {
+                crate::signing::verify_file(&archive_path, &signature)
+            })
+            .await
+            .map_err(|error| InstallError::platform(error.to_string()))?;
+
+            if let Err(error) = verified {
+                fsops::remove_path_best_effort(archive);
+                return Err(error);
+            }
+        } else {
+            tracing::warn!("il manifest non dichiara una firma: pacchetto non autenticato");
         }
 
         Ok(outcome.summary("launcher package"))
@@ -509,7 +538,7 @@ pub fn backup_launcher_data(backup_root: &Path) -> InstallResult<Option<PathBuf>
         "settings.json",
         "preferences.json",
         "install_state.json",
-        "endpoints.cache.json",
+        "endpoints.cache.v2.json",
         "VanzaKart_launcher.json",
         "VKBeta_launcher.json",
         "mod_version.txt",

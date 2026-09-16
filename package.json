@@ -1,6 +1,6 @@
 {
   "name": "vanzakart-launcher",
-  "version": "2.0.1",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "Frontend del launcher VanzaKart",
@@ -18,7 +18,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "tauri": "tauri",
-    "build:local": "tauri build --bundles nsis --config src-tauri/tauri.local.conf.json",
+    "build:local": "tauri build --no-bundle",
     "tauri:setup": "cd setup && tauri"
   },
   "devDependencies": {
@@ -42,7 +42,6 @@
   "dependencies": {
     "@tauri-apps/api": "^2.0.3",
     "@tauri-apps/plugin-dialog": "^2.0.1",
-    "@tauri-apps/plugin-process": "^2.0.1",
-    "@tauri-apps/plugin-updater": "^2.0.2"
+    "@tauri-apps/plugin-process": "^2.0.1"
   }
 }

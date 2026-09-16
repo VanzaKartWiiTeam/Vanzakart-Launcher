@@ -19,19 +19,28 @@ use vk_core::net::Downloader;
 use vk_core::progress::{noop_sink, CancelToken};
 use vk_core::versions::{Channel, VersionInfo};
 
-const VERSIONS_URL: &str = "https://sitodaking.it:8443/Launcher/versions.json";
-const ENDPOINTS_URL: &str = "https://sitodaking.it:8443/Launcher/endpoints.json";
+const VERSIONS_URL: &str = "https://vanzakart.net:8443/Launcher/versions.json";
+const ENDPOINTS_URL: &str = "https://vanzakart.net:8443/Launcher/endpoints.json";
 
 fn downloader() -> Downloader {
     Downloader::new("vk-core-live-test").expect("client")
 }
 
+/// Legge dal client grezzo: un indirizzo che non risponde deve far fallire il
+/// test, non passare inosservato dietro un ripiego.
 async fn fetch_text(url: &str) -> String {
-    let bytes = downloader()
-        .get_bytes(url)
+    let response = downloader()
+        .client()
+        .get(url)
+        .send()
         .await
         .unwrap_or_else(|error| panic!("{url} non raggiungibile: {error}"));
-    String::from_utf8(bytes).expect("risposta non UTF-8")
+    assert!(
+        response.status().is_success(),
+        "{url} risponde {}",
+        response.status()
+    );
+    response.text().await.expect("risposta non UTF-8")
 }
 
 /// `versions.json` reale si legge con il parser reale.
