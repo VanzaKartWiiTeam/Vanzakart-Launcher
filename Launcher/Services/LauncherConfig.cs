@@ -4,7 +4,7 @@ namespace VanzaKartLauncher.Services;
 
 public static class LauncherConfig
 {
-    public const string CurrentLauncherVersion = "1.5.1";
+    public const string CurrentLauncherVersion = "1.5.5";
     public const string VersionJsonUrl = "https://sitodaking.it:8443/Launcher/versions.json";
     public const string DefaultEndpointsJsonUrl = "https://sitodaking.it:8443/Launcher/endpoints.json";
     public static string EndpointsJsonUrl { get; set; } = DefaultEndpointsJsonUrl;
@@ -14,8 +14,11 @@ public static class LauncherConfig
     // Default Fallback URLs
     public const string DefaultModUrl = "https://sitodaking.it:8443/Modpack/VanzaKart.zip";
     public const string DefaultLauncherZipUrl = "https://sitodaking.it:8443/Launcher/vanzakart_launcher.zip";
+    public const string DefaultNewLauncherZipUrl = "https://sitodaking.it:8443/Launcher/releases/2.0.0/VanzaKart-Setup_2.0.0_windows-x86_64.exe";
     public const string DefaultNewsJsonUrl = "https://sitodaking.it:8443/Launcher/news.json";
     public const string DefaultDownloadPageUrl = "https://vwfc.sitodaking.it/";
+    public const string DiscordInviteUrl = "https://discord.gg/2UGhrCNV8t";
+    public const string TeamDonationUrl = "https://www.paypal.com/paypalme/SossioStorto";
     public const string DefaultMiiRenderingArchiveUrl = "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip";
     public const string DefaultLeaderboardApiUrl = "https://sitodaking.it:8443/api/vk_leaderboard.php";
     public const string DefaultLeaderboardDetailsApiUrl = "https://sitodaking.it:8443/api/leaderboard/";
@@ -38,6 +41,7 @@ public static class LauncherConfig
     public static string ModUrl { get; set; } = DefaultModUrl;
     public static string[] ModMirrors { get; set; } = Array.Empty<string>();
     public static string LauncherZipUrl { get; set; } = DefaultLauncherZipUrl;
+    public static string NewLauncherZipUrl { get; set; } = DefaultNewLauncherZipUrl;
     public static string[] LauncherMirrors { get; set; } = Array.Empty<string>();
     public static string NewsJsonUrl { get; set; } = DefaultNewsJsonUrl;
     public static string DownloadPageUrl { get; set; } = DefaultDownloadPageUrl;
@@ -74,6 +78,7 @@ public static class LauncherConfig
         if (!string.IsNullOrWhiteSpace(endpoints.ModUrl)) ModUrl = endpoints.ModUrl;
         if (endpoints.ModMirrors != null) ModMirrors = endpoints.ModMirrors;
         if (!string.IsNullOrWhiteSpace(endpoints.LauncherUrl)) LauncherZipUrl = endpoints.LauncherUrl;
+        if (!string.IsNullOrWhiteSpace(endpoints.NewLauncherUrl)) NewLauncherZipUrl = endpoints.NewLauncherUrl;
         if (endpoints.LauncherMirrors != null) LauncherMirrors = endpoints.LauncherMirrors;
         if (!string.IsNullOrWhiteSpace(endpoints.NewsUrl)) NewsJsonUrl = endpoints.NewsUrl;
         else if (!string.IsNullOrWhiteSpace(endpoints.NewsJsonUrl)) NewsJsonUrl = endpoints.NewsJsonUrl;

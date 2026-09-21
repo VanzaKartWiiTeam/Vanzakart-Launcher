@@ -32,11 +32,31 @@ public sealed class LeaderboardViewModel : BaseViewModel
         _networkService = networkService;
         Players = new ObservableCollection<LeaderboardPlayerInfo>();
         
-        Sorts = new ObservableCollection<string> { "Global Rank", "Points", "Wins", "Games", "Winrate", "Prestige" };
+        Sorts = new ObservableCollection<LeaderboardSortOption>(BuildSortOptions());
+        Loc.Service.LanguageChanged += (_, _) =>
+        {
+            RefreshSortLabels();
+            OnPropertyChanged(nameof(SelectedSortLabel));
+        };
     }
 
     public ObservableCollection<LeaderboardPlayerInfo> Players { get; }
-    public ObservableCollection<string> Sorts { get; }
+    /// <summary>Sort choices. The key drives <see cref="SortPlayers"/>; only the label is translated.</summary>
+    public ObservableCollection<LeaderboardSortOption> Sorts { get; }
+
+    private static IEnumerable<LeaderboardSortOption> BuildSortOptions()
+        => new[] { "Global Rank", "Points", "Wins", "Games", "Winrate", "Prestige" }
+            .Select(key => new LeaderboardSortOption(key));
+
+    private void RefreshSortLabels()
+    {
+        foreach (var option in Sorts)
+        {
+            option.RefreshLabel();
+        }
+
+        OnPropertyChanged(nameof(SelectedSortLabel));
+    }
 
     public bool IsLoading
     {
@@ -74,13 +94,25 @@ public sealed class LeaderboardViewModel : BaseViewModel
         private set => SetProperty(ref _summaryText, value);
     }
 
+    /// <summary>Translated label for <see cref="SelectedSort"/>, for the "rank by" badge.</summary>
+    public string SelectedSortLabel
+    {
+        get
+        {
+            var sort = string.IsNullOrWhiteSpace(_selectedSort) ? "Global Rank" : _selectedSort;
+            return Loc.T("Sort_" + sort.Replace(" ", string.Empty));
+        }
+    }
+
     public string SelectedSort
     {
-        get => _selectedSort;
+        get => _selectedSort ?? "Global Rank";
         set
         {
-            if (SetProperty(ref _selectedSort, value))
+            var target = string.IsNullOrWhiteSpace(value) ? "Global Rank" : value;
+            if (SetProperty(ref _selectedSort, target))
             {
+                OnPropertyChanged(nameof(SelectedSortLabel));
                 ApplyFiltersAndSorting();
             }
         }
@@ -160,7 +192,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
         catch (Exception ex)
         {
             HasError = true;
-            ErrorMessage = $"Unable to load leaderboard: {ex.Message}";
+            ErrorMessage = Loc.Format("Msg_UnableToLoadLeaderboard", ex.Message);
             _allPlayersRaw.Clear();
             Players.Clear();
             Top1 = null;
@@ -241,7 +273,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
 
     private IEnumerable<LeaderboardPlayerInfo> SortPlayers(IEnumerable<LeaderboardPlayerInfo> players)
     {
-        return SelectedSort switch
+        return (_selectedSort ?? "Global Rank") switch
         {
             "Points" => players
                 .OrderByDescending(p => p.Points)
@@ -302,7 +334,7 @@ public sealed class LeaderboardViewModel : BaseViewModel
         return new LeaderboardPlayerInfo
         {
             Position = rankedPlayer.Position,
-            Name = rankedPlayer.Name,
+            Name = WiiTextSanitizer.ToDisplay(rankedPlayer.Name),
             Points = rankedPlayer.Points,
             Wins = safeWins,
             Races = totalGames,
@@ -507,6 +539,22 @@ public sealed class LeaderboardViewModel : BaseViewModel
         public int Limit { get; set; }
         public int Offset { get; set; }
         public int Count { get; set; }
+    }
+
+    public sealed class LeaderboardSortOption : BaseViewModel
+    {
+        public LeaderboardSortOption(string key)
+        {
+            Key = key;
+        }
+
+        public string Key { get; }
+
+        public string Label => Loc.T("Sort_" + Key.Replace(" ", string.Empty));
+
+        public void RefreshLabel() => OnPropertyChanged(nameof(Label));
+
+        public override string ToString() => Label;
     }
 
     private sealed class LeaderboardApiPlayer : RankImageApiModel

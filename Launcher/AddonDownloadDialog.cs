@@ -6,6 +6,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Animation;
 using System.Windows.Media.Effects;
+using VanzaKartLauncher.Services;
 
 namespace VanzaKartLauncher;
 
@@ -210,15 +211,15 @@ public sealed class AddonDownloadDialog : Window
         var percent = total > 0 ? Math.Clamp(current * 100d / total, 0, 100) : 0;
         _progressBar.Value = percent;
         _percentText.Text = total > 0 ? $"{percent:0}%" : "—";
-        _stageText.Text = "Downloading addon...";
+        _stageText.Text = Loc.T("Msg_DownloadingAddon");
 
         var speed = _smoothedBytesPerSecond > 0 ? $" • {FormatBytes((long)_smoothedBytesPerSecond)}/s" : string.Empty;
         var eta = total > current && _smoothedBytesPerSecond > 0
             ? $" • about {FormatDuration(TimeSpan.FromSeconds((total - current) / _smoothedBytesPerSecond))} remaining"
             : string.Empty;
         _detailText.Text = total > 0
-            ? $"{FormatBytes(current)} of {FormatBytes(total)}{speed}{eta}"
-            : $"{FormatBytes(current)} downloaded{speed}";
+            ? Loc.Format("Msg_Of", FormatBytes(current), FormatBytes(total), speed, eta)
+            : Loc.Format("Msg_Downloaded2", FormatBytes(current), speed);
     }
 
     public void SetStage(string stage)
@@ -238,28 +239,28 @@ public sealed class AddonDownloadDialog : Window
         _progressBar.Value = 100;
         _percentText.Text = "100%";
         _actionButton.IsEnabled = true;
-        _actionButton.Content = "Close";
+        _actionButton.Content = Loc.T("Dbg_Close");
     }
 
     public void MarkFailed(string message)
     {
         _canClose = true;
-        _stageText.Text = "Installation failed";
+        _stageText.Text = Loc.T("Msg_InstallationFailed");
         _detailText.Text = message;
         _detailText.Foreground = new SolidColorBrush(Color.FromRgb(0xFF, 0x6B, 0x6B));
         _progressBar.IsIndeterminate = false;
         _actionButton.IsEnabled = true;
-        _actionButton.Content = "Close";
+        _actionButton.Content = Loc.T("Dbg_Close");
     }
 
     public void MarkCancelled()
     {
         _canClose = true;
-        _stageText.Text = "Installation cancelled";
-        _detailText.Text = "No addon was installed.";
+        _stageText.Text = Loc.T("Msg_InstallationCancelled");
+        _detailText.Text = Loc.T("Msg_NoAddonWasInstalled");
         _progressBar.IsIndeterminate = false;
         _actionButton.IsEnabled = true;
-        _actionButton.Content = "Close";
+        _actionButton.Content = Loc.T("Dbg_Close");
     }
 
     protected override void OnClosing(CancelEventArgs e)

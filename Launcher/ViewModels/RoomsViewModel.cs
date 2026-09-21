@@ -157,7 +157,7 @@ public sealed class RoomsViewModel : BaseViewModel
             if (showLoadingState)
             {
                 HasError = true;
-                ErrorMessage = $"Impossibile caricare le stanze: {ex.Message}";
+                ErrorMessage = Loc.Format("Msg_UnableToLoadRooms", ex.Message);
                 Rooms.Clear();
             }
         }

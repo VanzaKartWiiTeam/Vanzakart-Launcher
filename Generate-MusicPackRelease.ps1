@@ -279,53 +279,37 @@ try {
             $hashZipPath = Join-Path $stagingRoot "_by_sha256.zip"
             New-StandardZipArchive -SourceDirectory $hashFilesRoot -DestinationZipPath $hashZipPath
         }
+
+        # Rimuovi le cartelle non compresse files e _by_sha256: servono solo i relativi archivi .zip
+        Remove-Item -LiteralPath $filesRoot -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $hashFilesRoot -Recurse -Force -ErrorAction SilentlyContinue
     }
 
-    # Creazione versions.json
-    $canonical = [ordered]@{}
-    foreach ($property in $versions.PSObject.Properties) { $canonical[$property.Name] = $property.Value }
+    # Creazione versions.json (solo versioni, hash e changelog)
+    $canonical = [ordered]@{
+        "mod_version" = [string]$versions.mod_version
+        "mod_sha256" = [string]$versions.mod_sha256
+        "changelog" = As-StringArray $versions.changelog
 
-    # Canonicalizza tutti i campi array, anche se il JSON online precedente conteneva una stringa.
-    $canonical["mod_mirrors"] = As-StringArray $versions.mod_mirrors
-    $canonical["mod_files_mirrors"] = As-StringArray $versions.mod_files_mirrors
-    $canonical["launcher_mirrors"] = As-StringArray $versions.launcher_mirrors
-    $canonical["changelog"] = As-StringArray $versions.changelog
-    $canonical["beta_mod_mirrors"] = As-StringArray $versions.beta_mod_mirrors
-    $canonical["beta_mod_files_mirrors"] = As-StringArray $versions.beta_mod_files_mirrors
-    $canonical["beta_changelog"] = As-StringArray $versions.beta_changelog
+        "beta_mod_version" = if ($null -ne $betaManifest) { [string]$betaManifest.mod_version } else { [string]$versions.beta_mod_version }
+        "beta_mod_sha256" = if ($null -ne $betaManifest -and $betaManifest.archive_sha256) { ([string]$betaManifest.archive_sha256).ToLowerInvariant() } else { [string]$versions.beta_mod_sha256 }
+        "beta_changelog" = if ($null -ne $betaManifest) {
+            if (-not $versions.beta_mod_version -or $versions.beta_mod_version -ne [string]$betaManifest.mod_version -or @($versions.beta_changelog).Count -eq 0) {
+                As-StringArray "VanzaKart Beta $([string]$betaManifest.mod_version)"
+            } else {
+                As-StringArray $versions.beta_changelog
+            }
+        } else {
+            As-StringArray $versions.beta_changelog
+        }
 
-    if ($null -ne $betaManifest) {
-        $betaVersion = [string]$betaManifest.mod_version
-        $canonical["beta_mod_version"] = $betaVersion
-        $canonical["beta_mod_url"] = "$betaBaseUrl/VKBeta.zip"
-        $canonical["beta_mod_manifest_url"] = $BetaManifestUrl
-        $canonical["beta_mod_files_url"] = "$betaBaseUrl/files/"
-        $canonical["beta_mod_mirrors"] = As-StringArray $null
-        $canonical["beta_mod_files_mirrors"] = As-StringArray $null
-        $canonical["beta_mod_sha256"] = if ($betaManifest.archive_sha256) {
-            ([string]$betaManifest.archive_sha256).ToLowerInvariant()
-        }
-        elseif ($versions.beta_mod_version -eq $betaVersion) {
-            [string]$versions.beta_mod_sha256
-        }
-        else {
-            ""
-        }
-        if (-not $versions.beta_mod_version -or
-            $versions.beta_mod_version -ne $betaVersion -or
-            @($versions.beta_changelog).Count -eq 0) {
-            $canonical["beta_changelog"] = As-StringArray "VanzaKart Beta $betaVersion"
-        }
+        "music_pack_version" = $Version
+        "music_pack_sha256" = $zipHash
+        "music_pack_changelog" = if ($Changelog.Count -gt 0) { As-StringArray $Changelog } else { As-StringArray "VanzaKart Music Pack $Version" }
+
+        "launcher_version" = [string]$versions.launcher_version
+        "launcher_changelog" = As-StringArray $versions.launcher_changelog
     }
-
-    $canonical["music_pack_version"] = $Version
-    $canonical["music_pack_url"] = "$serverBaseUrl/MusicPack/vanzakart_musicpack.zip"
-    $canonical["music_pack_mirrors"] = As-StringArray $null
-    $canonical["music_pack_sha256"] = $zipHash
-    $canonical["music_pack_manifest_url"] = "$serverBaseUrl/MusicPack/manifest_files.json"
-    $canonical["music_pack_files_url"] = "$serverBaseUrl/MusicPack/files/"
-    $canonical["music_pack_files_mirrors"] = As-StringArray $null
-    $canonical["music_pack_changelog"] = if ($Changelog.Count -gt 0) { As-StringArray $Changelog } else { As-StringArray "VanzaKart Music Pack $Version" }
     Write-JsonNoBom -Value $canonical -Path (Join-Path $stagingRoot "versions.json")
     Write-Host "Creato/Aggiornato il file: versions.json" -ForegroundColor Green
 
@@ -386,12 +370,10 @@ try {
     Write-Host "`n=== PROCESSO COMPLETATO ===" -ForegroundColor Green
     Write-Host "Release Music Pack $Version completata: $outputRoot" -ForegroundColor Green
     Write-Host "Ecco le istruzioni per il caricamento:"
-    Write-Host "1. Carica vanzakart_musicpack.zip e manifest_files.json in /MusicPack/"
-    Write-Host "2. Carica la cartella 'files' in /MusicPack/files/ e la cartella '_by_sha256' in /MusicPack/_by_sha256/"
-    if ($CreateFilesZip) {
-        Write-Host "   (oppure carica ed estrai files.zip e _by_sha256.zip direttamente sul server)"
-    }
-    Write-Host "3. Carica versions.json ed endpoints.json in /Launcher/ per ultimi."
+    Write-Host "1. Carica 'vanzakart_musicpack.zip', 'manifest_files.json', 'files.zip' e '_by_sha256.zip' in /MusicPack/ sul server."
+    Write-Host "   - Estrai 'files.zip' dentro /MusicPack/files/"
+    Write-Host "   - Estrai '_by_sha256.zip' dentro /MusicPack/_by_sha256/"
+    Write-Host "2. Carica 'versions.json' ed 'endpoints.json' in /Launcher/ per ultimi."
 
     if ($interactiveInvocation) {
         [void](Read-Host "`nPremi INVIO; la console resterà aperta")

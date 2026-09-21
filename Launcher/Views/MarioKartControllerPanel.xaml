@@ -2,11 +2,13 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:models="clr-namespace:VanzaKartLauncher.Models"
+             xmlns:services="clr-namespace:VanzaKartLauncher.Services"
              Loaded="Panel_OnLoaded"
              Unloaded="Panel_OnUnloaded"
              IsVisibleChanged="Panel_OnIsVisibleChanged"
              PreviewKeyDown="Panel_OnPreviewKeyDown"
-             Focusable="True">
+             Focusable="True"
+             FontFamily="Segoe UI, Segoe UI Symbol, Segoe UI Emoji, Segoe UI Historic, Yu Gothic UI, Microsoft YaHei UI, Malgun Gothic, Nirmala UI, Leelawadee UI, Arial Unicode MS, Global User Interface">
     <UserControl.Resources>
         <SolidColorBrush x:Key="MkPanel" Color="#111A2C"/>
         <SolidColorBrush x:Key="MkPanelRaised" Color="#17233A"/>
@@ -372,7 +374,7 @@
                             Click="BindingButton_OnClick"/>
                     <Button Grid.Column="3" Content="×" Style="{StaticResource MkIconButton}"
                             Foreground="#FF9CAE" Margin="8,0,0,0"
-                            Click="ClearBindingButton_OnClick" ToolTip="Clear assignment"/>
+                            Click="ClearBindingButton_OnClick" ToolTip="{services:Loc Ctrl_ClearAssignment}"/>
                 </Grid>
             </Border>
         </DataTemplate>
@@ -385,7 +387,7 @@
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center">
-                <TextBlock Text="🎮 MARIO KART CONTROLS" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}"/>
+                <TextBlock Text="{services:Loc Ctrl_MarioKartControls}" FontSize="14" FontWeight="Bold" Foreground="{DynamicResource TextSecondary}"/>
             </StackPanel>
             <Border Grid.Column="1" Background="#142A36" BorderBrush="#2D675C"
                     BorderThickness="1" CornerRadius="13" Padding="12,7" VerticalAlignment="Center">
@@ -400,7 +402,7 @@
             <StackPanel>
                 <Grid Margin="0,0,0,13">
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Controller mode" FontSize="18" FontWeight="Bold"/>
+                        <TextBlock Text="{services:Loc Ctrl_ControllerMode}" FontSize="18" FontWeight="Bold"/>
                     </StackPanel>
                 </Grid>
 
@@ -424,7 +426,7 @@
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <StackPanel Grid.Column="1" Margin="14,0,8,0" VerticalAlignment="Center">
-                                <TextBlock Text="Launcher Configuration (Recommended - Beta)" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#FFFFFF"/>
+                                <TextBlock Text="{services:Loc Ctrl_LauncherConfigurationRecommended}" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#FFFFFF"/>
                             </StackPanel>
                             <Ellipse x:Name="LauncherModeDot" Grid.Column="2" Width="10" Height="10"
                                      Fill="#50E7A7" VerticalAlignment="Center" Margin="8,0,0,0"/>
@@ -445,7 +447,7 @@
                                            HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Border>
                             <StackPanel Grid.Column="1" Margin="14,0,8,0" VerticalAlignment="Center">
-                                <TextBlock Text="Configure with Dolphin" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#F5F8FF"/>
+                                <TextBlock Text="{services:Loc Ctrl_ConfigureWithDolphin}" FontWeight="Bold" VerticalAlignment="Center" FontSize="13" Foreground="#F5F8FF"/>
                             </StackPanel>
                             <Ellipse x:Name="WiimoteModeDot" Grid.Column="2" Width="10" Height="10"
                                      Fill="#40516D" VerticalAlignment="Center" Margin="8,0,0,0"/>
@@ -468,13 +470,13 @@
                                HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <StackPanel Grid.Column="1">
-                    <TextBlock Text="Dolphin controls this configuration"
+                    <TextBlock Text="{services:Loc Ctrl_DolphinControlsThisConfiguration}"
                                FontSize="16" FontWeight="Bold"/>
-                    <TextBlock Text="Use Dolphin's original controller window for GameCube controllers, emulated Wii Remotes or real Wii Remotes. The launcher will not edit Dolphin.ini, GCPadNew.ini or WiimoteNew.ini in this mode."
+                    <TextBlock Text="{services:Loc Ctrl_UseDolphinSOriginalController}"
                                Foreground="#AAA9D1" FontSize="11" TextWrapping="Wrap" Margin="0,5,0,0"/>
                     <Border Background="#222043" BorderBrush="#474473" BorderThickness="1"
                             CornerRadius="9" Padding="10,7" Margin="0,11,0,0">
-                        <TextBlock Text="Save &amp; play only remembers this choice, then launches the game."
+                        <TextBlock Text="{services:Loc Ctrl_SaveAndPlayOnlyRemembersThis}"
                                    Foreground="#CEC9FF" FontSize="10"/>
                     </Border>
                 </StackPanel>
@@ -488,7 +490,7 @@
                     <ColumnDefinition Width="Auto"/>
                 </Grid.ColumnDefinitions>
                 <StackPanel>
-                    <TextBlock Text="Controller" FontSize="11" FontWeight="Bold" Foreground="#7698CB" Margin="1,0,0,7"/>
+                    <TextBlock Text="{services:Loc Ctrl_Controller}" FontSize="11" FontWeight="Bold" Foreground="#7698CB" Margin="1,0,0,7"/>
                     <ComboBox x:Name="DeviceComboBox" Style="{StaticResource MkComboBox}"
                               ItemsSource="{Binding Devices}" SelectedItem="{Binding SelectedDevice, Mode=TwoWay}"
                               SelectionChanged="DeviceComboBox_OnSelectionChanged">
@@ -518,10 +520,10 @@
                     <Border Background="#14263D" CornerRadius="11" Padding="11,7" Margin="0,0,9,0">
                         <StackPanel Orientation="Horizontal">
                             <Ellipse x:Name="ConnectionDot" Width="8" Height="8" Fill="#FFB74D" Margin="0,0,7,0"/>
-                            <TextBlock x:Name="ConnectionText" Text="In attesa" FontSize="11" VerticalAlignment="Center"/>
+                            <TextBlock x:Name="ConnectionText" Text="{services:Loc Ctrl_Waiting}" FontSize="11" VerticalAlignment="Center"/>
                         </StackPanel>
                     </Border>
-                    <Button x:Name="RefreshButton" Content="↻  Refresh" Style="{StaticResource MkButton}"
+                    <Button x:Name="RefreshButton" Content="{services:Loc Ctrl_Refresh}" Style="{StaticResource MkButton}"
                             Click="RefreshButton_OnClick"/>
                 </StackPanel>
             </Grid>
@@ -542,21 +544,21 @@
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
                         <StackPanel>
-                            <TextBlock Text="Game actions" FontSize="18" FontWeight="Bold"/>
-                            <TextBlock Text="Select an action, then press the button you want to use."
+                            <TextBlock Text="{services:Loc Ctrl_GameActions}" FontSize="18" FontWeight="Bold"/>
+                            <TextBlock Text="{services:Loc Ctrl_SelectAnActionThenPressThe}"
                                        Foreground="{StaticResource MkMuted}" FontSize="11" Margin="0,4,0,0"/>
-                            <TextBlock Text="Brake and Drift may intentionally use the same button."
+                            <TextBlock Text="{services:Loc Ctrl_BrakeAndDriftMayIntentionally}"
                                        Foreground="#7FAFF7" FontSize="10" Margin="0,3,0,0"/>
                         </StackPanel>
                         <Border Grid.Column="1" Background="#1B3150" CornerRadius="10" Padding="9,5" VerticalAlignment="Center">
-                            <TextBlock Text="11 ACTIONS" Foreground="#90BAFA" FontWeight="Bold" FontSize="9"/>
+                            <TextBlock Text="{services:Loc Ctrl_11Actions}" Foreground="#90BAFA" FontWeight="Bold" FontSize="9"/>
                         </Border>
                     </Grid>
 
-                    <TextBlock Text="RACING" Foreground="#6F8EBB" FontWeight="Bold" FontSize="10" Margin="2,0,0,8"/>
+                    <TextBlock Text="{services:Loc Ctrl_Racing}" Foreground="#6F8EBB" FontWeight="Bold" FontSize="10" Margin="2,0,0,8"/>
                     <ItemsControl ItemsSource="{Binding RaceActions}" ItemTemplate="{StaticResource ActionTemplate}"/>
 
-                    <TextBlock Text="MOVEMENT" Foreground="#6F8EBB" FontWeight="Bold" FontSize="10" Margin="2,8,0,8"/>
+                    <TextBlock Text="{services:Loc Ctrl_Movement}" Foreground="#6F8EBB" FontWeight="Bold" FontSize="10" Margin="2,8,0,8"/>
                     <ItemsControl ItemsSource="{Binding MovementActions}" ItemTemplate="{StaticResource ActionTemplate}"/>
 
                 </StackPanel>
@@ -567,13 +569,13 @@
                     <StackPanel>
                         <Grid Margin="0,0,0,12">
                             <StackPanel>
-                                <TextBlock Text="Controller tester" FontSize="18" FontWeight="Bold"/>
-                                <TextBlock Text="Every input lights up in real time." Foreground="{StaticResource MkMuted}"
+                                <TextBlock Text="{services:Loc Ctrl_ControllerTester}" FontSize="18" FontWeight="Bold"/>
+                                <TextBlock Text="{services:Loc Ctrl_EveryInputLightsUpInRealTime}" Foreground="{StaticResource MkMuted}"
                                            FontSize="11" Margin="0,3,0,0"/>
                             </StackPanel>
                             <Border HorizontalAlignment="Right" VerticalAlignment="Top"
                                     Background="#173B34" CornerRadius="9" Padding="8,4">
-                                <TextBlock Text="LIVE" Foreground="#66EAB1" FontSize="9" FontWeight="Bold"/>
+                                <TextBlock Text="{services:Loc Ctrl_Live}" Foreground="#66EAB1" FontSize="9" FontWeight="Bold"/>
                             </Border>
                         </Grid>
 
@@ -688,17 +690,17 @@
                         </Grid>
 
                         <Border Background="#0F1A2B" CornerRadius="11" Padding="10,8" Margin="0,13,0,0" MinHeight="39">
-                            <TextBlock x:Name="PressedInputsText" Text="Press a button to test it"
+                            <TextBlock x:Name="PressedInputsText" Text="{services:Loc Ctrl_PressAButtonToTestIt}"
                                        Foreground="#A9BAD4" TextWrapping="Wrap" HorizontalAlignment="Center"/>
                         </Border>
 
                         <Grid Margin="0,13,0,0">
-                            <CheckBox x:Name="VibrationSwitch" Content="Vibration"
+                            <CheckBox x:Name="VibrationSwitch" Content="{services:Loc Ctrl_Vibration}"
                                       Style="{StaticResource MkSwitch}"
                                       IsChecked="{Binding Vibration, Mode=TwoWay}"
                                       Checked="VibrationSwitch_OnChanged"
                                       Unchecked="VibrationSwitch_OnChanged"/>
-                                <Button Content="Test" Style="{StaticResource MkButton}" HorizontalAlignment="Right"
+                                <Button Content="{services:Loc Ctrl_Test}" Style="{StaticResource MkButton}" HorizontalAlignment="Right"
                                     MinWidth="76" Padding="14,7" Click="TestVibrationButton_OnClick"/>
                         </Grid>
                     </StackPanel>
@@ -708,11 +710,11 @@
                     <StackPanel>
                         <Grid Margin="0,0,0,13">
                             <StackPanel>
-                                <TextBlock Text="Analog response" FontSize="18" FontWeight="Bold"/>
-                                <TextBlock Text="Tune steering and preview the result instantly."
+                                <TextBlock Text="{services:Loc Ctrl_AnalogResponse}" FontSize="18" FontWeight="Bold"/>
+                                <TextBlock Text="{services:Loc Ctrl_TuneSteeringAndPreviewTheResult}"
                                            Foreground="{StaticResource MkMuted}" FontSize="11" Margin="0,3,0,0"/>
                             </StackPanel>
-                            <Button Grid.Column="1" Content="Reset" Style="{StaticResource MkButton}"
+                            <Button Grid.Column="1" Content="{services:Loc Mii_Reset}" Style="{StaticResource MkButton}"
                                     MinWidth="76"
                                     HorizontalAlignment="Right" VerticalAlignment="Top" Padding="12,6"
                                     Click="ResetAnalogButton_OnClick"/>
@@ -725,7 +727,7 @@
                             </Grid.ColumnDefinitions>
                             <StackPanel Margin="0,0,18,0">
                                 <Grid>
-                                    <TextBlock Text="Deadzone" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{services:Loc Ctrl_Deadzone}" FontWeight="SemiBold"/>
                                     <TextBlock Text="{Binding Deadzone, StringFormat={}{0:0}%}"
                                                HorizontalAlignment="Right" Foreground="#7EAEFF"/>
                                 </Grid>
@@ -734,7 +736,7 @@
                                         ValueChanged="AnalogSlider_OnChanged" Margin="0,7,0,0"/>
 
                                 <Grid Margin="0,15,0,0">
-                                    <TextBlock Text="Sensitivity" FontWeight="SemiBold"/>
+                                    <TextBlock Text="{services:Loc Ctrl_Sensitivity}" FontWeight="SemiBold"/>
                                     <TextBlock Text="{Binding Sensitivity, StringFormat={}{0:0}%}"
                                                HorizontalAlignment="Right" Foreground="#7EAEFF"/>
                                 </Grid>
@@ -772,12 +774,12 @@
         </Border>
 
         <Grid Margin="0,15,0,0">
-            <TextBlock x:Name="SaveHintText" Text="Changes have not been applied to Dolphin yet."
+            <TextBlock x:Name="SaveHintText" Text="{services:Loc Ctrl_ChangesHaveNotBeenAppliedTo}"
                        Foreground="{StaticResource MkMuted}" VerticalAlignment="Center"/>
             <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
-                <Button x:Name="RecommendedSetupButton" Content="Recommended setup" Style="{StaticResource MkButton}"
+                <Button x:Name="RecommendedSetupButton" Content="{services:Loc Ctrl_RecommendedSetup}" Style="{StaticResource MkButton}"
                         Margin="0,0,9,0" Click="RecommendedSetupButton_OnClick"/>
-                <Button x:Name="SaveButton" Content="Save &amp; play" Style="{StaticResource MkPrimaryButton}"
+                <Button x:Name="SaveButton" Content="{services:Loc Ctrl_SaveAndPlay}" Style="{StaticResource MkPrimaryButton}"
                         Padding="22,11" Click="SaveButton_OnClick"/>
             </StackPanel>
         </Grid>

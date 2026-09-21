@@ -590,8 +590,25 @@ public sealed class MiiFileParserService
 
     private static string NormalizeMiiName(string value, string fallback)
     {
-        var name = string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
-        return name.Length <= 10 ? name : name[..10];
+        var name = WiiTextSanitizer.Clean(value);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = fallback;
+        }
+
+        if (name.Length <= 10)
+        {
+            return name;
+        }
+
+        // Never cut a surrogate pair in half: that would write an orphan into the save.
+        var cut = 10;
+        if (char.IsHighSurrogate(name[cut - 1]))
+        {
+            cut--;
+        }
+
+        return name[..cut];
     }
 
     private static string ReadMiiString(byte[] bytes, int offset)
@@ -601,9 +618,7 @@ public sealed class MiiFileParserService
             return string.Empty;
         }
 
-        return Encoding.BigEndianUnicode.GetString(bytes, offset, 20)
-            .Replace("\0", string.Empty, StringComparison.Ordinal)
-            .Trim();
+        return WiiTextSanitizer.Clean(Encoding.BigEndianUnicode.GetString(bytes, offset, 20));
     }
 
     private static void WriteMiiString(byte[] bytes, int offset, string value)

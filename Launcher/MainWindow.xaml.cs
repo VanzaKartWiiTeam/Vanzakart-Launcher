@@ -121,9 +121,13 @@ public partial class MainWindow : Window
     private readonly DolphinSettingsManager _dolphinSettingsManager = new();
 
 
+    private bool _isUpdatingLanguageUi;
+    private string _currentHeaderTag = "Home";
+
     public MainWindow()
     {
         _userPreferences = _preferencesService.Load();
+        ApplyStoredLanguage();
         if (!Enum.IsDefined(_userPreferences.ModReleaseChannel))
         {
             _userPreferences.ModReleaseChannel = ModReleaseChannel.Stable;
@@ -160,7 +164,10 @@ public partial class MainWindow : Window
         LeaderboardView.DataContext = _leaderboardViewModel;
         FriendsView.DataContext = _friendsViewModel;
 
-        VersionBadgeTextBlock.Text = $"Launcher v{LauncherConfig.CurrentLauncherVersion}";
+        VersionBadgeTextBlock.Text = Loc.Format("Msg_LauncherV", LauncherConfig.CurrentLauncherVersion);
+        PopulateLanguageComboBox();
+        UpdateTeamVersionLabel();
+        Loc.Service.LanguageChanged += (_, _) => OnLanguageChanged();
         DebugNavButton.Visibility = Debugger.IsAttached ? Visibility.Visible : Visibility.Collapsed;
 
         SeedNews();
@@ -183,14 +190,7 @@ public partial class MainWindow : Window
             RefreshMiiRuntimeStatus();
             ConfigureFilesystemWatchers();
             await ValidateSavedBetaTokenOnStartupAsync();
-            if (_userPreferences.AutoCheckUpdates)
-            {
-                await CheckForUpdatesAsync(showMessages: false);
-            }
-            else
-            {
-                await FetchNewsFromServerAsync();
-            }
+            await CheckForUpdatesAsync(showMessages: false);
         };
 
         _navigationService.Navigated += tab => NavigateTo(tab);
@@ -305,57 +305,48 @@ public partial class MainWindow : Window
         {
             case "News":
                 view = NewsView;
-                PageTitleTextBlock.Text = "News";
-                PageSubtitleTextBlock.Text = "Updates and changelog.";
+                ApplyPageHeader("News");
                 ApplyNewsFilter();
                 break;
             case "Rooms":
                 view = RoomsView;
-                PageTitleTextBlock.Text = "Rooms";
-                PageSubtitleTextBlock.Text = "Live Room List";
+                ApplyPageHeader("Rooms");
                 _roomsViewModel?.StartAutoRefresh();
                 _ = _roomsViewModel?.RefreshAsync();
                 break;
             case "Leaderboard":
                 view = LeaderboardView;
-                PageTitleTextBlock.Text = "Leaderboard";
-                PageSubtitleTextBlock.Text = "Global player ranking";
+                ApplyPageHeader("Leaderboard");
                 _leaderboardViewModel?.UpdateLocalFriendCodes(_allLicenseCards.Select(c => c.FriendCode));
                 _ = _leaderboardViewModel?.RefreshAsync();
                 break;
             case "Mods":
                 view = ModsView;
-                PageTitleTextBlock.Text = "Mods";
-                PageSubtitleTextBlock.Text = "Install, repair, and add custom textures.";
+                ApplyPageHeader("Mods");
                 RefreshModsView();
                 break;
             case "Licenses":
                 view = LicensesView;
-                PageTitleTextBlock.Text = "Mii & Licenses";
-                PageSubtitleTextBlock.Text = "Back up or import your saves and customize your miis.";
+                ApplyPageHeader("Licenses");
                 RefreshLicenseView();
                 break;
             case "Friends":
                 view = FriendsView;
-                PageTitleTextBlock.Text = "Friends";
-                PageSubtitleTextBlock.Text = "Manage your Dolphin friend list locally.";
+                ApplyPageHeader("Friends");
                 _friendsViewModel?.LoadFriends();
                 break;
             case "Settings":
                 view = SettingsView;
-                PageTitleTextBlock.Text = "Settings";
-                PageSubtitleTextBlock.Text = "Paths and preferences.";
+                ApplyPageHeader("Settings");
                 break;
             case "Debug":
                 view = DebugView;
-                PageTitleTextBlock.Text = "Debug";
-                PageSubtitleTextBlock.Text = "Developer-only local diagnostics.";
+                ApplyPageHeader("Debug");
                 RefreshDebugInfo();
                 break;
             default:
                 view = PlayView;
-                PageTitleTextBlock.Text = "VanzaKart";
-                PageSubtitleTextBlock.Text = "Ready to race.";
+                ApplyPageHeader("Home");
                 RefreshDerivedState();
                 break;
         }
@@ -370,6 +361,19 @@ public partial class MainWindow : Window
         }
 
         SetActiveTab(tab);
+    }
+
+    /// <summary>Writes the localized title/subtitle for a page into the header.</summary>
+    private void ApplyPageHeader(string headerTag)
+    {
+        _currentHeaderTag = headerTag;
+        PageTitleTextBlock.Text = L($"Nav_{headerTag}Title");
+        PageSubtitleTextBlock.Text = L($"Nav_{headerTag}Subtitle");
+    }
+
+    private void UpdateNavigationLabels()
+    {
+        ApplyPageHeader(_currentHeaderTag);
     }
 
     private void SetActiveTab(string tab)
@@ -538,18 +542,18 @@ public partial class MainWindow : Window
         }
 
         var selectedName = GetChannelDisplayName(SelectedModReleaseChannel);
-        ReleaseChannelTitleTextBlock.Text = $"{selectedName} channel";
+        ReleaseChannelTitleTextBlock.Text = Loc.Format("Msg_Channel", selectedName);
         ReleaseChannelDescriptionTextBlock.Text = SelectedModReleaseChannel == ModReleaseChannel.Beta
-            ? "Preview builds installed separately as VKBeta. Switching back to Stable never removes or reinstalls either modpack."
-            : "Recommended builds installed separately from VKBeta. Switching channels is immediate when both are up to date.";
+            ? L("Msg_PreviewBuildsInstalledSeparately")
+            : L("Msg_RecommendedBuildsInstalledSeparately");
         var settings = BuildSettingsFromUi();
         var installedChannels = new[] { ModReleaseChannel.Stable, ModReleaseChannel.Beta }
             .Where(channel => IsModInstalled(settings, channel))
             .Select(channel => $"{GetChannelDisplayName(channel)} {GetInstalledModVersion(channel)}")
             .ToArray();
         InstalledReleaseChannelTextBlock.Text = installedChannels.Length > 0
-            ? $"Installed: {string.Join(" • ", installedChannels)}"
-            : "Installed: none";
+            ? Loc.Format("Msg_Installed2", string.Join(" • ", installedChannels))
+            : L("Msg_InstalledNone");
         ReleaseChannelSettingsCard.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
         ModReleaseChannelComboBox.IsEnabled = !_isBusy;
@@ -588,8 +592,8 @@ public partial class MainWindow : Window
             RefreshAllState();
 
             ShowCustomDialog(
-                "Beta Access Revoked",
-                "Your Beta Access Token is no longer valid or has been modified in the database. You have been automatically switched back to the Stable channel.",
+                L("Msg_BetaAccessRevoked"),
+                L("Msg_YourBetaAccessTokenIsNoLonger"),
                 MessageBoxButton.OK);
         }
     }
@@ -622,7 +626,7 @@ public partial class MainWindow : Window
         var updated = await PromptBetaTokenIfNeededAsync(forcePrompt: true);
         if (updated)
         {
-            ShowToast("Beta Token Updated", "Your Access Token has been updated and verified successfully.");
+            ShowToast(L("Msg_BetaTokenUpdated"), L("Msg_YourAccessTokenHasBeenUpdated"));
         }
     }
 
@@ -655,11 +659,9 @@ public partial class MainWindow : Window
             }
         }
 
-        var message = requestedChannel == ModReleaseChannel.Beta
-            ? "Join the Beta channel?\n\nBeta builds can be unstable and may contain unfinished changes. VKBeta is kept separate from Stable, so you can switch back instantly without reinstalling it."
-            : "Return to the Stable channel?\n\nVanzaKart and VKBeta remain installed separately. No files from either modpack will be replaced by this switch.";
+        var message = L(requestedChannel == ModReleaseChannel.Beta ? "Msg_JoinBetaChannel" : "Msg_ReturnToStableChannel");
 
-        if (ShowCustomDialog("Change modpack channel", message, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (ShowCustomDialog(L("Msg_ChangeModpackChannel"), message, MessageBoxButton.YesNo) != MessageBoxResult.Yes)
         {
             RestoreReleaseChannelSelection();
             return;
@@ -690,10 +692,10 @@ public partial class MainWindow : Window
 
         var ready = IsModInstalled(BuildSettingsFromUi(), requestedChannel) && !_isModUpdateRequired;
         ShowToast(
-            $"{GetChannelDisplayName(requestedChannel)} selected",
+            Loc.Format("Msg_Selected", GetChannelDisplayName(requestedChannel)),
             ready
-                ? $"{GetModDirectoryName(requestedChannel)} is already installed and ready to play."
-                : $"Install or update {GetModDirectoryName(requestedChannel)} from Mods before playing.");
+                ? Loc.Format("Msg_IsAlreadyInstalledAndReadyTo", GetModDirectoryName(requestedChannel))
+                : Loc.Format("Msg_InstallOrUpdateFromModsBefore", GetModDirectoryName(requestedChannel)));
     }
 
     private void RestoreReleaseChannelSelection()
@@ -784,19 +786,19 @@ public partial class MainWindow : Window
         if (_isModUpdateRequired)
         {
             var pendingText = IsChannelSwitchPending(settings)
-                ? $"Switch to the {GetChannelDisplayName(SelectedModReleaseChannel)} channel required"
-                : $"Mod update available (v{_latestModVersion})";
+                ? Loc.Format("Msg_SwitchToChannelRequired", GetChannelDisplayName(SelectedModReleaseChannel))
+                : Loc.Format("Msg_ModUpdateAvailableV", _latestModVersion);
             SetStatus(pendingText, (WpfBrush)FindResource("WarningBrush"));
             return;
         }
 
         if (IsModInstalled(settings))
         {
-            SetStatus("Mod installed and ready", (WpfBrush)FindResource("SuccessBrush"));
+            SetStatus(L("Msg_ModInstalledAndReady"), (WpfBrush)FindResource("SuccessBrush"));
         }
         else
         {
-            SetStatus("Setup required: install the mod", (WpfBrush)FindResource("WarningBrush"));
+            SetStatus(L("Msg_SetupRequiredInstallTheMod"), (WpfBrush)FindResource("WarningBrush"));
         }
     }
 
@@ -813,38 +815,38 @@ public partial class MainWindow : Window
     {
         var settings = BuildSettingsFromUi();
         var installed = IsModInstalled(settings);
-        var localVersion = installed ? GetInstalledModVersion() : "Not installed";
+        var localVersion = installed ? GetInstalledModVersion() : L("Mods_NotInstalled");
         var switchPending = IsChannelSwitchPending(settings);
         var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
         var myStuffFolder = Path.Combine(settings.GetModFolder(), modDirectoryName, modDirectoryName, "My Stuff");
         var conflicts = _modConflictService.ScanAddonConflicts(myStuffFolder);
 
         InstalledVersionText.Text = localVersion;
-        LatestVersionText.Text = string.IsNullOrEmpty(_latestModVersion) ? "Unknown" : _latestModVersion;
+        LatestVersionText.Text = string.IsNullOrEmpty(_latestModVersion) ? L("Play_Unknown") : _latestModVersion;
         CoreModStatusTextBlock.Text = switchPending
-            ? $"{modDirectoryName} is not installed yet. The other channel remains available and unchanged."
+            ? Loc.Format("Msg_IsNotInstalledYetTheOtherChannel", modDirectoryName)
             : installed
-            ? $"Installed: {GetChannelDisplayName(SelectedModReleaseChannel)} {localVersion}"
-            : "Core modpack is not installed yet.";
+            ? Loc.Format("Msg_Installed", GetChannelDisplayName(SelectedModReleaseChannel), localVersion)
+            : L("Msg_CoreModpackIsNotInstalledYet");
         AddonFolderTextBlock.Text = Directory.Exists(myStuffFolder)
             ? myStuffFolder
-            : "My Stuff folder will be created after install or first import.";
+            : L("Msg_MyStuffFolderWillBeCreatedAfter");
         CompatibilityTextBlock.Text = installed
-            ? "Core files detected. Addons can be staged locally."
-            : "Install the core mod before importing addons.";
+            ? L("Msg_CoreFilesDetectedAddonsCanBe")
+            : L("Msg_InstallTheCoreModBeforeImporting");
         VersioningTextBlock.Text = string.IsNullOrEmpty(_latestModVersion)
-            ? "Waiting for manifest"
-            : $"{GetChannelDisplayName(SelectedModReleaseChannel)} manifest latest: v{_latestModVersion}";
+            ? L("Msg_WaitingForManifest")
+            : Loc.Format("Msg_ManifestLatestV", GetChannelDisplayName(SelectedModReleaseChannel), _latestModVersion);
         ModChannelBadgeTextBlock.Text = GetChannelDisplayName(SelectedModReleaseChannel).ToUpperInvariant();
         ModChannelBadgeBorder.Background = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#4A2B18" : "#163754"));
         ModChannelBadgeBorder.BorderBrush = new SolidColorBrush((WpfColor)ColorConverter.ConvertFromString(
             SelectedModReleaseChannel == ModReleaseChannel.Beta ? "#FF9F43" : "#397FB9"));
         InstallButton.Content = switchPending
-            ? $"Install {modDirectoryName}"
-            : _isModUpdateRequired ? "Update" : installed ? "Reinstall" : "Install";
+            ? Loc.Format("Msg_Install", modDirectoryName)
+            : _isModUpdateRequired ? L("Btn_Update") : installed ? L("Btn_Reinstall") : L("Btn_Install");
         ModConflictTextBlock.Text = conflicts.Count == 0
-            ? "No addon conflicts detected."
+            ? L("Msg_NoAddonConflictsDetected")
             : $"{conflicts.Count} conflict(s): {string.Join(", ", conflicts.Take(3).Select(conflict => conflict.FileName))}";
         ModConflictTextBlock.Foreground = conflicts.Count == 0
             ? (WpfBrush)FindResource("TextFaint")
@@ -862,28 +864,28 @@ public partial class MainWindow : Window
         var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
         var localVersion = packInstalled && File.Exists(musicPackVersionFile)
             ? File.ReadAllText(musicPackVersionFile).Trim()
-            : packInstalled ? "Unknown" : "Not installed";
-        var latestVersion = string.IsNullOrWhiteSpace(_latestMusicPackVersion) ? "Unknown" : _latestMusicPackVersion;
+            : packInstalled ? L("Play_Unknown") : L("Mods_NotInstalled");
+        var latestVersion = string.IsNullOrWhiteSpace(_latestMusicPackVersion) ? L("Play_Unknown") : _latestMusicPackVersion;
         var updateAvailable = packInstalled && !string.IsNullOrWhiteSpace(_latestMusicPackVersion) &&
                               !string.Equals(localVersion, _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
 
         InstalledMusicPackVersionText.Text = localVersion;
         LatestMusicPackVersionText.Text = latestVersion;
-        MusicPackInstallButton.Content = updateAvailable ? "Update" : packInstalled ? "Reinstall" : "Install";
+        MusicPackInstallButton.Content = updateAvailable ? L("Btn_Update") : packInstalled ? L("Btn_Reinstall") : L("Btn_Install");
         MusicPackInstallButton.IsEnabled = !_isBusy && coreInstalled && !string.IsNullOrWhiteSpace(_latestMusicPackUrl);
         MusicPackRemoveButton.IsEnabled = !_isBusy && packInstalled;
         MusicPackEnabledCheckBox.IsChecked = installedPack?.IsEnabled == true;
         MusicPackEnabledCheckBox.IsEnabled = !_isBusy && packInstalled;
-        MusicPackEnabledCheckBox.Content = installedPack?.IsEnabled == true ? "Enabled" : "Disabled";
+        MusicPackEnabledCheckBox.Content = installedPack?.IsEnabled == true ? L("Msg_Enabled") : L("Msg_Disabled");
         MusicPackStatusTextBlock.Text = !coreInstalled
-            ? "Install the VanzaKart Modpack before adding the Music Pack."
+            ? L("Msg_InstallTheVanzakartModpackBefore3")
             : updateAvailable
-                ? $"Update available: {localVersion} → {_latestMusicPackVersion}."
+                ? Loc.Format("Msg_UpdateAvailable", localVersion, _latestMusicPackVersion)
                 : packInstalled
                     ? installedPack?.IsEnabled == true
-                        ? $"Official Music Pack {localVersion} is installed, enabled and ready."
-                        : $"Official Music Pack {localVersion} is installed but disabled."
-                    : "Optional official package. It is installed directly in My Stuff.";
+                        ? Loc.Format("Msg_OfficialMusicPackIsInstalled", localVersion)
+                        : Loc.Format("Msg_OfficialMusicPackIsInstalled2", localVersion)
+                    : L("Msg_OptionalOfficialPackageItIsInstalled");
         MusicPackStatusTextBlock.Foreground = updateAvailable
             ? (WpfBrush)FindResource("WarningBrush")
             : packInstalled ? (WpfBrush)FindResource("SuccessBrush") : (WpfBrush)FindResource("TextSecondary");
@@ -909,8 +911,8 @@ public partial class MainWindow : Window
 
         var settings = BuildSettingsFromUi();
         var installed = IsModInstalled(settings);
-        var localVersion = installed ? GetInstalledModVersion() : "Not installed";
-        var latest = string.IsNullOrWhiteSpace(_latestModVersion) ? "Unknown" : _latestModVersion;
+        var localVersion = installed ? GetInstalledModVersion() : L("Mods_NotInstalled");
+        var latest = string.IsNullOrWhiteSpace(_latestModVersion) ? L("Play_Unknown") : _latestModVersion;
 
         if (_isDownloadingLauncherUpdate && !string.IsNullOrWhiteSpace(_latestLauncherVersion))
         {
@@ -930,52 +932,52 @@ public partial class MainWindow : Window
 
         if (HomeInstallButtonTextBlock != null)
         {
-            HomeInstallButtonTextBlock.Text = installed ? "Update Mod" : "Install Mod";
+            HomeInstallButtonTextBlock.Text = installed ? L("Msg_UpdateMod") : L("Msg_InstallMod");
         }
         if (InstallButton != null)
         {
-            InstallButton.Content = installed ? "Update Mod" : "Install Mod";
+            InstallButton.Content = installed ? L("Msg_UpdateMod") : L("Msg_InstallMod");
         }
 
         if (HomeUpdateHeaderTextBlock != null)
         {
-            HomeUpdateHeaderTextBlock.Text = "MOD UPDATE";
+            HomeUpdateHeaderTextBlock.Text = L("Msg_ModUpdate");
         }
 
         if (!string.IsNullOrWhiteSpace(_lastUpdateError))
         {
-            SetHomeUpdateBadge("Error", "Update check failed", "#4A1825", "#FF6B82", "Read the error below, then retry check.");
+            SetHomeUpdateBadge(L("Phase_Error"), L("Msg_UpdateCheckFailed"), "#4A1825", "#FF6B82", L("Msg_ReadTheErrorBelowThenRetryCheck"));
             return;
         }
 
         if (_isBusy)
         {
             var detail = string.IsNullOrWhiteSpace(HomeUpdateCheckTextBlock.Text)
-                ? "Update operation is running."
+                ? L("Msg_UpdateOperationRunning")
                 : HomeUpdateCheckTextBlock.Text;
 
             if (_isDownloadingLauncherUpdate)
             {
                 if (HomeUpdateHeaderTextBlock != null)
                 {
-                    HomeUpdateHeaderTextBlock.Text = "LAUNCHER UPDATE";
+                    HomeUpdateHeaderTextBlock.Text = L("Msg_LauncherUpdate");
                 }
                 if (HomeInstallButtonTextBlock != null)
                 {
                     HomeInstallButtonTextBlock.Text = "Updating...";
                 }
-                SetHomeUpdateBadge("Launcher", "Updating Launcher", "#3C2D12", "#FFD166", detail);
+                SetHomeUpdateBadge(L("Phase_Launcher"), L("Msg_UpdatingLauncher"), "#3C2D12", "#FFD166", detail);
             }
             else
             {
-                SetHomeUpdateBadge(UpdatePhaseTextBlock.Text, "Working", "#233151", "#39E7FF", detail);
+                SetHomeUpdateBadge(UpdatePhaseTextBlock.Text, L("Phase_Working"), "#233151", "#39E7FF", detail);
             }
             return;
         }
 
         if (!installed)
         {
-            SetHomeUpdateBadge("Setup", "Mod not installed", "#3C2D12", "#FFD166", "Install the modpack to start racing.");
+            SetHomeUpdateBadge(L("Phase_Setup"), L("Msg_ModNotInstalled"), "#3C2D12", "#FFD166", L("Msg_InstallTheModpackToStartRacing"));
             return;
         }
 
@@ -984,20 +986,20 @@ public partial class MainWindow : Window
             if (IsChannelSwitchPending(settings))
             {
                 SetHomeUpdateBadge(
-                    "Channel",
-                    $"Switch to {GetChannelDisplayName(SelectedModReleaseChannel)}",
+                    L("Phase_Channel"),
+                    Loc.Format("Msg_SwitchTo", GetChannelDisplayName(SelectedModReleaseChannel)),
                     "#3C2D12",
                     "#FFD166",
-                    $"{GetModDirectoryName(SelectedModReleaseChannel)} must be installed once; the other modpack remains untouched.");
+                    Loc.Format("Msg_MustBeInstalledOnceTheOtherModpack", GetModDirectoryName(SelectedModReleaseChannel)));
             }
             else
             {
-                SetHomeUpdateBadge("Update", "Update available", "#3C2D12", "#FFD166", $"Installed {localVersion}, latest {latest}.");
+                SetHomeUpdateBadge(L("Phase_Update"), L("Msg_UpdateAvailable2"), "#3C2D12", "#FFD166", Loc.Format("Msg_InstalledLatest", localVersion, latest));
             }
             return;
         }
 
-        SetHomeUpdateBadge("Ready", $"{GetChannelDisplayName(SelectedModReleaseChannel)} is up to date", "#153827", "#4DFFB0", "Installed mod is ready.");
+        SetHomeUpdateBadge(L("Phase_Ready"), Loc.Format("Msg_IsUpToDate", GetChannelDisplayName(SelectedModReleaseChannel)), "#153827", "#4DFFB0", L("Msg_InstalledModIsReady"));
     }
 
     private void SetHomeUpdateBadge(string badge, string title, string background, string border, string detail)
@@ -1027,12 +1029,12 @@ public partial class MainWindow : Window
         LicensesCountTextBlock.Text = _allLicenseCards.Count.ToString(CultureInfo.InvariantCulture);
         MiiStateTextBlock.Text = File.Exists(miiDb)
             ? "Dolphin"
-            : "Not found";
+            : L("Msg_NotFound");
 
         if (_allLicenseCards.Count == 0)
         {
-            LicenseSummaryTextBlock.Text = $"No {activeModDirectoryName} license save was detected in the selected Dolphin user folder.";
-            PrimaryLicenseTextBlock.Text = "No local license detected yet.";
+            LicenseSummaryTextBlock.Text = Loc.Format("Msg_NoLicenseSaveWasDetectedInThe", activeModDirectoryName);
+            PrimaryLicenseTextBlock.Text = L("Msg_NoLocalLicenseDetectedYet");
             PrimaryLicensePathTextBlock.Text = string.Empty;
             QueueLicenseAvatarRender(settings);
             if (_friendsViewModel != null)
@@ -1042,7 +1044,7 @@ public partial class MainWindow : Window
             return;
         }
 
-        LicenseSummaryTextBlock.Text = $"{profiles.Count} {activeModDirectoryName} license card(s) detected.";
+        LicenseSummaryTextBlock.Text = Loc.Format("Msg_LicenseCardSDetected", profiles.Count, activeModDirectoryName);
 
         var previousActiveSlot = _friendsViewModel?.ActiveLicense?.SlotIndex;
         var previousActivePath = _friendsViewModel?.ActiveLicense?.FilePath;
@@ -1144,7 +1146,7 @@ public partial class MainWindow : Window
                 panel.Children[1] is System.Windows.Controls.TextBlock fcText)
             {
                 var original = fcText.Text;
-                fcText.Text = "Copied!";
+                fcText.Text = L("Msg_Copied");
                 await Task.Delay(1500);
                 fcText.Text = original;
             }
@@ -1201,6 +1203,29 @@ public partial class MainWindow : Window
         }
     }
 
+    private void CopyFriendCodeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (sender is not FrameworkElement element || element.DataContext is not FriendPlayerInfo friend)
+        {
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(friend.FriendCode))
+        {
+            return;
+        }
+
+        try
+        {
+            System.Windows.Clipboard.SetText(friend.FriendCode);
+            ShowToast(L("Toast_FriendCodeCopiedTitle"), Loc.Format("Toast_FriendCodeCopiedBody", friend.FriendCode));
+        }
+        catch (Exception ex)
+        {
+            ShowToast(L("Toast_CopyFailedTitle"), ex.Message);
+        }
+    }
+
     private void SelectLicenseRedirect_Click(object sender, RoutedEventArgs e)
     {
         _navigationService.Navigate("Licenses");
@@ -1219,7 +1244,7 @@ public partial class MainWindow : Window
 
         if (target == null || target.IsEmpty || string.IsNullOrWhiteSpace(target.FilePath))
         {
-            ShowCustomDialog("Select a license", "Select a real license card before switching its Mii.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectALicense"), L("Msg_SelectARealLicenseCardBefore"), MessageBoxButton.OK);
             return;
         }
 
@@ -1231,14 +1256,14 @@ public partial class MainWindow : Window
 
         if (_licenseMiiPickerItems.Count == 0)
         {
-            ShowCustomDialog("No Mii available", "Create or import a real Wii Mii first, then you can assign it to this license.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_NoMiiAvailable"), L("Msg_CreateOrImportARealWiiMiiFirst"), MessageBoxButton.OK);
             return;
         }
 
         _pendingLicenseMiiTarget = target;
-        LicenseMiiPickerSummaryTextBlock.Text = $"Assign a saved Mii to {target.DisplayName} ({target.Subtitle}). Current Mii: {target.MiiName}.";
-        LicenseMiiPickerStatusTextBlock.Text = "Select a Mii to continue.";
-        ApplyLicenseMiiButton.Content = "Apply Mii";
+        LicenseMiiPickerSummaryTextBlock.Text = Loc.Format("Msg_AssignASavedMiiToCurrentMii", target.DisplayName, target.Subtitle, target.MiiName);
+        LicenseMiiPickerStatusTextBlock.Text = L("Msg_SelectAMiiToContinue");
+        ApplyLicenseMiiButton.Content = L("Msg_ApplyMii");
         ApplyLicenseMiiButton.IsEnabled = true;
         LicenseMiiPickerListBox.SelectedItem = _licenseMiiPickerItems.FirstOrDefault(profile => profile.MiiId == target.MiiId)
                                                ?? _licenseMiiPickerItems.FirstOrDefault();
@@ -1255,38 +1280,38 @@ public partial class MainWindow : Window
 
         if (_pendingLicenseMiiTarget == null)
         {
-            ShowCustomDialog("Select a license", "No target license is selected.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectALicense"), L("Msg_NoTargetLicenseIsSelected"), MessageBoxButton.OK);
             return;
         }
 
         if (LicenseMiiPickerListBox.SelectedItem is not LauncherMiiProfile selectedMii)
         {
-            LicenseMiiPickerStatusTextBlock.Text = "Choose a Mii before applying.";
+            LicenseMiiPickerStatusTextBlock.Text = L("Msg_ChooseAMiiBeforeApplying");
             return;
         }
 
         _isApplyingLicenseMii = true;
         ApplyLicenseMiiButton.IsEnabled = false;
         ApplyLicenseMiiButton.Content = "Applying...";
-        LicenseMiiPickerStatusTextBlock.Text = "Creating backup, syncing Mii, and updating the selected license...";
+        LicenseMiiPickerStatusTextBlock.Text = L("Msg_CreatingBackupSyncingMiiAndUpdating");
 
         try
         {
             var backupPath = await _saveManagerService.ApplyMiiToLicenseAsync(BuildSettingsFromUi(), _pendingLicenseMiiTarget, selectedMii);
             HideLicenseMiiPicker();
-            ShowToast("License Mii updated", $"{selectedMii.Name} assigned. Backup: {Path.GetFileName(backupPath)}");
+            ShowToast(L("Msg_LicenseMiiUpdated"), Loc.Format("Msg_AssignedBackup", selectedMii.Name, Path.GetFileName(backupPath)));
             RefreshLicenseView();
         }
         catch (Exception ex)
         {
             LicenseMiiPickerStatusTextBlock.Text = ex.Message;
-            ShowCustomDialog("Switch Mii error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SwitchMiiError"), ex.Message, MessageBoxButton.OK);
         }
         finally
         {
             _isApplyingLicenseMii = false;
             ApplyLicenseMiiButton.IsEnabled = true;
-            ApplyLicenseMiiButton.Content = "Apply Mii";
+            ApplyLicenseMiiButton.Content = L("Msg_ApplyMii");
         }
     }
 
@@ -1361,7 +1386,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MiiRuntimeProgressTextBlock.Text = $"Renderer: {ex.Message}";
+            MiiRuntimeProgressTextBlock.Text = Loc.Format("Msg_Renderer", ex.Message);
         }
         finally
         {
@@ -1387,7 +1412,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            MiiRuntimeProgressTextBlock.Text = $"Renderer: {ex.Message}";
+            MiiRuntimeProgressTextBlock.Text = Loc.Format("Msg_Renderer", ex.Message);
         }
         finally
         {
@@ -1400,11 +1425,11 @@ public partial class MainWindow : Window
         var status = _miiRuntimeSetupService.GetStatus();
         MiiRuntimeSetupCard.Visibility = status.IsInstalled ? Visibility.Collapsed : Visibility.Visible;
         MiiRuntimeStatusTextBlock.Text = status.IsInstalled
-            ? "Renderer assets are installed."
-            : "Install the Mii render asset cache for mii previews";
+            ? L("Msg_RendererAssetsAreInstalled")
+            : L("Msg_InstallTheMiiRenderAssetCache");
         MiiRuntimeProgressTextBlock.Text = status.IsInstalled
-            ? $"Installed: {FormatBytes(status.SizeBytes)}"
-            : "This downloads and verifies the render resource automatically.";
+            ? Loc.Format("Msg_Installed2", FormatBytes(status.SizeBytes))
+            : L("Msg_ThisDownloadsAndVerifiesTheRender");
         MiiRuntimeProgressBar.Value = status.IsInstalled ? 100 : 0;
         InstallMiiRuntimeButton.IsEnabled = !_isInstallingMiiRuntime && !status.IsInstalled;
     }
@@ -1445,7 +1470,7 @@ public partial class MainWindow : Window
     {
         LastPlayedTextBlock.Text = _userPreferences.LastPlayedUtc.HasValue
             ? _userPreferences.LastPlayedUtc.Value.ToLocalTime().ToString("g")
-            : "Never";
+            : L("Play_Never");
         TimePlayedTextBlock.Text = FormatDuration(TimeSpan.FromMinutes(_userPreferences.TotalPlayTimeMinutes));
         LaunchCountTextBlock.Text = _userPreferences.LaunchCount.ToString(CultureInfo.InvariantCulture);
     }
@@ -1459,28 +1484,136 @@ public partial class MainWindow : Window
 
         var settings = BuildSettingsFromUi();
         DebugLogTextBlock.Text =
-            $"Tab: {_currentTab}\n" +
-            $"Busy: {_isBusy}\n" +
-            $"Update required: {_isModUpdateRequired}\n" +
-            $"Launcher version: {LauncherConfig.CurrentLauncherVersion}\n" +
+            Loc.Format("Msg_Tab", _currentTab) +
+            Loc.Format("Msg_Busy", _isBusy) +
+            Loc.Format("Msg_UpdateRequired", _isModUpdateRequired) +
+            Loc.Format("Msg_LauncherVersion", LauncherConfig.CurrentLauncherVersion) +
             $"Latest mod version: {(_latestModVersion.Length == 0 ? "unknown" : _latestModVersion)}\n" +
-            $"Selected channel: {GetChannelDisplayName(SelectedModReleaseChannel)}\n" +
-            $"Stable installed: {IsModInstalled(settings, ModReleaseChannel.Stable)} ({GetInstalledModVersion(ModReleaseChannel.Stable)})\n" +
-            $"Beta installed: {IsModInstalled(settings, ModReleaseChannel.Beta)} ({GetInstalledModVersion(ModReleaseChannel.Beta)})\n" +
-            $"Dolphin: {settings.DolphinPath}\n" +
-            $"User folder: {settings.UserFolderPath}\n" +
-            $"ROM: {settings.RomPath}\n" +
-            $"Mod folder: {settings.GetModFolder()}\n" +
-            $"Settings file: {_settingsService.GetSettingsPath()}\n" +
-            $"Preferences file: {_preferencesService.GetPreferencesPath()}\n" +
-            $"Mod state file: {_modInstallationStateService.GetStatePath()}";
+            Loc.Format("Msg_SelectedChannel", GetChannelDisplayName(SelectedModReleaseChannel)) +
+            Loc.Format("Msg_StableInstalled", IsModInstalled(settings, ModReleaseChannel.Stable), GetInstalledModVersion(ModReleaseChannel.Stable)) +
+            Loc.Format("Msg_BetaInstalled", IsModInstalled(settings, ModReleaseChannel.Beta), GetInstalledModVersion(ModReleaseChannel.Beta)) +
+            Loc.Format("Msg_Dolphin", settings.DolphinPath) +
+            Loc.Format("Msg_UserFolder", settings.UserFolderPath) +
+            Loc.Format("Msg_Rom", settings.RomPath) +
+            Loc.Format("Msg_ModFolder", settings.GetModFolder()) +
+            Loc.Format("Msg_SettingsFile", _settingsService.GetSettingsPath()) +
+            Loc.Format("Msg_PreferencesFile", _preferencesService.GetPreferencesPath()) +
+            Loc.Format("Msg_ModStateFile", _modInstallationStateService.GetStatePath());
     }
+
+    /// <summary>Shorthand for a translated string, used all over the code-behind.</summary>
+    private static string L(string key) => Loc.T(key);
+
+    /// <summary>
+    /// Applies the stored language before the first frame is built, so the window
+    /// never flashes English while an Italian user is loading.
+    /// </summary>
+    private void ApplyStoredLanguage()
+    {
+        var stored = _userPreferences.Language;
+        Loc.Service.SetLanguage(LocalizationService.IsSupported(stored)
+            ? stored
+            : LocalizationService.DetectSystemLanguage());
+    }
+
+    private void PopulateLanguageComboBox()
+    {
+        if (LanguageComboBox == null)
+        {
+            return;
+        }
+
+        _isUpdatingLanguageUi = true;
+        try
+        {
+            LanguageComboBox.Items.Clear();
+            foreach (var option in LocalizationService.AvailableLanguages)
+            {
+                LanguageComboBox.Items.Add(new ComboBoxItem
+                {
+                    Content = option.Label,
+                    Tag = option.Code
+                });
+            }
+
+            foreach (ComboBoxItem item in LanguageComboBox.Items)
+            {
+                if (string.Equals(item.Tag as string, Loc.Service.CurrentLanguage, StringComparison.OrdinalIgnoreCase))
+                {
+                    LanguageComboBox.SelectedItem = item;
+                    break;
+                }
+            }
+
+            if (LanguageComboBox.SelectedItem == null && LanguageComboBox.Items.Count > 0)
+            {
+                LanguageComboBox.SelectedIndex = 0;
+            }
+        }
+        finally
+        {
+            _isUpdatingLanguageUi = false;
+        }
+    }
+
+    private void LanguageComboBox_OnSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_isUpdatingLanguageUi)
+        {
+            return;
+        }
+
+        if ((LanguageComboBox?.SelectedItem as ComboBoxItem)?.Tag is not string code)
+        {
+            return;
+        }
+
+        if (string.Equals(code, Loc.Service.CurrentLanguage, StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        Loc.Service.SetLanguage(code);
+        _userPreferences.Language = Loc.Service.CurrentLanguage;
+        _preferencesService.Save(_userPreferences);
+        ShowSettingsStatusNotification(L("Set_LanguageApplied"));
+    }
+
+    /// <summary>
+    /// Text that code writes directly into a control replaces the XAML binding, so
+    /// those places have to be recomputed whenever the language changes.
+    /// </summary>
+    private void OnLanguageChanged()
+    {
+        try
+        {
+            PopulateLanguageComboBox();
+            UpdateNavigationLabels();
+            RefreshAllState();
+            RefreshMiiRuntimeStatus();
+            UpdateTeamVersionLabel();
+        }
+        catch
+        {
+            // Never let a refresh failure take the window down mid-switch.
+        }
+    }
+
+    private void UpdateTeamVersionLabel()
+    {
+        if (TeamVersionTextBlock != null)
+        {
+            TeamVersionTextBlock.Text = Loc.Format("Team_HeroVersion", LauncherConfig.CurrentLauncherVersion);
+        }
+    }
+
 
     private void SetBusy(bool value)
     {
         _isBusy = value;
         _shellViewModel.IsBusy = value;
         InstallButton.IsEnabled = !value;
+        HomeVerifyButton.IsEnabled = !value;
         LaunchButton.IsEnabled = !value && !_isGameRunning;
         CheckUpdatesButton.IsEnabled = !value;
         RepairModButton.IsEnabled = !value;
@@ -1554,7 +1687,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
-            ShowCustomDialog("Setup required", "Select the Dolphin User folder first in Settings.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SetupRequired"), L("Msg_SelectTheDolphinUserFolderFirst"), MessageBoxButton.OK);
             _navigationService.Navigate("Settings");
             return;
         }
@@ -1564,8 +1697,8 @@ public partial class MainWindow : Window
         if (!await EnsureSelectedModReleaseLoadedAsync())
         {
             ShowCustomDialog(
-                "Release unavailable",
-                $"The {GetChannelDisplayName(SelectedModReleaseChannel)} release metadata could not be loaded. Check the server connection and try again.",
+                L("Msg_ReleaseUnavailable"),
+                Loc.Format("Msg_TheReleaseMetadataCouldNotBe", GetChannelDisplayName(SelectedModReleaseChannel)),
                 MessageBoxButton.OK);
             return;
         }
@@ -1575,7 +1708,7 @@ public partial class MainWindow : Window
             var localVersion = GetInstalledModVersion();
             if (localVersion == _latestModVersion)
             {
-                var result = ShowCustomDialog("Mod up to date", "The mod is already up to date. Reinstall anyway?", MessageBoxButton.YesNo);
+                var result = ShowCustomDialog(L("Msg_ModUpToDate"), L("Msg_TheModIsAlreadyUpToDateReinstall"), MessageBoxButton.YesNo);
                 if (result != MessageBoxResult.Yes)
                 {
                     return;
@@ -1607,8 +1740,8 @@ public partial class MainWindow : Window
         Task LogOperationAsync(string message)
             => WriteUpdateLogAsync($"[operation {operationId}] {message}");
 
-        SetStatus($"Connecting to {GetChannelDisplayName(targetChannel)} channel", (WpfBrush)FindResource("TextSecondary"));
-        SetUpdateState("Connecting", $"Preparing {GetChannelDisplayName(targetChannel)} download...", 0);
+        SetStatus(Loc.Format("Msg_ConnectingToChannel", GetChannelDisplayName(targetChannel)), (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState(L("Phase_Connecting"), Loc.Format("Msg_PreparingDownload", GetChannelDisplayName(targetChannel)), 0);
 
         await LogOperationAsync(
             $"Started: channel={targetChannel}, mode={(isUpdate ? "update" : "install")}, " +
@@ -1624,12 +1757,12 @@ public partial class MainWindow : Window
             if (!string.IsNullOrWhiteSpace(fallbackReason))
             {
                 await LogOperationAsync($"Differential update failed, falling back to full ZIP: {fallbackReason}");
-                SetUpdateState("Recovery", "Differential update failed. Downloading full modpack...", 5);
-                SetStatus("Repairing installation with full package", (WpfBrush)FindResource("WarningBrush"));
+                SetUpdateState(L("Phase_Recovery"), L("Msg_DifferentialUpdateFailedDownloading"), 5);
+                SetStatus(L("Msg_RepairingInstallationWithFull"), (WpfBrush)FindResource("WarningBrush"));
             }
             else
             {
-                SetUpdateState("Download", "Downloading modpack...", 5);
+                SetUpdateState(L("Phase_Download"), L("Msg_DownloadingModpack"), 5);
             }
 
             ResetDownloadMetrics();
@@ -1640,26 +1773,26 @@ public partial class MainWindow : Window
                 BuildModMirrorList(), _tempZipPath, downloadProgress);
             await LogOperationAsync(FormatDownloadResult("Full ZIP downloaded", fullDownloadResult));
 
-            SetStatus("Verifying downloaded archive", (WpfBrush)FindResource("TextSecondary"));
-            SetUpdateState("Verifying", "Checking archive integrity...", 96);
+            SetStatus(L("Msg_VerifyingDownloadedArchive"), (WpfBrush)FindResource("TextSecondary"));
+            SetUpdateState(L("Phase_Verifying"), L("Msg_CheckingArchiveIntegrity"), 96);
             await VerifyDownloadedArchiveAsync(_tempZipPath, _latestModSha256);
 
             DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Value = 0;
-            SetStatus("Updating modpack files", (WpfBrush)FindResource("WarningBrush"));
+            SetStatus(L("Msg_UpdatingModpackFiles"), (WpfBrush)FindResource("WarningBrush"));
             SetUpdateState(
-                isUpdate ? "Updating" : "Installing",
+                isUpdate ? L("Phase_Updating") : L("Phase_Installing"),
                 isUpdate
-                    ? "Replacing modpack files (user data is not affected)..."
-                    : "Writing modpack files to Riivolution folder...",
+                    ? L("Msg_ReplacingModpackFilesUserData")
+                    : L("Msg_WritingModpackFilesToRiivolution"),
                 0);
 
             var extractProgress = new Progress<int>(p =>
                 SetUpdateState(
-                    isUpdate ? "Updating" : "Installing",
+                    isUpdate ? L("Phase_Updating") : L("Phase_Installing"),
                     isUpdate
-                        ? $"Updating modpack files... {p}%"
-                        : $"Writing files... {p}%",
+                        ? Loc.Format("Msg_UpdatingModpackFiles2", p)
+                        : Loc.Format("Msg_WritingFiles", p),
                     p));
 
             var fullResult = await _modUpdateSafetyService.ApplyZipUpdateAsync(
@@ -1681,11 +1814,11 @@ public partial class MainWindow : Window
             // ── STEP 1: backup user data (only if the mod is already installed) ──
             if (isUpdate)
             {
-                SetUpdateState("Backup", "Saving licenses, Mii and profiles...", 2);
-                SetStatus("Backing up user data", (WpfBrush)FindResource("TextSecondary"));
+                SetUpdateState(L("Phase_Backup"), L("Msg_SavingLicensesMiiAndProfiles"), 2);
+                SetStatus(L("Msg_BackingUpUserData"), (WpfBrush)FindResource("TextSecondary"));
 
                 var backupProgress = new Progress<string>(msg =>
-                    SetUpdateState("Backup", msg, 3));
+                    SetUpdateState(L("Phase_Backup"), msg, 3));
 
                 backup = await _modUpdateSafetyService.CreateBackupAsync(
                     settings, modDirectoryName, backupProgress);
@@ -1705,8 +1838,8 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    SetUpdateState("Download", "Downloading update manifest...", 5);
-                    SetStatus("Fetching update manifest", (WpfBrush)FindResource("TextSecondary"));
+                    SetUpdateState(L("Phase_Download"), L("Msg_DownloadingUpdateManifest"), 5);
+                    SetStatus(L("Msg_FetchingUpdateManifest"), (WpfBrush)FindResource("TextSecondary"));
 
                     var manifestJson = await _networkService.DownloadStringAsync(AddNoCacheQuery(_latestModManifestUrl));
                     manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'));
@@ -1734,8 +1867,8 @@ public partial class MainWindow : Window
                 try
                 {
                     // ── STEP 2: differential update ──
-                    SetUpdateState("Verifying", "Scanning local files...", 8);
-                    SetStatus("Verifying local installation", (WpfBrush)FindResource("TextSecondary"));
+                    SetUpdateState(L("Phase_Verifying"), L("Msg_ScanningLocalFiles"), 8);
+                    SetStatus(L("Msg_VerifyingLocalInstallation"), (WpfBrush)FindResource("TextSecondary"));
 
                     var localFiles = await _modUpdateSafetyService.ScanLocalFilesAsync(modSubFolder);
 
@@ -1821,7 +1954,7 @@ public partial class MainWindow : Window
                                 }
 
                                 SetStatus(
-                                    $"Downloading {Math.Min(fileNumber, filesToDownload.Count)}/{filesToDownload.Count}: {Path.GetFileName(file.Path)}",
+                                    Loc.Format("Msg_Downloading3", Math.Min(fileNumber, filesToDownload.Count), filesToDownload.Count, Path.GetFileName(file.Path)),
                                     (WpfBrush)FindResource("TextSecondary"));
 
                                 var tempFile = Path.Combine(stagingRoot, relativePath);
@@ -2015,13 +2148,13 @@ public partial class MainWindow : Window
             _isModUpdateRequired = false;
 
             var summary = BuildSafeUpdateStatusMessage(isUpdate, result, backup);
-            SetUpdateState("Completed", summary, 100);
+            SetUpdateState(L("Phase_Completed"), summary, 100);
             SetStatus(
-                $"{GetChannelDisplayName(targetChannel)} {(isUpdate ? "update" : "installation")} completed. Ready to race.",
+                Loc.Format(isUpdate ? "Msg_ChannelUpdateCompleted" : "Msg_ChannelInstallCompleted", GetChannelDisplayName(targetChannel)),
                 (WpfBrush)FindResource("SuccessBrush"));
 
             ShowToast(
-                isUpdate ? "Update completed" : "Installation completed",
+                isUpdate ? L("Msg_UpdateCompleted") : L("Msg_InstallationCompleted"),
                 summary);
 
             operationStopwatch.Stop();
@@ -2038,8 +2171,8 @@ public partial class MainWindow : Window
             {
                 try
                 {
-                    SetUpdateState("Rollback", "Restoring user data after error...", 0);
-                    SetStatus("Error – restoring data", (WpfBrush)FindResource("DangerBrush"));
+                    SetUpdateState(L("Phase_Rollback"), L("Msg_RestoringUserDataAfterError"), 0);
+                    SetStatus(L("Msg_ErrorRestoringData"), (WpfBrush)FindResource("DangerBrush"));
 
                     await _modUpdateSafetyService.RestoreBackupAsync(backup);
 
@@ -2055,13 +2188,13 @@ public partial class MainWindow : Window
                         $"Manual restore from Backups/{backup.BackupId}");
 
                     ShowCustomDialog(
-                        "Warning – rollback failed",
-                        $"The update failed AND the automatic rollback did not succeed.\n\n" +
-                        $"Your data (licenses, Mii) is safe in the folder:\n" +
-                        $"Backups\\ModUpdates\\{backup.BackupId}\n\n" +
-                        $"Manually copy the files from there before relaunching.\n\n" +
-                        $"Original error: {ex.Message}\n" +
-                        $"Rollback error: {rollbackEx.Message}",
+                        L("Msg_WarningRollbackFailed"),
+                        L("Msg_TheUpdateFailedAndTheAutomatic") +
+                        L("Msg_YourDataLicensesMiiIsSafeInThe") +
+                        Loc.Format("Msg_BackupsModupdates", backup.BackupId) +
+                        L("Msg_ManuallyCopyTheFilesFromThere") +
+                        Loc.Format("Msg_OriginalError", ex.Message) +
+                        Loc.Format("Msg_RollbackError", rollbackEx.Message),
                         MessageBoxButton.OK);
 
                     goto Cleanup;
@@ -2071,9 +2204,9 @@ public partial class MainWindow : Window
             // Standard error (no backup or rollback succeeded)
             DownloadProgressBar.IsIndeterminate = false;
             DownloadProgressBar.Visibility = Visibility.Collapsed;
-            SetStatus("Installation failed", (WpfBrush)FindResource("DangerBrush"));
-            SetUpdateState("Error", ex.Message, 0);
-            ShowCustomDialog("Installation error", ex.Message, MessageBoxButton.OK);
+            SetStatus(L("Msg_InstallationFailed"), (WpfBrush)FindResource("DangerBrush"));
+            SetUpdateState(L("Phase_Error"), ex.Message, 0);
+            ShowCustomDialog(L("Msg_InstallationError"), ex.Message, MessageBoxButton.OK);
 
             operationStopwatch.Stop();
             await LogOperationAsync(
@@ -2111,24 +2244,24 @@ public partial class MainWindow : Window
         ModUpdateBackup? backup)
     {
         if (!wasUpdate)
-            return $"VanzaKart successfully installed ({result.FilesWritten} files).";
+            return Loc.Format("Msg_InstallSummaryInstalled", result.FilesWritten);
 
         var sb = new System.Text.StringBuilder();
-        sb.Append($"VanzaKart updated: {result.FilesWritten} files replaced");
+        sb.Append(Loc.Format("Msg_InstallSummaryUpdated", result.FilesWritten));
 
         if (result.FilesPruned > 0)
-            sb.Append($", {result.FilesPruned} outdated files removed");
+            sb.Append(Loc.Format("Msg_InstallSummaryPruned", result.FilesPruned));
 
         if (result.FilesSkipped > 0)
-            sb.Append($", {result.FilesSkipped} user files protected");
+            sb.Append(Loc.Format("Msg_InstallSummaryProtected", result.FilesSkipped));
 
         if (backup?.Files.Count > 0)
-            sb.Append($" (backup: {backup.BackupId})");
+            sb.Append(Loc.Format("Msg_InstallSummaryBackup", backup.BackupId));
 
         sb.Append('.');
 
         if (result.HasErrors)
-            sb.Append($" Warning: {result.Errors.Count} files failed to update (see log).");
+            sb.Append(Loc.Format("Msg_InstallSummaryErrors", result.Errors.Count));
 
         return sb.ToString();
     }
@@ -2189,13 +2322,142 @@ public partial class MainWindow : Window
         }
     }
 
+    /// <summary>
+    /// Compares every installed modpack file against the published manifest and
+    /// reports what is missing, altered or left over. Repairing is offered only
+    /// when the scan actually found something wrong.
+    /// </summary>
+    private async void VerifyModButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        if (_isBusy)
+        {
+            return;
+        }
+
+        var settings = BuildSettingsFromUi();
+        if (!IsModInstalled(settings, SelectedModReleaseChannel))
+        {
+            ShowCustomDialog(
+                L("Dlg_VerifyNotInstalledTitle"),
+                L("Dlg_VerifyNotInstalledBody"),
+                MessageBoxButton.OK);
+            return;
+        }
+
+        SetBusy(true);
+        try
+        {
+            SetStatus(L("Status_VerifyPreparing"), (WpfBrush)FindResource("TextSecondary"));
+            SetUpdateState(L("Phase_Verifying"), L("Status_VerifyPreparing"), 2);
+
+            if (!await EnsureSelectedModReleaseLoadedAsync() || string.IsNullOrWhiteSpace(_latestModManifestUrl))
+            {
+                ShowCustomDialog(
+                    L("Dlg_ReleaseUnavailableTitle"),
+                    L("Dlg_ReleaseUnavailableBody"),
+                    MessageBoxButton.OK);
+                return;
+            }
+
+            SetUpdateState(L("Phase_Verifying"), L("Status_VerifyManifest"), 8);
+            var manifestJson = await _networkService.DownloadStringAsync(AddNoCacheQuery(_latestModManifestUrl));
+            var manifest = JsonSerializer.Deserialize<ModManifest>(manifestJson.TrimStart('\uFEFF', '\u200B'));
+            ValidateModManifest(manifest);
+
+            SetUpdateState(L("Phase_Verifying"), L("Status_VerifyScanning"), 25);
+            var modDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
+            var modSubFolder = Path.Combine(settings.GetModFolder(), modDirectoryName);
+            var localFiles = await Task.Run(() => _modUpdateSafetyService.ScanLocalFilesAsync(modSubFolder));
+
+            var localByPath = localFiles.ToDictionary(f => f.Path, StringComparer.OrdinalIgnoreCase);
+            var missing = new List<string>();
+            var altered = new List<string>();
+
+            foreach (var expected in manifest!.Files)
+            {
+                if (!localByPath.TryGetValue(expected.Path, out var local))
+                {
+                    missing.Add(expected.Path);
+                }
+                else if (!local.Sha256.Equals(expected.Sha256, StringComparison.OrdinalIgnoreCase))
+                {
+                    altered.Add(expected.Path);
+                }
+            }
+
+            var manifestPaths = new HashSet<string>(manifest.Files.Select(f => f.Path), StringComparer.OrdinalIgnoreCase);
+            var extra = localFiles.Where(f => !manifestPaths.Contains(f.Path)).Select(f => f.Path).ToList();
+
+            SetUpdateState(L("Phase_Verifying"), L("Status_VerifyDone"), 100);
+            var problems = missing.Count + altered.Count;
+            var installedVersion = GetInstalledModVersion(SelectedModReleaseChannel);
+
+            await WriteUpdateLogAsync(
+                $"[verify] channel={SelectedModReleaseChannel}, manifestVersion={manifest.ModVersion}, " +
+                $"installedVersion={installedVersion}, checked={manifest.Files.Count}, missing={missing.Count}, " +
+                $"altered={altered.Count}, extra={extra.Count}");
+
+            if (problems == 0)
+            {
+                SetStatus(L("Status_VerifyOk"), (WpfBrush)FindResource("SuccessBrush"));
+                ShowCustomDialog(
+                    Loc.Format("Dlg_VerifyOkTitle"),
+                    Loc.Format("Dlg_VerifyOkBody", manifest.Files.Count, manifest.ModVersion, extra.Count),
+                    MessageBoxButton.OK);
+                return;
+            }
+
+            SetStatus(L("Status_VerifyProblems"), (WpfBrush)FindResource("WarningBrush"));
+            var preview = string.Join(
+                Environment.NewLine,
+                missing.Select(pth => "- " + pth).Concat(altered.Select(pth => "~ " + pth)).Take(10));
+            var body = Loc.Format(
+                "Dlg_VerifyProblemsBody",
+                manifest.Files.Count,
+                missing.Count,
+                altered.Count,
+                extra.Count);
+            if (!string.IsNullOrEmpty(preview))
+            {
+                body += Environment.NewLine + Environment.NewLine + preview;
+                if (problems > 10)
+                {
+                    body += Environment.NewLine + Loc.Format("Dlg_VerifyMoreFiles", problems - 10);
+                }
+            }
+
+            body += Environment.NewLine + Environment.NewLine + L("Dlg_VerifyRepairQuestion");
+
+            if (ShowCustomDialog(L("Dlg_VerifyProblemsTitle"), body, MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+            {
+                SetBusy(false);
+                await PerformModInstallation();
+            }
+        }
+        catch (Exception ex)
+        {
+            SetStatus(L("Status_VerifyFailed"), (WpfBrush)FindResource("DangerBrush"));
+            await WriteUpdateLogAsync($"[verify] failed: {ex}");
+            ShowCustomDialog(L("Dlg_VerifyFailedTitle"), Loc.Format("Dlg_VerifyFailedBody", ex.Message), MessageBoxButton.OK);
+        }
+        finally
+        {
+            if (_isBusy)
+            {
+                SetBusy(false);
+            }
+
+            SetUpdateState(L("Phase_Idle"), string.Empty, 0);
+        }
+    }
+
     private async void RepairModButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (ShowCustomDialog("Repair installation", "This will re-download and reinstall the mod. Continue?", MessageBoxButton.YesNo) == MessageBoxResult.Yes)
+        if (ShowCustomDialog(L("Msg_RepairInstallation"), L("Msg_ThisWillReDownloadAndReinstall"), MessageBoxButton.YesNo) == MessageBoxResult.Yes)
         {
             if (!await EnsureSelectedModReleaseLoadedAsync())
             {
-                ShowCustomDialog("Release unavailable", "The selected channel metadata could not be loaded. Try checking for updates first.", MessageBoxButton.OK);
+                ShowCustomDialog(L("Msg_ReleaseUnavailable"), L("Msg_TheSelectedChannelMetadataCould"), MessageBoxButton.OK);
                 return;
             }
             await PerformModInstallation();
@@ -2219,12 +2481,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        if (_isMigrationRequired)
+        {
+            ShowMigrationOverlay(_migrationTargetVersion, null, _migrationDownloadUrl);
+            return;
+        }
+
         var settings = BuildSettingsFromUi();
         if (!IsModInstalled(settings))
         {
             ShowCustomDialog(
-                $"{GetModDirectoryName(SelectedModReleaseChannel)} not installed",
-                $"Install the {GetChannelDisplayName(SelectedModReleaseChannel)} modpack once before launching. The other channel remains installed and unchanged.",
+                Loc.Format("Msg_NotInstalled", GetModDirectoryName(SelectedModReleaseChannel)),
+                Loc.Format("Msg_InstallTheModpackOnceBeforeLaunching", GetChannelDisplayName(SelectedModReleaseChannel)),
                 MessageBoxButton.OK);
             _navigationService.Navigate("Mods");
             return;
@@ -2233,8 +2501,8 @@ public partial class MainWindow : Window
         if (_isModUpdateRequired)
         {
             var result = ShowCustomDialog(
-                "Update available",
-                "The selected modpack version is not the latest. Do you want to launch it anyway?",
+                L("Msg_UpdateAvailable2"),
+                L("Msg_TheSelectedModpackVersionIsNot"),
                 MessageBoxButton.YesNo);
             if (result != MessageBoxResult.Yes)
             {
@@ -2247,7 +2515,7 @@ public partial class MainWindow : Window
             string.IsNullOrWhiteSpace(settings.RomPath) ||
             string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
-            ShowCustomDialog("Setup required", "Configure Dolphin, the User folder, and the Mario Kart Wii ROM in Settings.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SetupRequired"), L("Msg_ConfigureDolphinTheUserFolder"), MessageBoxButton.OK);
             _navigationService.Navigate("Settings");
             return;
         }
@@ -2255,8 +2523,8 @@ public partial class MainWindow : Window
         if (IsExecutableRunning(settings.DolphinPath))
         {
             ShowCustomDialog(
-                "Dolphin is already running",
-                "Close Dolphin before launching the game. This is required so Dolphin reloads the controller mode and bindings saved by the launcher.",
+                L("Msg_DolphinIsAlreadyRunning"),
+                L("Msg_CloseDolphinBeforeLaunchingThe"),
                 MessageBoxButton.OK);
             return;
         }
@@ -2264,8 +2532,8 @@ public partial class MainWindow : Window
         if (!MarioKartControllerPanel.PrepareControllerModeForLaunch())
         {
             ShowCustomDialog(
-                "Controller configuration error",
-                "The selected controller mode could not be applied. Open Settings → Controller and save the configuration again.",
+                L("Msg_ControllerConfigurationError"),
+                L("Msg_TheSelectedControllerModeCould"),
                 MessageBoxButton.OK);
             _navigationService.Navigate("Settings");
             return;
@@ -2276,7 +2544,7 @@ public partial class MainWindow : Window
         var xmlPath = Path.Combine(rootDir, "Riivolution", $"{modDirectoryName}.xml");
         if (!File.Exists(xmlPath))
         {
-            ShowCustomDialog("Mod not found", "Install the VanzaKart modpack before launching.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ModNotFound"), L("Msg_InstallTheVanzakartModpackBefore"), MessageBoxButton.OK);
             _navigationService.Navigate("Mods");
             return;
         }
@@ -2330,13 +2598,13 @@ public partial class MainWindow : Window
             SetBusy(_isBusy);
 
             TrackGameSession(process);
-            SetStatus("Game launched. Enjoy VanzaKart.", (WpfBrush)FindResource("SuccessBrush"));
-            ShowToast("Race started", "Vanzakart is launching.");
+            SetStatus(L("Msg_GameLaunchedEnjoyVanzakart"), (WpfBrush)FindResource("SuccessBrush"));
+            ShowToast(L("Msg_RaceStarted"), L("Msg_VanzakartIsLaunching"));
             RefreshPlayStats();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Launch error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_LaunchError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -2363,8 +2631,8 @@ public partial class MainWindow : Window
         {
             if (showMessages)
             {
-                SetStatus("Checking for updates", (WpfBrush)FindResource("TextSecondary"));
-                SetUpdateState("Checking", "Reading VanzaKart update manifest...", 0);
+                SetStatus(L("Msg_CheckingForUpdates"), (WpfBrush)FindResource("TextSecondary"));
+                SetUpdateState(L("Phase_Checking"), L("Msg_ReadingVanzakartUpdateManifest"), 0);
             }
 
             await TryFetchEndpointsAsync();
@@ -2412,16 +2680,16 @@ public partial class MainWindow : Window
             _latestLauncherMirrors = LauncherConfig.LauncherMirrors;
             _latestChangelog = info.Changelog ?? Array.Empty<string>();
 
-            if (!string.IsNullOrWhiteSpace(info.LauncherVersion) &&
-                info.LauncherVersion != LauncherConfig.CurrentLauncherVersion)
-            {
-                var answer = ShowCustomDialog("Launcher update", $"New launcher v{info.LauncherVersion} is available. Update now?", MessageBoxButton.YesNo);
-                if (answer == MessageBoxResult.Yes)
-                {
-                    await PerformLauncherUpdateAsync(info.LauncherVersion);
-                    return;
-                }
-            }
+            // 1.5.5 is the final bridge version: all legacy launcher instances are required to upgrade to 2.0.0.
+            var targetVersion = (!string.IsNullOrWhiteSpace(info.LauncherVersion) && (info.LauncherVersion.StartsWith("2.") || info.LauncherVersion.StartsWith("v2.")))
+                ? info.LauncherVersion
+                : "2.0.0";
+
+            var targetUrl = !string.IsNullOrWhiteSpace(info.NewLauncherUrl)
+                ? info.NewLauncherUrl
+                : LauncherConfig.NewLauncherZipUrl;
+
+            ShowMigrationOverlay(targetVersion, info.MigrationMessage, targetUrl);
 
             var currentSettings = BuildSettingsFromUi();
             var selectedModDirectoryName = GetModDirectoryName(SelectedModReleaseChannel);
@@ -2440,39 +2708,39 @@ public partial class MainWindow : Window
                 {
                     _isModUpdateRequired = true;
                     SetStatus(
-                        $"Mod update available (v{_latestModVersion})",
+                        Loc.Format("Msg_ModUpdateAvailableV", _latestModVersion),
                         (WpfBrush)FindResource("WarningBrush"));
                     SetUpdateState(
-                        "Update available",
-                        $"Installed {localVersion}, latest {_latestModVersion}.",
+                        L("Msg_UpdateAvailable2"),
+                        Loc.Format("Msg_InstalledLatest", localVersion, _latestModVersion),
                         0);
                     if (showMessages)
                     {
                         ShowToast(
-                            "Update available",
-                            $"{selectedModDirectoryName} v{_latestModVersion} is ready to install.");
+                            L("Msg_UpdateAvailable2"),
+                            Loc.Format("Msg_VIsReadyToInstall", selectedModDirectoryName, _latestModVersion));
                     }
                 }
                 else
                 {
                     _isModUpdateRequired = false;
-                    SetStatus("Mod is up to date", (WpfBrush)FindResource("SuccessBrush"));
-                    SetUpdateState("Up to date", "No mod update is required.", 100);
+                    SetStatus(L("Msg_ModIsUpToDate"), (WpfBrush)FindResource("SuccessBrush"));
+                    SetUpdateState(L("Msg_UpToDate"), L("Msg_NoModUpdateIsRequired"), 100);
                     if (showMessages)
                     {
                         ShowToast(
-                            musicPackUpdateAvailable ? "Music Pack update available" : "No updates",
+                            musicPackUpdateAvailable ? L("Msg_MusicPackUpdateAvailable") : L("Msg_NoUpdates"),
                             musicPackUpdateAvailable
-                                ? $"VanzaKart Music Pack v{info.MusicPackVersion} is ready to install from Mods."
-                                : "VanzaKart and its official packages are already up to date.");
+                                ? Loc.Format("Msg_VanzakartMusicPackVIsReadyTo", info.MusicPackVersion)
+                                : L("Msg_VanzakartAndItsOfficialPackages"));
                     }
                 }
             }
             else
             {
                 _isModUpdateRequired = true;
-                SetStatus($"Install {selectedModDirectoryName} to use this channel", (WpfBrush)FindResource("WarningBrush"));
-                SetUpdateState("Installation required", $"{selectedModDirectoryName} has not been installed yet.", 0);
+                SetStatus(Loc.Format("Msg_InstallToUseThisChannel", selectedModDirectoryName), (WpfBrush)FindResource("WarningBrush"));
+                SetUpdateState(L("Msg_InstallationRequired"), Loc.Format("Msg_HasNotBeenInstalledYet", selectedModDirectoryName), 0);
             }
 
             RefreshAllState();
@@ -2487,17 +2755,84 @@ public partial class MainWindow : Window
             _lastUpdateCheckUtc = DateTime.UtcNow;
             _lastUpdateError = ex.Message;
             _latestModVersion = string.Empty;
-            SetStatus("Update check failed", (WpfBrush)FindResource("DangerBrush"));
-            SetUpdateState("Network error", ex.Message, 0);
+            SetStatus(L("Msg_UpdateCheckFailed"), (WpfBrush)FindResource("DangerBrush"));
+            SetUpdateState(L("Msg_NetworkError"), ex.Message, 0);
             if (showMessages)
             {
-                ShowToast("Update check failed", ex.Message);
+                ShowToast(L("Msg_UpdateCheckFailed"), ex.Message);
             }
             RefreshHomeUpdateCard();
+            ShowMigrationOverlay("2.0.0", null, LauncherConfig.NewLauncherZipUrl);
         }
     }
 
-    private async Task PerformLauncherUpdateAsync(string targetVersion)
+    private bool _isMigrationRequired;
+    private string _migrationTargetVersion = "2.0.0";
+    private string _migrationDownloadUrl = string.Empty;
+
+    public void ShowMigrationOverlay(string targetVersion = "2.0.0", string? customMessage = null, string? downloadUrl = null)
+    {
+        _isMigrationRequired = true;
+        _migrationTargetVersion = string.IsNullOrWhiteSpace(targetVersion) ? "2.0.0" : targetVersion;
+        _migrationDownloadUrl = !string.IsNullOrWhiteSpace(downloadUrl) ? downloadUrl : LauncherConfig.NewLauncherZipUrl;
+
+        MigrationVersionBadgeTextBlock.Text = $"VANZAKART LAUNCHER {_migrationTargetVersion.ToUpperInvariant()}";
+
+        if (!string.IsNullOrWhiteSpace(customMessage))
+        {
+            MigrationCustomMessageTextBlock.Text = customMessage;
+            MigrationCustomMessageTextBlock.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            MigrationCustomMessageTextBlock.Visibility = Visibility.Collapsed;
+        }
+
+        MigrationOverlay.Visibility = Visibility.Visible;
+        MigrationOverlay.Opacity = 0;
+
+        if (MigrationCard.RenderTransform is not ScaleTransform scale)
+        {
+            scale = new ScaleTransform(0.96, 0.96);
+            MigrationCard.RenderTransform = scale;
+        }
+
+        scale.ScaleX = 0.96;
+        scale.ScaleY = 0.96;
+
+        var ease = new CubicEase { EasingMode = EasingMode.EaseOut };
+        MigrationOverlay.BeginAnimation(OpacityProperty, new DoubleAnimation(0, 1, TimeSpan.FromMilliseconds(200)) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleXProperty, new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+        scale.BeginAnimation(ScaleTransform.ScaleYProperty, new DoubleAnimation(0.96, 1, TimeSpan.FromMilliseconds(240)) { EasingFunction = ease });
+    }
+
+    private void ExitOldLauncherButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        System.Windows.Application.Current.Shutdown();
+    }
+
+    private void OpenWebsiteDownloadButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = LauncherConfig.DownloadPageUrl,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            ShowCustomDialog(L("Dlg_ErrorTitle"), ex.Message, MessageBoxButton.OK);
+        }
+    }
+
+    private async void PerformMigrationButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        await PerformLauncherUpdateAsync(_migrationTargetVersion, _migrationDownloadUrl);
+    }
+
+    private async Task PerformLauncherUpdateAsync(string targetVersion, string? customDownloadUrl = null)
     {
         // Persist the currently visible paths before handing control to the
         // external updater. SettingsService stores the authoritative copy
@@ -2508,18 +2843,70 @@ public partial class MainWindow : Window
         _isDownloadingLauncherUpdate = true;
         SetBusy(true);
         ResetDownloadMetrics();
+
+        var isExeInstaller = (!string.IsNullOrWhiteSpace(customDownloadUrl) && customDownloadUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) ||
+                             LauncherConfig.NewLauncherZipUrl.EndsWith(".exe", StringComparison.OrdinalIgnoreCase);
+
+        if (MigrationOverlay.Visibility == Visibility.Visible)
+        {
+            MigrationProgressSection.Visibility = Visibility.Visible;
+            MigrationProgressBar.IsIndeterminate = false;
+            MigrationProgressBar.Value = 0;
+            MigrationProgressPercentTextBlock.Text = "0%";
+            MigrationProgressStatusTextBlock.Text = "Downloading new launcher installer...";
+            PerformMigrationButton.IsEnabled = false;
+            OpenWebsiteDownloadButton.IsEnabled = false;
+            ExitOldLauncherButton.IsEnabled = false;
+        }
+
         DownloadProgressBar.Visibility = Visibility.Visible;
         DownloadProgressBar.IsIndeterminate = false;
         DownloadProgressBar.Value = 0;
-        SetStatus("Downloading launcher update", (WpfBrush)FindResource("TextSecondary"));
-        SetUpdateState("Launcher update", "Downloading new launcher package...", 0);
+        SetStatus(L("Msg_DownloadingLauncherUpdate"), (WpfBrush)FindResource("TextSecondary"));
+        SetUpdateState(L("Msg_LauncherUpdate2"), L("Msg_DownloadingNewLauncherPackage"), 0);
 
-        var tempZip = Path.Combine(AppContext.BaseDirectory, "Launcher_Update.zip");
+        var downloadTargetFile = isExeInstaller
+            ? Path.Combine(Path.GetTempPath(), $"VanzaKart-Setup_{targetVersion}_windows-x86_64.exe")
+            : Path.Combine(AppContext.BaseDirectory, "Launcher_Update.zip");
+
         try
         {
-            var progress = new Progress<(long current, long total)>(p => UpdateDownloadProgress(p.current, p.total));
-            await _networkService.DownloadFileWithResumeAsync(BuildLauncherMirrorList(), tempZip, progress);
-            await _archiveService.ValidateZipAsync(tempZip);
+            var progress = new Progress<(long current, long total)>(p =>
+            {
+                UpdateDownloadProgress(p.current, p.total);
+                if (p.total > 0 && MigrationOverlay.Visibility == Visibility.Visible)
+                {
+                    var percent = Math.Clamp((int)((p.current * 100) / p.total), 0, 100);
+                    var currentMb = (p.current / 1048576.0).ToString("0.0");
+                    var totalMb = (p.total / 1048576.0).ToString("0.0");
+                    MigrationProgressBar.Value = percent;
+                    MigrationProgressPercentTextBlock.Text = $"{percent}%";
+                    MigrationProgressStatusTextBlock.Text = $"Downloading installer: {currentMb} MB / {totalMb} MB";
+                }
+            });
+
+            var mirrorList = !string.IsNullOrWhiteSpace(customDownloadUrl)
+                ? [customDownloadUrl]
+                : BuildLauncherMirrorList();
+
+            await _networkService.DownloadFileWithResumeAsync(mirrorList, downloadTargetFile, progress);
+
+            if (isExeInstaller)
+            {
+                if (!File.Exists(downloadTargetFile))
+                {
+                    throw new FileNotFoundException("Downloaded setup executable could not be found.", downloadTargetFile);
+                }
+
+                // Clean up old shortcuts, registry entries, schedule old files removal, and launch new setup
+                CleanupAndUninstallOldLauncher(downloadTargetFile);
+
+                // Immediately terminate old launcher
+                System.Windows.Application.Current.Shutdown();
+                return;
+            }
+
+            await _archiveService.ValidateZipAsync(downloadTargetFile);
 
             var launcherPath = Environment.ProcessPath ?? Path.Combine(AppContext.BaseDirectory, "VanzaKart Launcher.exe");
             var safeTargetVersion = new string(targetVersion
@@ -2531,7 +2918,7 @@ public partial class MainWindow : Window
             }
 
             LauncherUpdateHostService.Start(
-                tempZip,
+                downloadTargetFile,
                 AppContext.BaseDirectory,
                 launcherPath,
                 safeTargetVersion);
@@ -2539,13 +2926,143 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            SetStatus("Launcher update failed", (WpfBrush)FindResource("DangerBrush"));
+            SetStatus(L("Msg_LauncherUpdateFailed"), (WpfBrush)FindResource("DangerBrush"));
             _isDownloadingLauncherUpdate = false;
             _latestLauncherVersion = string.Empty;
-            SetUpdateState("Failed", ex.Message, 0);
-            ShowCustomDialog("Launcher update error", ex.Message, MessageBoxButton.OK);
+            SetUpdateState(L("Phase_Failed"), ex.Message, 0);
+
+            if (MigrationOverlay.Visibility == Visibility.Visible)
+            {
+                MigrationProgressStatusTextBlock.Text = $"Download error: {ex.Message}";
+                PerformMigrationButton.IsEnabled = true;
+                OpenWebsiteDownloadButton.IsEnabled = true;
+                ExitOldLauncherButton.IsEnabled = true;
+            }
+
+            ShowCustomDialog(L("Msg_LauncherUpdateError"), ex.Message, MessageBoxButton.OK);
             SetBusy(false);
         }
+    }
+
+    private static void CleanupAndUninstallOldLauncher(string setupExePath)
+    {
+        try
+        {
+            // 1. Remove old shortcuts from Desktop, Start Menu, Quick Launch
+            var desktop = Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory);
+            TryDeleteFile(Path.Combine(desktop, "VanzaKart Launcher.lnk"));
+
+            var programs = Environment.GetFolderPath(Environment.SpecialFolder.Programs);
+            var startFolder = Path.Combine(programs, "VanzaKart");
+            TryDeleteFile(Path.Combine(startFolder, "VanzaKart Launcher.lnk"));
+            TryDeleteEmptyDirectory(startFolder);
+
+            var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+            TryDeleteFile(Path.Combine(appData, @"Microsoft\Internet Explorer\Quick Launch\VanzaKart Launcher.lnk"));
+
+            // 2. Remove old uninstaller registry keys
+            try
+            {
+                Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\Uninstall\VanzaKartLauncher", false);
+            }
+            catch { }
+
+            try
+            {
+                Microsoft.Win32.Registry.CurrentUser.DeleteSubKeyTree(@"Software\Microsoft\Windows\CurrentVersion\App Paths\VanzaKart Launcher.exe", false);
+            }
+            catch { }
+
+            // 3. Launch the new Tauri setup executable
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = setupExePath,
+                UseShellExecute = true
+            });
+
+            // 4. Schedule old installation directory cleanup after the process terminates
+            var installDir = Path.GetFullPath(AppContext.BaseDirectory);
+            // Protect developer root / git repository from accidental wipe
+            var isDevEnvironment = File.Exists(Path.Combine(installDir, "VanzaKartLauncher.csproj")) ||
+                                   File.Exists(Path.Combine(installDir, "..", "VanzaKartLauncher.sln")) ||
+                                   installDir.Contains(@"\bin\Debug\", StringComparison.OrdinalIgnoreCase);
+
+            if (!isDevEnvironment && installDir.Length >= 8 && !string.Equals(Path.GetPathRoot(installDir), installDir, StringComparison.OrdinalIgnoreCase))
+            {
+                var batchPath = Path.Combine(Path.GetTempPath(), $"vanzakart_migration_cleanup_{Guid.NewGuid():N}.bat");
+                var currentPid = Environment.ProcessId;
+                var script = string.Join(Environment.NewLine, new[]
+                {
+                    "@echo off",
+                    ":waitloop",
+                    $"tasklist /FI \"PID eq {currentPid}\" 2>nul | find /I \"{currentPid}\" >nul",
+                    "if not errorlevel 1 (",
+                    "    timeout /t 1 /nobreak >nul",
+                    "    goto waitloop",
+                    ")",
+                    "timeout /t 1 /nobreak >nul",
+                    $"rd /s /q \"{installDir}\"",
+                    "del \"%~f0\""
+                });
+
+                File.WriteAllText(batchPath, script, System.Text.Encoding.ASCII);
+                Process.Start(new ProcessStartInfo
+                {
+                    FileName = batchPath,
+                    UseShellExecute = true,
+                    WindowStyle = ProcessWindowStyle.Hidden,
+                    CreateNoWindow = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Cleanup error during migration: {ex.Message}");
+        }
+    }
+
+    private static void TryDeleteFile(string path)
+    {
+        try
+        {
+            if (File.Exists(path))
+            {
+                File.Delete(path);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static void TryDeleteEmptyDirectory(string path)
+    {
+        try
+        {
+            if (Directory.Exists(path) && !Directory.EnumerateFileSystemEntries(path).Any())
+            {
+                Directory.Delete(path, false);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static bool IsVersionHigher(string remoteVersion, string currentVersion)
+    {
+        if (string.IsNullOrWhiteSpace(remoteVersion)) return false;
+        if (string.IsNullOrWhiteSpace(currentVersion)) return true;
+
+        var cleanRemote = remoteVersion.TrimStart('v', 'V');
+        var cleanCurrent = currentVersion.TrimStart('v', 'V');
+
+        if (Version.TryParse(cleanRemote, out var vRemote) && Version.TryParse(cleanCurrent, out var vCurrent))
+        {
+            return vRemote > vCurrent;
+        }
+
+        return !string.Equals(cleanRemote, cleanCurrent, StringComparison.OrdinalIgnoreCase);
     }
 
     private async Task VerifyDownloadedArchiveAsync(string zipPath, string expectedSha256)
@@ -2900,11 +3417,11 @@ public partial class MainWindow : Window
             _lastDownloadSampleTime = elapsed;
         }
 
-        SetUpdateState("Downloading", $"{FormatBytes(current)} / {FormatBytes(total)}", percent);
+        SetUpdateState(L("Phase_Downloading"), $"{FormatBytes(current)} / {FormatBytes(total)}", percent);
         UpdateSpeedTextBlock.Text = _smoothedDownloadBytesPerSecond <= 0
-            ? "Measuring speed..."
+            ? L("Msg_MeasuringSpeed")
             : $"{FormatBytes((long)_smoothedDownloadBytesPerSecond)}/s";
-        SetStatus($"Downloading {percent:F0}%", (WpfBrush)FindResource("TextSecondary"));
+        SetStatus(Loc.Format("Msg_DownloadingPercent", percent.ToString("F0", CultureInfo.InvariantCulture)), (WpfBrush)FindResource("TextSecondary"));
     }
 
     private void OpenModFolderButton_OnClick(object sender, RoutedEventArgs e)
@@ -2916,7 +3433,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            ShowCustomDialog("Folder not found", "The mod folder does not exist yet.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_FolderNotFound"), L("Msg_TheModFolderDoesNotExistYet"), MessageBoxButton.OK);
         }
     }
 
@@ -2925,7 +3442,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         if (!IsModInstalled(settings))
         {
-            ShowCustomDialog("Mod not installed", "Install VanzaKart before opening the addon folder.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ModNotInstalled"), L("Msg_InstallVanzakartBeforeOpening"), MessageBoxButton.OK);
             return;
         }
 
@@ -2950,7 +3467,7 @@ public partial class MainWindow : Window
         if (!string.IsNullOrWhiteSpace(possibleUser))
         {
             UserFolderTextBox.Text = possibleUser;
-            ShowToast("Dolphin detected", "The User folder was detected automatically.");
+            ShowToast(L("Msg_DolphinDetected"), L("Msg_TheUserFolderWasDetectedAutomatically"));
         }
 
         SaveSettingsFromUi();
@@ -3006,7 +3523,7 @@ public partial class MainWindow : Window
             MiiRuntimeProgressBar.Value = item.Percent;
             MiiRuntimeProgressTextBlock.Text = item.TotalBytes is > 0
                 ? $"{FormatBytes(item.BytesReceived)} / {FormatBytes(item.TotalBytes.Value)}"
-                : $"{FormatBytes(item.BytesReceived)} downloaded";
+                : Loc.Format("Msg_Downloaded", FormatBytes(item.BytesReceived));
         });
 
         try
@@ -3032,11 +3549,11 @@ public partial class MainWindow : Window
             {
             }
 
-            ShowToast("Mii setup ready", "Render assets installed successfully.");
+            ShowToast(L("Msg_MiiSetupReady"), L("Msg_RenderAssetsInstalledSuccessfully"));
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii setup error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiSetupError"), ex.Message, MessageBoxButton.OK);
         }
         finally
         {
@@ -3054,12 +3571,12 @@ public partial class MainWindow : Window
             var backup = await _saveManagerService.BackupPrimarySaveAsync(
                 BuildSettingsFromUi(),
                 GetModDirectoryName(SelectedModReleaseChannel));
-            ShowToast("Backup created", backup);
+            ShowToast(L("Msg_BackupCreated"), backup);
             RefreshLicenseView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Backup error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_BackupError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3077,12 +3594,12 @@ public partial class MainWindow : Window
                 BuildSettingsFromUi(),
                 dialog.FileName,
                 GetModDirectoryName(SelectedModReleaseChannel));
-            ShowToast("Save imported", "A backup was created before replacing the current save.");
+            ShowToast(L("Msg_SaveImported"), L("Msg_ABackupWasCreatedBeforeReplacing"));
             RefreshLicenseView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Import error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ImportError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3105,11 +3622,11 @@ public partial class MainWindow : Window
                 BuildSettingsFromUi(),
                 dialog.FileName,
                 GetModDirectoryName(SelectedModReleaseChannel));
-            ShowToast("Save exported", dialog.FileName);
+            ShowToast(L("Msg_SaveExported"), dialog.FileName);
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Export error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ExportError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3132,7 +3649,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii creation error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiCreationError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3152,12 +3669,12 @@ public partial class MainWindow : Window
         {
             var profile = await _saveManagerService.ImportMiiProfileAsync(dialog.FileName);
             var synced = await TrySyncMiiToDolphinAsync(profile);
-            ShowToast("Mii imported", synced ? $"{profile.Name} was synced to Dolphin." : profile.Name);
+            ShowToast(L("Msg_MiiImported"), synced ? Loc.Format("Msg_WasSyncedToDolphin", profile.Name) : profile.Name);
             RefreshLicenseView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii import error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiImportError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3166,7 +3683,7 @@ public partial class MainWindow : Window
         var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
         if (selected == null)
         {
-            ShowCustomDialog("Select a Mii", "Select a Mii before exporting.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectAMii"), L("Msg_SelectAMiiBeforeExporting"), MessageBoxButton.OK);
             return;
         }
 
@@ -3184,11 +3701,11 @@ public partial class MainWindow : Window
         try
         {
             await _saveManagerService.ExportMiiProfileAsync(selected.Id, dialog.FileName);
-            ShowToast("Mii exported", dialog.FileName);
+            ShowToast(L("Msg_MiiExported"), dialog.FileName);
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii export error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiExportError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3197,20 +3714,20 @@ public partial class MainWindow : Window
         var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
         if (selected == null)
         {
-            ShowCustomDialog("Select a Mii", "Select a Mii before duplicating.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectAMii"), L("Msg_SelectAMiiBeforeDuplicating"), MessageBoxButton.OK);
             return;
         }
 
         try
         {
             var duplicate = await _saveManagerService.DuplicateMiiProfileAsync(selected.Id);
-            ShowToast("Mii duplicated", duplicate.Name);
+            ShowToast(L("Msg_MiiDuplicated"), duplicate.Name);
             RefreshLicenseView();
             OpenMiiEditor(duplicate.Id);
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii duplicate error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiDuplicateError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3219,11 +3736,11 @@ public partial class MainWindow : Window
         var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
         if (selected == null)
         {
-            ShowCustomDialog("Select a Mii", "Select a Mii before deleting.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectAMii"), L("Msg_SelectAMiiBeforeDeleting"), MessageBoxButton.OK);
             return;
         }
 
-        if (ShowCustomDialog("Delete Mii", $"Delete {selected.Name} from the library? this cannot be undone.", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (ShowCustomDialog(L("Msg_DeleteMii"), Loc.Format("Msg_DeleteFromTheLibraryThisCannot", selected.Name), MessageBoxButton.YesNo) != MessageBoxResult.Yes)
         {
             return;
         }
@@ -3231,12 +3748,12 @@ public partial class MainWindow : Window
         try
         {
             _saveManagerService.DeleteMiiProfile(selected.Id);
-            ShowToast("Mii deleted", selected.Name);
+            ShowToast(L("Msg_MiiDeleted"), selected.Name);
             RefreshLicenseView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii delete error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiDeleteError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3253,7 +3770,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii selection error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiSelectionError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3262,7 +3779,7 @@ public partial class MainWindow : Window
         var selected = MiiCardsListBox.SelectedItem as LauncherMiiProfile;
         if (selected == null)
         {
-            ShowCustomDialog("Select a Mii", "Select a Mii before editing.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_SelectAMii"), L("Msg_SelectAMiiBeforeEditing"), MessageBoxButton.OK);
             return;
         }
 
@@ -3331,7 +3848,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Mii editor error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MiiEditorError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3360,7 +3877,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            ShowCustomDialog("Folder not found", "No detected license save folder is available yet. Import or create a Mario Kart Wii save first.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_FolderNotFound"), L("Msg_NoDetectedLicenseSaveFolderIs"), MessageBoxButton.OK);
         }
     }
 
@@ -3373,7 +3890,7 @@ public partial class MainWindow : Window
         }
         else
         {
-            ShowCustomDialog("Renderer log", "No renderer log has been created yet.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_RendererLog"), L("Msg_NoRendererLogHasBeenCreatedYet"), MessageBoxButton.OK);
         }
     }
 
@@ -3392,7 +3909,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowToast("Mii saved locally", ex.Message);
+            ShowToast(L("Msg_MiiSavedLocally"), ex.Message);
             return false;
         }
     }
@@ -3424,13 +3941,13 @@ public partial class MainWindow : Window
             }
             catch (Exception ex)
             {
-                ShowToast("Mii import skipped", ex.Message);
+                ShowToast(L("Msg_MiiImportSkipped"), ex.Message);
             }
         }
 
         if (imported > 0)
         {
-            ShowToast("Mii import complete", $"{imported} Mii file(s) imported.");
+            ShowToast(L("Msg_MiiImportComplete"), Loc.Format("Msg_MiiFileSImported", imported));
             RefreshLicenseView();
         }
     }
@@ -3451,7 +3968,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         if (!IsModInstalled(settings))
         {
-            ShowCustomDialog("Mod not installed", "Install VanzaKart before importing addons.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ModNotInstalled"), L("Msg_InstallVanzakartBeforeImporting"), MessageBoxButton.OK);
             return;
         }
 
@@ -3468,12 +3985,12 @@ public partial class MainWindow : Window
                         modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel));
             }
 
-            ShowToast("Addons imported", "The addons are installed and enabled. You can now toggle each one separately.");
+            ShowToast(L("Msg_AddonsImported"), L("Msg_TheAddonsAreInstalledAndEnabled"));
             RefreshModsView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Import error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ImportError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3492,7 +4009,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         if (!IsModInstalled(settings))
         {
-            ShowCustomDialog("Modpack required", "Install the VanzaKart Modpack before installing the Music Pack.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ModpackRequired"), L("Msg_InstallTheVanzakartModpackBefore2"), MessageBoxButton.OK);
             return;
         }
 
@@ -3501,7 +4018,7 @@ public partial class MainWindow : Window
             await CheckForUpdatesAsync(showMessages: false);
             if (string.IsNullOrWhiteSpace(_latestMusicPackVersion))
             {
-                ShowCustomDialog("Music Pack metadata unavailable", "The official manifest does not contain Music Pack release information yet. See the release instructions before publishing it.", MessageBoxButton.OK);
+                ShowCustomDialog(L("Msg_MusicPackMetadataUnavailable"), L("Msg_TheOfficialManifestDoesNotContain"), MessageBoxButton.OK);
                 return;
             }
         }
@@ -3510,7 +4027,7 @@ public partial class MainWindow : Window
         var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
         var alreadyCurrent = _musicPackService.IsInstalled(settings, modDirectoryName) && File.Exists(musicPackVersionFile) &&
                              string.Equals(File.ReadAllText(musicPackVersionFile).Trim(), _latestMusicPackVersion, StringComparison.OrdinalIgnoreCase);
-        if (alreadyCurrent && ShowCustomDialog("Music Pack up to date", "The latest Music Pack is already installed. Reinstall it anyway?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (alreadyCurrent && ShowCustomDialog(L("Msg_MusicPackUpToDate"), L("Msg_TheLatestMusicPackIsAlreadyInstalled"), MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
 
         SetBusy(true);
@@ -3533,8 +4050,8 @@ public partial class MainWindow : Window
                 BuildMusicPackFilesBaseUrls().Distinct(StringComparer.OrdinalIgnoreCase), progress, stages, cancellation.Token,
                 modDirectoryName);
             File.WriteAllText(musicPackVersionFile, _latestMusicPackVersion);
-            dialog.MarkCompleted("Music Pack installed", "The official package was extracted into My Stuff and is enabled.");
-            ShowToast("Music Pack ready", $"Version {_latestMusicPackVersion} installed.");
+            dialog.MarkCompleted(L("Msg_MusicPackInstalledTitle"), L("Msg_MusicPackInstalledBody"));
+            ShowToast(L("Msg_MusicPackReady"), Loc.Format("Msg_VersionInstalled", _latestMusicPackVersion));
         }
         catch (OperationCanceledException)
         {
@@ -3562,12 +4079,12 @@ public partial class MainWindow : Window
                 BuildSettingsFromUi(),
                 enabled,
                 modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel));
-            ShowToast(enabled ? "Music Pack enabled" : "Music Pack disabled",
-                enabled ? "Its files are active in My Stuff." : "Its files were removed from My Stuff but remain installed.");
+            ShowToast(enabled ? L("Msg_MusicPackEnabled") : L("Msg_MusicPackDisabled"),
+                enabled ? L("Msg_ItsFilesAreActiveInMyStuff") : L("Msg_ItsFilesWereRemovedFromMyStuff"));
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Music Pack error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MusicPackError"), ex.Message, MessageBoxButton.OK);
         }
         finally
         {
@@ -3577,7 +4094,7 @@ public partial class MainWindow : Window
 
     private async void MusicPackRemoveButton_OnClick(object sender, RoutedEventArgs e)
     {
-        if (_isBusy || ShowCustomDialog("Remove Music Pack", "Remove the official Music Pack from My Stuff?", MessageBoxButton.YesNo) != MessageBoxResult.Yes)
+        if (_isBusy || ShowCustomDialog(L("Msg_RemoveMusicPack"), L("Msg_RemoveTheOfficialMusicPackFrom"), MessageBoxButton.YesNo) != MessageBoxResult.Yes)
             return;
         try
         {
@@ -3585,12 +4102,12 @@ public partial class MainWindow : Window
             await _musicPackService.UninstallAsync(BuildSettingsFromUi(), modDirectoryName: modDirectoryName);
             var musicPackVersionFile = GetMusicPackVersionFile(SelectedModReleaseChannel);
             if (File.Exists(musicPackVersionFile)) File.Delete(musicPackVersionFile);
-            ShowToast("Music Pack removed", "The core Modpack was not changed.");
+            ShowToast(L("Msg_MusicPackRemoved"), L("Msg_TheCoreModpackWasNotChanged"));
             RefreshModsView();
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Music Pack removal failed", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_MusicPackRemovalFailed"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3634,7 +4151,7 @@ public partial class MainWindow : Window
         _isLoadingGameBanana = true;
         var requestedPage = append ? _gameBananaPage + 1 : 1;
         GameBananaStatusTextBlock.Visibility = Visibility.Visible;
-        GameBananaStatusTextBlock.Text = append ? "Loading more Mario Kart Wii addons..." : "Loading Mario Kart Wii addons...";
+        GameBananaStatusTextBlock.Text = append ? L("Msg_LoadingMoreMarioKartWiiAddons") : L("Msg_LoadingMarioKartWiiAddons");
         GameBananaSearchButton.IsEnabled = false;
         try
         {
@@ -3648,7 +4165,7 @@ public partial class MainWindow : Window
             _gameBananaLoaded = true;
             _gameBananaHasMore = result.HasMore;
             GameBananaStatusTextBlock.Text = _gameBananaMods.Count == 0
-                ? "No compatible Mario Kart Wii addons found. Try another search."
+                ? L("Msg_NoCompatibleMarioKartWiiAddons")
                 : string.IsNullOrWhiteSpace(GameBananaSearchTextBox.Text)
                     ? $"Showing {_gameBananaMods.Count:N0} addons • {result.TotalAvailable:N0} addons available on GameBanana."
                     : $"Showing {_gameBananaMods.Count:N0} matching Mario Kart Wii addons.";
@@ -3656,7 +4173,7 @@ public partial class MainWindow : Window
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            GameBananaStatusTextBlock.Text = $"GameBanana is unavailable: {ex.Message}";
+            GameBananaStatusTextBlock.Text = Loc.Format("Msg_GamebananaIsUnavailable", ex.Message);
         }
         finally
         {
@@ -3682,7 +4199,7 @@ public partial class MainWindow : Window
         var settings = BuildSettingsFromUi();
         if (!IsModInstalled(settings))
         {
-            ShowCustomDialog("Mod not installed", "Install VanzaKart before installing addons.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_ModNotInstalled"), L("Msg_InstallVanzakartBeforeInstalling"), MessageBoxButton.OK);
             return;
         }
 
@@ -3695,13 +4212,13 @@ public partial class MainWindow : Window
         }
         if (selectedFile == null)
         {
-            ShowCustomDialog("No download available", "GameBanana did not provide an installable file for this addon.", MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_NoDownloadAvailable"), L("Msg_GamebananaDidNotProvideAnInstallable"), MessageBoxButton.OK);
             return;
         }
 
         SetBusy(true);
         installButton.IsEnabled = false;
-        GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}...";
+        GameBananaStatusTextBlock.Text = Loc.Format("Msg_Downloading", mod.Name);
         using var cancellation = new CancellationTokenSource();
         var dialog = new AddonDownloadDialog(mod.Name, selectedFile.FileName) { Owner = this };
         dialog.CancelRequested += cancellation.Cancel;
@@ -3712,7 +4229,7 @@ public partial class MainWindow : Window
             {
                 dialog.UpdateDownload(value.current, value.total);
                 var percent = value.total > 0 ? value.current * 100 / value.total : 0;
-                GameBananaStatusTextBlock.Text = $"Downloading {mod.Name}: {percent}%";
+                GameBananaStatusTextBlock.Text = Loc.Format("Msg_Downloading2", mod.Name, percent);
             });
             var stages = new Progress<string>(dialog.SetStage);
             await _addonManagerService.InstallGameBananaAsync(
@@ -3725,19 +4242,19 @@ public partial class MainWindow : Window
                 cancellation.Token,
                 GetModDirectoryName(SelectedModReleaseChannel));
             dialog.MarkCompleted();
-            GameBananaStatusTextBlock.Text = $"{mod.Name} installed and enabled.";
-            ShowToast("Addon installed", mod.Name);
+            GameBananaStatusTextBlock.Text = Loc.Format("Msg_InstalledAndEnabled", mod.Name);
+            ShowToast(L("Msg_AddonInstalled"), mod.Name);
             RefreshModsView();
         }
         catch (OperationCanceledException)
         {
             dialog.MarkCancelled();
-            GameBananaStatusTextBlock.Text = $"Installation of {mod.Name} cancelled.";
+            GameBananaStatusTextBlock.Text = Loc.Format("Msg_InstallationOfCancelled", mod.Name);
         }
         catch (Exception ex)
         {
             dialog.MarkFailed(ex.Message);
-            GameBananaStatusTextBlock.Text = "Installation failed.";
+            GameBananaStatusTextBlock.Text = L("Msg_InstallationFailed2");
         }
         finally
         {
@@ -3759,11 +4276,11 @@ public partial class MainWindow : Window
                 addon,
                 enabled,
                 modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel)));
-            ShowToast(enabled ? "Addon enabled" : "Addon disabled", addon.Name);
+            ShowToast(enabled ? L("Msg_AddonEnabled") : L("Msg_AddonDisabled"), addon.Name);
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Addon error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_AddonError"), ex.Message, MessageBoxButton.OK);
         }
         finally { RefreshModsView(); }
     }
@@ -3771,7 +4288,7 @@ public partial class MainWindow : Window
     private async void RemoveAddonButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (sender is not FrameworkElement button || button.Tag is not AddonInfo addon) return;
-        if (ShowCustomDialog("Remove addon", $"Remove '{addon.Name}' from the addon library?", MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
+        if (ShowCustomDialog(L("Msg_RemoveAddon"), Loc.Format("Msg_RemoveFromTheAddonLibrary", addon.Name), MessageBoxButton.YesNo) != MessageBoxResult.Yes) return;
         button.IsEnabled = false;
         try
         {
@@ -3780,13 +4297,13 @@ public partial class MainWindow : Window
                 settings,
                 addon,
                 modDirectoryName: GetModDirectoryName(SelectedModReleaseChannel)));
-            ShowToast("Addon removed", addon.Name);
+            ShowToast(L("Msg_AddonRemoved"), addon.Name);
             RefreshModsView();
         }
         catch (Exception ex)
         {
             button.IsEnabled = true;
-            ShowCustomDialog("Remove addon error", ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_RemoveAddonError"), ex.Message, MessageBoxButton.OK);
         }
     }
 
@@ -3811,6 +4328,11 @@ public partial class MainWindow : Window
         if ((sender as FrameworkElement)?.Tag is GameBananaMod mod) OpenUrl(mod.ProfileUrl);
     }
 
+    private void OpenTeamDonationButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        OpenUrl(LauncherConfig.TeamDonationUrl);
+    }
+
     private void OpenWebsiteButton_OnClick(object sender, RoutedEventArgs e)
     {
         OpenUrl(LauncherConfig.DownloadPageUrl);
@@ -3818,13 +4340,13 @@ public partial class MainWindow : Window
 
     private void OpenDiscordBorder_OnClick(object sender, RoutedEventArgs e)
     {
-        OpenUrl("https://discord.gg/4qPAQjt27j");
+        OpenUrl(LauncherConfig.DiscordInviteUrl);
     }
 
     private void RefreshDebugButton_OnClick(object sender, RoutedEventArgs e)
     {
         RefreshAllState();
-        ShowToast("Debug refreshed", "Local launcher state was refreshed.");
+        ShowToast(L("Msg_DebugRefreshed"), L("Msg_LocalLauncherStateWasRefreshed"));
     }
 
     private void OpenSettingsFileButton_OnClick(object sender, RoutedEventArgs e)
@@ -3890,11 +4412,11 @@ public partial class MainWindow : Window
         try
         {
             await FetchNewsFromServerAsync();
-            ShowToast("News updated", "The news feed has been refreshed successfully.");
+            ShowToast(L("Msg_NewsUpdated"), L("Msg_TheNewsFeedHasBeenRefreshedSuccessfully"));
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Update error", "Could not refresh news: " + ex.Message, MessageBoxButton.OK);
+            ShowCustomDialog(L("Msg_UpdateError"), L("Msg_CouldNotRefreshNews") + ex.Message, MessageBoxButton.OK);
         }
         finally
         {
@@ -3968,8 +4490,8 @@ public partial class MainWindow : Window
         if (string.IsNullOrWhiteSpace(settings.UserFolderPath))
         {
             ShowCustomDialog(
-                "Dolphin User Folder required",
-                "Select the Dolphin User Folder in Game Paths before using this developer tool.",
+                L("Msg_DolphinUserFolderRequired"),
+                L("Msg_SelectTheDolphinUserFolderIn"),
                 MessageBoxButton.OK);
             return;
         }
@@ -3983,11 +4505,11 @@ public partial class MainWindow : Window
             "Settings.pul");
 
         var result = ShowCustomDialog(
-            "Delete in-game settings?",
-            "Go back now if you are not sure what this does.\n\n" +
-            "Deleting Settings.pul is an advanced troubleshooting step to try only if the game crashes during startup. " +
-            "It will permanently remove all in-game settings you have saved.\n\n" +
-            "Do you want to delete Settings.pul?",
+            L("Msg_DeleteInGameSettings"),
+            L("Msg_GoBackNowIfYouAreNotSureWhat") +
+            L("Msg_DeletingSettingsPulIsAnAdvanced") +
+            L("Msg_ItWillPermanentlyRemoveAllIn") +
+            L("Msg_DoYouWantToDeleteSettingsPul"),
             MessageBoxButton.YesNo);
 
         if (result != MessageBoxResult.Yes)
@@ -4000,23 +4522,23 @@ public partial class MainWindow : Window
             if (!File.Exists(settingsFilePath))
             {
                 ShowCustomDialog(
-                    "Settings file not found",
-                    $"Settings.pul does not exist at:\n{settingsFilePath}",
+                    L("Msg_SettingsFileNotFound"),
+                    Loc.Format("Msg_SettingsPulDoesNotExistAt", settingsFilePath),
                     MessageBoxButton.OK);
                 return;
             }
 
             File.Delete(settingsFilePath);
             ShowCustomDialog(
-                "In-game settings deleted",
-                "Settings.pul was deleted successfully. VanzaKart will create a new settings file the next time it starts.",
+                L("Msg_InGameSettingsDeleted"),
+                L("Msg_SettingsPulWasDeletedSuccessfully"),
                 MessageBoxButton.OK);
         }
         catch (Exception ex)
         {
             ShowCustomDialog(
-                "Could not delete Settings.pul",
-                $"The settings file could not be deleted.\n\n{ex.Message}",
+                L("Msg_CouldNotDeleteSettingsPul"),
+                Loc.Format("Msg_TheSettingsFileCouldNotBeDeleted", ex.Message),
                 MessageBoxButton.OK);
         }
     }
@@ -4539,7 +5061,7 @@ public partial class MainWindow : Window
         RefreshSettingsDirtyState();
         if (_hasUnsavedChanges)
         {
-            ShowSettingsStatusNotification("⚠️ Unsaved changes (select Save Configuration to apply them).");
+            ShowSettingsStatusNotification(L("Msg_UnsavedChangesSelectSaveConfiguration"));
         }
     }
 
@@ -4614,21 +5136,21 @@ public partial class MainWindow : Window
     {
         if (_isUpdatingDolphinUi) return;
         _hasUnsavedChanges = true;
-        ShowSettingsStatusNotification("⚠️ Controller settings modified (Click 'Save Controller Config' to apply).");
+        ShowSettingsStatusNotification(L("Msg_ControllerSettingsModifiedClick"));
     }
 
     private void SaveGlobalSettingsButton_OnClick(object sender, RoutedEventArgs e)
     {
         SaveCurrentDolphinSettingsFromUi();
         _hasUnsavedChanges = false;
-        ShowSettingsStatusNotification("💾 All settings saved successfully to Dolphin INI!");
+        ShowSettingsStatusNotification(L("Msg_AllSettingsSavedSuccessfully"));
     }
 
     private void SaveControllerConfig_OnClick(object sender, RoutedEventArgs e)
     {
         SaveControllerBindingsFromUi();
         _hasUnsavedChanges = false;
-        ShowSettingsStatusNotification("💾 Controller configuration saved to Dolphin INI!");
+        ShowSettingsStatusNotification(L("Msg_ControllerConfigurationSaved"));
     }
 
     private void CategoryTab_Click(object sender, RoutedEventArgs e)
@@ -4645,8 +5167,8 @@ public partial class MainWindow : Window
         if (_hasUnsavedChanges && !string.Equals(_activeCategoryTab, category, StringComparison.OrdinalIgnoreCase))
         {
             var dialogResult = ShowCustomDialog(
-                "Unsaved Changes",
-                $"⚠️ You have unsaved changes in the '{_activeCategoryTab}' section!\n\nDo you want to save your changes before leaving this tab?",
+                L("Msg_UnsavedChanges2"),
+                Loc.Format("Msg_YouHaveUnsavedChangesInTheSection", _activeCategoryTab),
                 MessageBoxButton.YesNoCancel);
 
             if (dialogResult == MessageBoxResult.Yes)
@@ -4691,6 +5213,7 @@ public partial class MainWindow : Window
         if (ControllerSectionCard != null) ControllerSectionCard.Visibility = "Controller".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (AdvancedSectionCard != null) AdvancedSectionCard.Visibility = "Advanced".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
         if (LauncherSectionCard != null) LauncherSectionCard.Visibility = "Launcher".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
+        if (TeamSectionCard != null) TeamSectionCard.Visibility = "Team".Equals(category, StringComparison.OrdinalIgnoreCase) ? Visibility.Visible : Visibility.Collapsed;
 
         if ("Controller".Equals(category, StringComparison.OrdinalIgnoreCase))
         {
@@ -4709,7 +5232,7 @@ public partial class MainWindow : Window
             {
                 tb.Text = window.SelectedBinding;
                 _hasUnsavedChanges = true;
-                ShowSettingsStatusNotification($"🎮 Mapped '{actionName}' to '{window.SelectedBinding}'");
+                ShowSettingsStatusNotification(Loc.Format("Msg_MappedTo", actionName, window.SelectedBinding));
             }
         }
     }
@@ -4763,7 +5286,7 @@ public partial class MainWindow : Window
     private void RefreshControllerDevices_Click(object sender, RoutedEventArgs e)
     {
         RefreshControllerDevices();
-        ShowSettingsStatusNotification("🔄 Input devices refreshed.");
+        ShowSettingsStatusNotification(L("Msg_InputDevicesRefreshed"));
     }
 
     private void RefreshControllerDevices(string? activeDeviceInIni = null)
@@ -4859,7 +5382,7 @@ public partial class MainWindow : Window
         string deviceName = (ControllerDeviceComboBox.SelectedItem as ComboBoxItem)?.Content?.ToString() ?? "Keyboard / Mouse";
         if (ControllerStatusBannerText != null)
         {
-            ControllerStatusBannerText.Text = $"🟢 Selected Input Device: {deviceName}";
+            ControllerStatusBannerText.Text = Loc.Format("Msg_SelectedInputDevice", deviceName);
         }
     }
 
@@ -5074,7 +5597,7 @@ public partial class MainWindow : Window
             LoadControllerBindingsForPort(_selectedControllerPort);
             SaveControllerBindingsFromUi();
             if (ControllerProfileComboBox != null) ControllerProfileComboBox.SelectedItem = profileName;
-            ShowSettingsStatusNotification($"📁 Loaded profile '{profileName}'");
+            ShowSettingsStatusNotification(Loc.Format("Msg_LoadedProfile", profileName));
         }
     }
 
@@ -5093,7 +5616,7 @@ public partial class MainWindow : Window
         if (_controllerProfileManager.SaveProfile(settings.UserFolderPath, isWiimote, profileName, bindings))
         {
             LoadControllerBindingsForPort(_selectedControllerPort);
-            ShowSettingsStatusNotification($"💾 Profile '{profileName}' saved!");
+            ShowSettingsStatusNotification(Loc.Format("Msg_ProfileSaved", profileName));
         }
     }
 
@@ -5107,7 +5630,7 @@ public partial class MainWindow : Window
         if (_controllerProfileManager.DeleteProfile(settings.UserFolderPath, isWiimote, profileName))
         {
             LoadControllerBindingsForPort(_selectedControllerPort);
-            ShowSettingsStatusNotification($"🗑️ Deleted profile '{profileName}'");
+            ShowSettingsStatusNotification(Loc.Format("Msg_DeletedProfile", profileName));
         }
     }
 
@@ -5119,44 +5642,44 @@ public partial class MainWindow : Window
         if (!isWiimote)
         {
             // --- GAMECUBE / GAMEPAD SCHEME ---
-            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = "🏎️ MARIO KART WII CONTROLS — GameCube / Gamepad";
-            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = "🏎️ Accelerate (Button A)";
-            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = "🛑 Brake / Reverse (Button B)";
-            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = "💨 Drift / Mini-Turbo (Trigger R)";
-            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = "🍌 Use Item (Trigger L)";
-            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = "👀 Rear View (Button X / Y)";
-            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = "🚀 Trick / Wheelie (D-Pad Up)";
-            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = "⏸️ Pause Game (Start / Menu)";
-            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = "🕹️ MAIN ANALOG STICK — Steering & Pitch Control";
-            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = "✛ D-PAD — Tricks & Menu Selection";
+            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = L("Msg_MarioKartWiiControlsGamecube");
+            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = L("Msg_AccelerateButtonA");
+            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = L("Msg_BrakeReverseButtonB");
+            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = L("Msg_DriftMiniTurboTriggerR");
+            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = L("Msg_UseItemTriggerL");
+            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = L("Msg_RearViewButtonXY");
+            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = L("Msg_TrickWheelieDPadUp");
+            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = L("Msg_PauseGameStartMenu");
+            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = L("Msg_MainAnalogStickSteeringPitch");
+            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = L("Msg_DPadTricksMenuSelection");
         }
         else if (hasNunchuk)
         {
             // --- WIIMOTE + NUNCHUK SCHEME ---
-            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = "🏎️ MARIO KART WII CONTROLS — Wiimote + Nunchuk";
-            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = "🏎️ Accelerate (Button A)";
-            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = "🛑 Brake / Reverse (Button B)";
-            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = "💨 Drift / Hop (Button B / X)";
-            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = "🍌 Use Item (Nunchuk Z)";
-            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = "👀 Rear View (Nunchuk C)";
-            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = "🚀 Trick / Wheelie (Shake Wiimote/Nunchuk)";
-            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = "⏸️ Pause Game (Plus +)";
-            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = "🕹️ NUNCHUK CONTROL STICK — Steering & Pitch";
-            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = "✛ D-PAD — Manual Wheelie & Items";
+            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = L("Msg_MarioKartWiiControlsWiimoteNunchuk");
+            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = L("Msg_AccelerateButtonA");
+            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = L("Msg_BrakeReverseButtonB");
+            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = L("Msg_DriftHopButtonBX");
+            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = L("Msg_UseItemNunchukZ");
+            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = L("Msg_RearViewNunchukC");
+            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = L("Msg_TrickWheelieShakeWiimoteNunchuk");
+            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = L("Msg_PauseGamePlus");
+            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = L("Msg_NunchukControlStickSteeringPitch");
+            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = L("Msg_DPadManualWheelieItems");
         }
         else
         {
             // --- WIIMOTE SOLO (HORIZONTAL) SCHEME ---
-            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = "🏎️ MARIO KART WII CONTROLS — Wiimote Solo (Horizontal)";
-            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = "🏎️ Accelerate (Button 2)";
-            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = "🛑 Brake / Reverse (Button 1)";
-            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = "💨 Drift / Hop (Button B)";
-            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = "🍌 Use Item (D-Pad Left/Right)";
-            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = "👀 Rear View (Button A)";
-            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = "🚀 Trick / Wheelie (Shake / D-Pad Up)";
-            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = "⏸️ Pause Game (Plus +)";
-            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = "📱 TILT / MOTION — Steering (Tilt Left/Right)";
-            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = "✛ D-PAD — Steering & Item Usage";
+            if (SimpleLabel_HeaderTitle != null) SimpleLabel_HeaderTitle.Text = L("Msg_MarioKartWiiControlsWiimoteSolo");
+            if (SimpleLabel_Accelerate != null) SimpleLabel_Accelerate.Text = L("Msg_AccelerateButton2");
+            if (SimpleLabel_Brake != null) SimpleLabel_Brake.Text = L("Msg_BrakeReverseButton1");
+            if (SimpleLabel_Drift != null) SimpleLabel_Drift.Text = L("Msg_DriftHopButtonB");
+            if (SimpleLabel_Item != null) SimpleLabel_Item.Text = L("Msg_UseItemDPadLeftRight");
+            if (SimpleLabel_LookBack != null) SimpleLabel_LookBack.Text = L("Msg_RearViewButtonA");
+            if (SimpleLabel_Trick != null) SimpleLabel_Trick.Text = L("Msg_TrickWheelieShakeDPadUp");
+            if (SimpleLabel_Pause != null) SimpleLabel_Pause.Text = L("Msg_PauseGamePlus");
+            if (SimpleLabel_StickHeader != null) SimpleLabel_StickHeader.Text = L("Msg_TiltMotionSteeringTiltLeftRight");
+            if (SimpleLabel_DPadHeader != null) SimpleLabel_DPadHeader.Text = L("Msg_DPadSteeringItemUsage");
         }
     }
 
@@ -5209,7 +5732,7 @@ public partial class MainWindow : Window
         catch { }
     }
 
-    private void ResetControllerSection_OnClick(object sender, RoutedEventArgs e) { LoadControllerBindingsForPort(_selectedControllerPort); ShowSettingsStatusNotification("🔄 Controller section reset."); }
+    private void ResetControllerSection_OnClick(object sender, RoutedEventArgs e) { LoadControllerBindingsForPort(_selectedControllerPort); ShowSettingsStatusNotification(L("Msg_ControllerSectionReset")); }
 
     private void AudioVolumeTextBox_TextChanged(object sender, TextChangedEventArgs e) { if (double.TryParse(AudioVolumeTextBox.Text, out double val) && AudioVolumeSlider != null) AudioVolumeSlider.Value = Math.Clamp(val, 0, 100); }
     private void AudioVolumeSlider_OnValueChanged(object sender, RoutedPropertyChangedEventArgs<double> e) { if (AudioVolumeTextBox != null) AudioVolumeTextBox.Text = $"{e.NewValue:F0}"; }
@@ -5240,7 +5763,7 @@ public partial class MainWindow : Window
         Border[] sectionCards = new[]
         {
             PathsSectionCard, VideoSectionCard, AudioSectionCard, ControllerSectionCard,
-            AdvancedSectionCard, LauncherSectionCard
+            AdvancedSectionCard, LauncherSectionCard, TeamSectionCard
         };
 
         string lowerQuery = query.ToLowerInvariant();
@@ -5373,11 +5896,11 @@ public partial class MainWindow : Window
         }
 
         SettingControl_Changed(sender, e);
-        ShowSettingsStatusNotification("✨ VanzaKart optimized preset applied. Save Configuration to write it to Dolphin.");
+        ShowSettingsStatusNotification(L("Msg_VanzakartOptimizedPresetApplied"));
     }
-    private void ResetAllSettingsButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Settings reset.");
-    private void BackupConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("💾 Config backed up.");
-    private void ExportImportConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("📦 Config exported.");
+    private void ResetAllSettingsButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification(L("Msg_SettingsReset"));
+    private void BackupConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification(L("Msg_ConfigBackedUp"));
+    private void ExportImportConfigButton_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification(L("Msg_ConfigExported"));
     private void DolphinPathTextBox_OnTextChanged(object sender, TextChangedEventArgs e) => SettingControl_Changed(sender, e);
     private void OpenLauncherLogsFolder_OnClick(object sender, RoutedEventArgs e) =>
         OpenLauncherDataFolder("Logs", "logs");
@@ -5392,15 +5915,15 @@ public partial class MainWindow : Window
             var folder = Path.Combine(AppContext.BaseDirectory, folderName);
             Directory.CreateDirectory(folder);
             OpenFolder(folder);
-            ShowSettingsStatusNotification($"📁 Opened launcher {displayName} folder.");
+            ShowSettingsStatusNotification(Loc.Format("Msg_OpenedLauncherFolder", displayName));
         }
         catch (Exception ex)
         {
-            ShowSettingsStatusNotification($"❌ Could not open the launcher {displayName} folder: {ex.Message}");
+            ShowSettingsStatusNotification(Loc.Format("Msg_CouldNotOpenTheLauncherFolder", displayName, ex.Message));
         }
     }
-    private void ResetVideoSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Video section reset.");
-    private void ResetAudioSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification("🔄 Audio section reset.");
+    private void ResetVideoSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification(L("Msg_VideoSectionReset"));
+    private void ResetAudioSection_OnClick(object sender, RoutedEventArgs e) => ShowSettingsStatusNotification(L("Msg_AudioSectionReset"));
 
     private static void SetComboBoxByTag(ComboBox? comboBox, string tagValue)
     {
@@ -5482,7 +6005,7 @@ public partial class MainWindow : Window
 
             if (string.IsNullOrWhiteSpace(userFolder))
             {
-                ShowSettingsStatusNotification("⚠️ Dolphin User folder path is not set.");
+                ShowSettingsStatusNotification(L("Msg_DolphinUserFolderPathIsNotSet"));
                 return;
             }
 
@@ -5518,7 +6041,7 @@ public partial class MainWindow : Window
         }
         catch (Exception ex)
         {
-            ShowSettingsStatusNotification($"❌ Error saving settings: {ex.Message}");
+            ShowSettingsStatusNotification(Loc.Format("Msg_ErrorSavingSettings", ex.Message));
         }
     }
 
@@ -5547,7 +6070,7 @@ public partial class MainWindow : Window
 
             if (string.IsNullOrWhiteSpace(userFolder))
             {
-                ShowSettingsStatusNotification("⚠️ Dolphin User folder path is not set.");
+                ShowSettingsStatusNotification(L("Msg_DolphinUserFolderPathIsNotSet"));
                 return;
             }
 
@@ -5763,11 +6286,11 @@ public partial class MainWindow : Window
 
             _controllerProfileManager.SaveActiveBindings(userFolder, isWiimote, portIndex, bindings);
             _hasUnsavedChanges = false;
-            ShowSettingsStatusNotification($"💾 Controller settings saved for {_selectedControllerPort}!");
+            ShowSettingsStatusNotification(Loc.Format("Msg_ControllerSettingsSavedFor", _selectedControllerPort));
         }
         catch (Exception ex)
         {
-            ShowSettingsStatusNotification($"❌ Failed saving controller settings: {ex.Message}");
+            ShowSettingsStatusNotification(Loc.Format("Msg_FailedSavingControllerSettings", ex.Message));
         }
     }
 
@@ -5779,11 +6302,11 @@ public partial class MainWindow : Window
 
         if (enabled)
         {
-            ShowSettingsStatusNotification("🎮 Launcher controller mapping ENABLED — the launcher will manage your Dolphin controller config.");
+            ShowSettingsStatusNotification(L("Msg_LauncherControllerMappingEnabled"));
         }
         else
         {
-            ShowSettingsStatusNotification("🎮 Launcher controller mapping DISABLED — use Dolphin's built-in controller settings.");
+            ShowSettingsStatusNotification(L("Msg_LauncherControllerMappingDisabled"));
         }
     }
 

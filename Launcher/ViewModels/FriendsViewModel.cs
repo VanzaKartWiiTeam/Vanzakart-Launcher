@@ -191,8 +191,8 @@ public sealed class FriendsViewModel : BaseViewModel
                             SlotIndex = f.SlotIndex,
                             ProfileId = f.ProfileId,
                             FriendCode = f.FriendCode,
-                            LocalMiiName = f.MiiName,
-                            DisplayName = f.MiiName,
+                            LocalMiiName = WiiTextSanitizer.ToDisplay(f.MiiName),
+                            DisplayName = WiiTextSanitizer.ToDisplay(f.MiiName),
                             Vr = f.RaceRating,
                             Br = f.BattleRating,
                             Wins = f.Wins,
@@ -219,7 +219,7 @@ public sealed class FriendsViewModel : BaseViewModel
                 await Application.Current.Dispatcher.InvokeAsync(() =>
                 {
                     HasError = true;
-                    ErrorMessage = $"Unable to load friend list: {ex.Message}";
+                    ErrorMessage = Loc.Format("Msg_UnableToLoadFriendList", ex.Message);
                 });
             }
         });
@@ -229,20 +229,20 @@ public sealed class FriendsViewModel : BaseViewModel
     {
         if (ActiveLicense == null)
         {
-            ShowCustomDialog("Error", "No active license selected.");
+            ShowCustomDialog(Loc.T("Dlg_ErrorTitle"), Loc.T("Msg_NoActiveLicenseSelected"));
             return;
         }
 
         string input = FriendCodeInput?.Trim() ?? string.Empty;
         if (string.IsNullOrWhiteSpace(input))
         {
-            ShowCustomDialog("Error", "Please enter a valid friend code.");
+            ShowCustomDialog(Loc.T("Dlg_ErrorTitle"), Loc.T("Msg_PleaseEnterAValidFriendCode"));
             return;
         }
 
         if (!RksysManager.TryParseFriendCode(input, out uint pid, out string parseError))
         {
-            ShowCustomDialog("Invalid Friend Code", parseError);
+            ShowCustomDialog(Loc.T("Msg_InvalidFriendCode"), parseError);
             return;
         }
 
@@ -250,7 +250,7 @@ public sealed class FriendsViewModel : BaseViewModel
         string cleanInputFc = CleanFriendCode(input);
         if (FriendsList.Any(f => CleanFriendCode(f.FriendCode) == cleanInputFc))
         {
-            ShowCustomDialog("Duplicate", "This friend is already present in your friend list.");
+            ShowCustomDialog(Loc.T("Dlg_DuplicateTitle"), Loc.T("Msg_ThisFriendIsAlreadyPresentIn"));
             return;
         }
 
@@ -260,11 +260,11 @@ public sealed class FriendsViewModel : BaseViewModel
             await Task.Run(() => RksysManager.AddFriend(ActiveLicense.FilePath, ActiveLicense.SlotIndex, pid));
             FriendCodeInput = string.Empty;
             LoadFriends();
-            ShowCustomDialog("Success", "Friend added successfully!");
+            ShowCustomDialog(Loc.T("Dlg_SuccessTitle"), Loc.T("Msg_FriendAddedSuccessfully"));
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Error", $"Error adding friend: {ex.Message}");
+            ShowCustomDialog(Loc.T("Dlg_ErrorTitle"), Loc.Format("Msg_ErrorAddingFriend", ex.Message));
         }
         finally
         {
@@ -276,7 +276,7 @@ public sealed class FriendsViewModel : BaseViewModel
     {
         if (ActiveLicense == null || friend == null) return;
 
-        var result = ShowCustomDialog("Remove Friend", $"Are you sure you want to remove '{friend.DisplayName}' ({friend.FriendCode})?", MessageBoxButton.YesNo);
+        var result = ShowCustomDialog(Loc.T("Msg_RemoveFriend"), Loc.Format("Msg_AreYouSureYouWantToRemove", friend.DisplayName, friend.FriendCode), MessageBoxButton.YesNo);
         if (result != MessageBoxResult.Yes) return;
 
         IsLoading = true;
@@ -284,11 +284,11 @@ public sealed class FriendsViewModel : BaseViewModel
         {
             await Task.Run(() => RksysManager.RemoveFriend(ActiveLicense.FilePath, ActiveLicense.SlotIndex, friend.SlotIndex));
             LoadFriends();
-            ShowCustomDialog("Success", "Friend removed successfully.");
+            ShowCustomDialog(Loc.T("Dlg_SuccessTitle"), Loc.T("Msg_FriendRemovedSuccessfully"));
         }
         catch (Exception ex)
         {
-            ShowCustomDialog("Error", $"Error removing friend: {ex.Message}");
+            ShowCustomDialog(Loc.T("Dlg_ErrorTitle"), Loc.Format("Msg_ErrorRemovingFriend", ex.Message));
         }
         finally
         {
@@ -328,7 +328,7 @@ public sealed class FriendsViewModel : BaseViewModel
                     string cleanFc = CleanFriendCode(friend.FriendCode);
                     if (playerMap.TryGetValue(cleanFc, out var onlineInfo))
                     {
-                        friend.DisplayName = onlineInfo.Name;
+                        friend.DisplayName = WiiTextSanitizer.ToDisplay(onlineInfo.Name);
                         friend.Vr = onlineInfo.Points;
                     }
                 }

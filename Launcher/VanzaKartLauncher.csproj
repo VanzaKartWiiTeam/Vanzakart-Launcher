@@ -8,7 +8,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>VanzaKart Launcher</AssemblyName>
     <RootNamespace>VanzaKartLauncher</RootNamespace>
-    <Version>1.5.1</Version>
+    <Version>1.5.5</Version>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
   <ItemGroup>
@@ -28,8 +28,6 @@
     <Resource Include="Assets\logo.png" />
     <Resource Include="Assets\mii_silhouette.png" />
   </ItemGroup>
-
-
 
   <ItemGroup>
     <Resource Include="Assets\discord.png" />

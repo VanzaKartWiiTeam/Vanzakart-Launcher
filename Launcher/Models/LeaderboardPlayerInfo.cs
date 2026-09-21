@@ -165,7 +165,7 @@ public sealed class LeaderboardPlayerInfo : BaseViewModel
     public string VrTrendColor => VrLast24Hours > 0 ? "#5CE1A3" : VrLast24Hours < 0 ? "#FF6B7A" : "#8290A8";
     public string LastSeenLabel => LastSeen.HasValue
         ? LastSeen.Value.ToLocalTime().ToString("dd MMM, HH:mm")
-        : "Unknown";
+        : Services.Loc.T("Play_Unknown");
 
     public string AvatarInitial => string.IsNullOrWhiteSpace(Name) ? "?" : Name.Substring(0, 1).ToUpperInvariant();
 

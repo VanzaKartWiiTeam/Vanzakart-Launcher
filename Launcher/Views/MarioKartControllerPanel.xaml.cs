@@ -128,7 +128,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         var userFolder = ResolveUserFolder();
         if (string.IsNullOrWhiteSpace(userFolder))
         {
-            SetStatus("Select the Dolphin User folder first.", isError: true);
+            SetStatus(Loc.T("Msg_SelectTheDolphinUserFolderFirst2"), isError: true);
             return false;
         }
 
@@ -138,36 +138,36 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             {
                 PersistControllerMode();
                 _isDirty = false;
-                SaveHintText.Text = "Dolphin remains in control. No controller file was changed by the launcher.";
+                SaveHintText.Text = Loc.T("Msg_DolphinRemainsInControlNoController");
                 SaveHintText.Foreground = BrushFrom("#72E6B4");
-                PageStatus = "Managed by Dolphin";
+                PageStatus = Loc.T("Msg_ManagedByDolphin");
                 PageStatusDot.Fill = BrushFrom("#50E7A7");
-                SetStatus("Controller configuration left entirely to Dolphin.");
+                SetStatus(Loc.T("Msg_ControllerConfigurationLeftEntirely"));
                 return true;
             }
             catch (Exception ex)
             {
-                SetStatus($"Could not save the controller mode preference: {ex.Message}", isError: true);
+                SetStatus(Loc.Format("Msg_CouldNotSaveTheControllerMode", ex.Message), isError: true);
                 return false;
             }
         }
 
         if (_profile is null || SelectedDevice is null)
         {
-            SetStatus("Connect and select a controller before saving.", isError: true);
+            SetStatus(Loc.T("Msg_ConnectAndSelectAControllerBefore"), isError: true);
             return false;
         }
 
         ValidateMappings();
         if (_hasConflicts)
         {
-            SetStatus("Resolve the highlighted duplicate assignments.", isError: true);
+            SetStatus(Loc.T("Msg_ResolveTheHighlightedDuplicate"), isError: true);
             return false;
         }
 
         if (!SelectedDevice.IsConnected)
         {
-            SetStatus("The selected controller is not connected.", isError: true);
+            SetStatus(Loc.T("Msg_TheSelectedControllerIsNotConnected"), isError: true);
             return false;
         }
 
@@ -179,16 +179,16 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             _configurationService.Save(userFolder, _profile);
             PersistControllerMode();
             _isDirty = false;
-            SaveHintText.Text = "Configuration applied. Mario Kart Wii is ready.";
+            SaveHintText.Text = Loc.T("Msg_ConfigurationAppliedMarioKart");
             SaveHintText.Foreground = BrushFrom("#72E6B4");
-            PageStatus = "Ready to race";
+            PageStatus = Loc.T("Msg_ReadyToRace");
             PageStatusDot.Fill = BrushFrom("#50E7A7");
-            SetStatus("Controller configured for Mario Kart Wii.");
+            SetStatus(Loc.T("Msg_ControllerConfiguredForMario"));
             return true;
         }
         catch (Exception ex)
         {
-            SetStatus($"Could not save the controller: {ex.Message}", isError: true);
+            SetStatus(Loc.Format("Msg_CouldNotSaveTheController", ex.Message), isError: true);
             return false;
         }
     }
@@ -248,7 +248,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         var userFolder = ResolveUserFolder();
         if (string.IsNullOrWhiteSpace(userFolder))
         {
-            SetStatus("Select the Dolphin User folder first.", isError: true);
+            SetStatus(Loc.T("Msg_SelectTheDolphinUserFolderFirst2"), isError: true);
             return false;
         }
 
@@ -267,7 +267,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         }
         catch (Exception ex)
         {
-            SetStatus($"Could not activate the launcher controller: {ex.Message}", isError: true);
+            SetStatus(Loc.Format("Msg_CouldNotActivateTheLauncherController", ex.Message), isError: true);
             return false;
         }
     }
@@ -291,7 +291,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             }
             catch (Exception ex)
             {
-                if (showMessage) SetStatus($"Could not detect controllers: {ex.Message}", isError: true);
+                if (showMessage) SetStatus(Loc.Format("Msg_CouldNotDetectControllers", ex.Message), isError: true);
                 return;
             }
 
@@ -380,14 +380,14 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
                 if (!string.IsNullOrEmpty(_lastDeviceSignature) && SelectedDevice is not null)
                 {
                     SetStatus(SelectedDevice.IsConnected
-                        ? $"{SelectedDevice.DisplayName} is ready."
-                        : "Controller disconnected. Connect a device to continue.");
+                        ? Loc.Format("Msg_IsReady", SelectedDevice.DisplayName)
+                        : Loc.T("Msg_ControllerDisconnectedConnect"));
                 }
                 _lastDeviceSignature = signature;
             }
             else if (showMessage)
             {
-                SetStatus("Controller list refreshed.");
+                SetStatus(Loc.T("Msg_ControllerListRefreshed"));
             }
         }
         finally
@@ -443,7 +443,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
 
         if (!isManaged && !_isDirty)
         {
-            SaveHintText.Text = "Dolphin owns the controller configuration. Launcher mapping is disabled.";
+            SaveHintText.Text = Loc.T("Msg_DolphinOwnsTheControllerConfiguration");
             SaveHintText.Foreground = BrushFrom("#AAA9D1");
         }
     }
@@ -493,8 +493,8 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
 
             _isDirty = false;
             SaveHintText.Text = _profile.LoadedFromDolphin
-                ? "Existing Dolphin assignments loaded automatically. Nothing has been overwritten."
-                : "Recommended setup applied automatically. Save when you are ready.";
+                ? Loc.T("Msg_ExistingDolphinAssignmentsLoaded")
+                : Loc.T("Msg_RecommendedSetupAppliedAutomatically");
             SaveHintText.Foreground = BrushFrom("#91A3C2");
             ValidateMappings();
             UpdateConnectionStatus();
@@ -502,12 +502,12 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             UpdateControllerModeUi();
             if (_profile.LoadedFromDolphin)
             {
-                SetStatus($"Loaded the existing Dolphin configuration for {SelectedDevice.DisplayName}.");
+                SetStatus(Loc.Format("Msg_LoadedTheExistingDolphinConfiguration", SelectedDevice.DisplayName));
             }
         }
         catch (Exception ex)
         {
-            SetStatus($"Could not load the configuration: {ex.Message}", isError: true);
+            SetStatus(Loc.Format("Msg_CouldNotLoadTheConfiguration", ex.Message), isError: true);
         }
         finally
         {
@@ -531,7 +531,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         _captureAction.IsListening = true;
         _captureBaseline = _deviceService.Read(SelectedDevice)
             .PressedInputs.ToHashSet(StringComparer.OrdinalIgnoreCase);
-        PageStatus = "Listening…";
+        PageStatus = Loc.T("Msg_Listening");
         PageStatusDot.Fill = BrushFrom("#58E7FF");
         PageStatusDot.BeginAnimation(
             OpacityProperty,
@@ -544,8 +544,8 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         Keyboard.Focus(this);
         SetStatus(_captureAction.Kind switch
         {
-            MarioKartBindingKind.Steering => "Move the stick you want to use for steering.",
-            _ => $"Press the button for “{clicked.Title}”. Esc cancels."
+            MarioKartBindingKind.Steering => Loc.T("Msg_MoveTheStickYouWantToUseForSteering"),
+            _ => Loc.Format("Msg_PressTheButtonForEscCancels", clicked.Title)
         });
     }
 
@@ -561,7 +561,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         target.Clear();
         MarkDirty();
         ValidateMappings();
-        SetStatus($"Assignment for “{clicked.Title}” cleared.");
+        SetStatus(Loc.Format("Msg_AssignmentForCleared", clicked.Title));
     }
 
     private void InputTimer_OnTick(object? sender, EventArgs e)
@@ -590,7 +590,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         if (e.Key == Key.Escape)
         {
             CancelCapture();
-            SetStatus("Assignment cancelled.");
+            SetStatus(Loc.T("Msg_AssignmentCancelled"));
             return;
         }
 
@@ -608,7 +608,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         {
             if (!TryAssignDirectionalFamily(target, rawInput, steering: true))
             {
-                SetStatus("For Steering, move a stick or press WASD or an arrow key.", isError: true);
+                SetStatus(Loc.T("Msg_ForSteeringMoveAStickOrPress"), isError: true);
                 return;
             }
         }
@@ -623,7 +623,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         CancelCapture();
         MarkDirty();
         ValidateMappings();
-        SetStatus($"{actionTitle} assigned to {display}.");
+        SetStatus(Loc.Format("Msg_AssignedTo", actionTitle, display));
     }
 
     private static bool TryAssignDirectionalFamily(
@@ -780,7 +780,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         SetDpadActive(DpadRight, HasDirection(inputs, "Right"));
 
         PressedInputsText.Text = inputs.Count == 0
-            ? "Press a button to test it"
+            ? Loc.T("Msg_PressAButtonToTestIt")
             : string.Join(
                 "  ·  ",
                 inputs.Take(5).Select(i =>
@@ -820,7 +820,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         Deadzone = 10;
         Sensitivity = 100;
         MarkDirty();
-        SetStatus("Analog response reset to the recommended values.");
+        SetStatus(Loc.T("Msg_AnalogResponseResetToTheRecommended"));
     }
 
     private void RecommendedSetupButton_OnClick(object sender, RoutedEventArgs e)
@@ -832,7 +832,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
         Vibration = _profile.Vibration;
         MarkDirty();
         ValidateMappings();
-        SetStatus("Recommended setup applied. Test it, then save.");
+        SetStatus(Loc.T("Msg_RecommendedSetupAppliedTestIt"));
     }
 
     private void VibrationSwitch_OnChanged(object sender, RoutedEventArgs e)
@@ -844,7 +844,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
     {
         if (SelectedDevice is null || !SelectedDevice.IsConnected || !Vibration)
         {
-            SetStatus("Select a controller and enable vibration first.", isError: true);
+            SetStatus(Loc.T("Msg_SelectAControllerAndEnableVibration"), isError: true);
             return;
         }
 
@@ -853,11 +853,11 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
             _deviceService.SetVibration(SelectedDevice, 0.5);
             await Task.Delay(260);
             _deviceService.SetVibration(SelectedDevice, 0);
-            SetStatus("Vibration test completed.");
+            SetStatus(Loc.T("Msg_VibrationTestCompleted"));
         }
         catch (Exception ex)
         {
-            SetStatus($"Vibration is not supported: {ex.Message}", isError: true);
+            SetStatus(Loc.Format("Msg_VibrationIsNotSupported", ex.Message), isError: true);
         }
     }
 
@@ -911,7 +911,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
                     $"{MarioKartControllerConfigurationService.FriendlyInput($"`{group.Key}`", SelectedDevice?.Kind ?? ControllerDeviceKind.Generic)}: " +
                     string.Join(", ", group.Select(item => item.Action.Title).Distinct())));
             ConflictBanner.Visibility = Visibility.Visible;
-            PageStatus = "Conflict detected";
+            PageStatus = Loc.T("Msg_ConflictDetected");
             PageStatusDot.Fill = BrushFrom("#FF7088");
         }
         else
@@ -929,23 +929,23 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
 
         if (_controllerMode == DolphinControllerMode.ConfigureWithDolphin)
         {
-            PageStatus = _isDirty ? "Unsaved mode change" : "Managed by Dolphin";
+            PageStatus = Loc.T(_isDirty ? "Msg_UnsavedModeChange" : "Msg_ManagedByDolphin");
             PageStatusDot.Fill = BrushFrom(_isDirty ? "#FFB74D" : "#887CFF");
             return;
         }
 
         if (SelectedDevice?.IsConnected == true)
         {
-            ConnectionText.Text = "Connected";
+            ConnectionText.Text = Loc.T("Msg_Connected");
             ConnectionDot.Fill = BrushFrom("#50E7A7");
-            PageStatus = _isDirty ? "Unsaved changes" : "Ready";
+            PageStatus = _isDirty ? Loc.T("Msg_UnsavedChanges") : Loc.T("Phase_Ready");
             PageStatusDot.Fill = BrushFrom(_isDirty ? "#FFB74D" : "#50E7A7");
         }
         else
         {
-            ConnectionText.Text = "Not connected";
+            ConnectionText.Text = Loc.T("Msg_NotConnected");
             ConnectionDot.Fill = BrushFrom("#FF7088");
-            PageStatus = "Controller missing";
+            PageStatus = Loc.T("Msg_ControllerMissing");
             PageStatusDot.Fill = BrushFrom("#FF7088");
         }
     }
@@ -979,7 +979,7 @@ public partial class MarioKartControllerPanel : UserControl, INotifyPropertyChan
     {
         if (_isLoading) return;
         _isDirty = true;
-        SaveHintText.Text = "Changes have not been applied to Dolphin yet.";
+        SaveHintText.Text = Loc.T("Msg_ChangesHaveNotBeenAppliedToDolphin");
         SaveHintText.Foreground = BrushFrom("#FFBF69");
         UpdateConnectionStatus();
         ConfigurationChanged?.Invoke(this, EventArgs.Empty);

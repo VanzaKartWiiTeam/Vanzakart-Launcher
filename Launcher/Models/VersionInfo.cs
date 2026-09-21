@@ -41,41 +41,120 @@ public sealed class VersionInfo
     [JsonPropertyName("launcher_changelog")]
     [JsonConverter(typeof(StringArrayOrSingleConverter))]
     public string[] LauncherChangelog { get; set; } = Array.Empty<string>();
+
+    [JsonPropertyName("mandatory_launcher_update")]
+    public bool MandatoryLauncherUpdate { get; set; } = false;
+
+    [JsonPropertyName("new_launcher_url")]
+    public string NewLauncherUrl { get; set; } = string.Empty;
+
+    [JsonPropertyName("migration_message")]
+    public string MigrationMessage { get; set; } = string.Empty;
 }
 
 public sealed class StringArrayOrSingleConverter : JsonConverter<string[]>
 {
     public override string[] Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        if (reader.TokenType == JsonTokenType.Null) return Array.Empty<string>();
+        if (reader.TokenType == JsonTokenType.Null)
+        {
+            return Array.Empty<string>();
+        }
+
         if (reader.TokenType == JsonTokenType.String)
         {
             var single = reader.GetString();
-            return string.IsNullOrWhiteSpace(single) ? Array.Empty<string>() : [single];
+            return string.IsNullOrWhiteSpace(single) ? Array.Empty<string>() : [single.Trim()];
         }
-        if (reader.TokenType != JsonTokenType.StartArray)
-            throw new JsonException("Expected a string or an array of strings.");
 
-        var values = new List<string>();
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
+        if (reader.TokenType == JsonTokenType.StartArray)
         {
-            if (reader.TokenType == JsonTokenType.String)
+            var values = new List<string>();
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndArray)
             {
-                var value = reader.GetString();
-                if (!string.IsNullOrWhiteSpace(value)) values.Add(value);
+                if (reader.TokenType == JsonTokenType.String)
+                {
+                    var value = reader.GetString();
+                    if (!string.IsNullOrWhiteSpace(value))
+                    {
+                        values.Add(value.Trim());
+                    }
+                }
+                else if (reader.TokenType == JsonTokenType.Number || reader.TokenType == JsonTokenType.True || reader.TokenType == JsonTokenType.False)
+                {
+                    using var doc = JsonDocument.ParseValue(ref reader);
+                    var raw = doc.RootElement.GetRawText();
+                    if (!string.IsNullOrWhiteSpace(raw))
+                    {
+                        values.Add(raw.Trim());
+                    }
+                }
+                else if (reader.TokenType != JsonTokenType.Null)
+                {
+                    using var ignored = JsonDocument.ParseValue(ref reader);
+                }
             }
-            else if (reader.TokenType != JsonTokenType.Null)
-            {
-                using var ignored = JsonDocument.ParseValue(ref reader);
-            }
+            return values.ToArray();
         }
-        return values.ToArray();
+
+        if (reader.TokenType == JsonTokenType.StartObject)
+        {
+            var values = new List<string>();
+            using var doc = JsonDocument.ParseValue(ref reader);
+            foreach (var prop in doc.RootElement.EnumerateObject())
+            {
+                if (prop.Value.ValueKind == JsonValueKind.String)
+                {
+                    var val = prop.Value.GetString();
+                    if (!string.IsNullOrWhiteSpace(val))
+                    {
+                        values.Add(val.Trim());
+                    }
+                }
+                else if (prop.Value.ValueKind == JsonValueKind.Array)
+                {
+                    foreach (var elem in prop.Value.EnumerateArray())
+                    {
+                        if (elem.ValueKind == JsonValueKind.String)
+                        {
+                            var val = elem.GetString();
+                            if (!string.IsNullOrWhiteSpace(val))
+                            {
+                                values.Add(val.Trim());
+                            }
+                        }
+                    }
+                }
+            }
+            return values.ToArray();
+        }
+
+        try
+        {
+            using var fallbackDoc = JsonDocument.ParseValue(ref reader);
+            var raw = fallbackDoc.RootElement.GetString() ?? fallbackDoc.RootElement.GetRawText();
+            return string.IsNullOrWhiteSpace(raw) ? Array.Empty<string>() : [raw.Trim()];
+        }
+        catch
+        {
+            return Array.Empty<string>();
+        }
     }
 
     public override void Write(Utf8JsonWriter writer, string[] value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        foreach (var item in value ?? Array.Empty<string>()) writer.WriteStringValue(item);
+        if (value != null)
+        {
+            foreach (var item in value)
+            {
+                if (item != null)
+                {
+                    writer.WriteStringValue(item);
+                }
+            }
+        }
         writer.WriteEndArray();
     }
 }
+

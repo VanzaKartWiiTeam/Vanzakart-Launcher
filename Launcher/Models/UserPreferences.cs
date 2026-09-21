@@ -17,4 +17,7 @@ public class UserPreferences
     public string LastKnownLatestBetaModVersion { get; set; } = string.Empty;
     public string BetaAccessToken { get; set; } = string.Empty;
     public ModReleaseChannel ModReleaseChannel { get; set; } = ModReleaseChannel.Stable;
+
+    /// <summary>UI language code ("en"/"it"). Empty means "follow the Windows display language".</summary>
+    public string Language { get; set; } = string.Empty;
 }

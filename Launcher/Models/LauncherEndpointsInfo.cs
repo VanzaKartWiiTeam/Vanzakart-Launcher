@@ -85,6 +85,9 @@ public sealed class LauncherEndpointsInfo
     [JsonConverter(typeof(StringArrayOrSingleConverter))]
     public string[] LauncherMirrors { get; set; } = Array.Empty<string>();
 
+    [JsonPropertyName("new_launcher_url")]
+    public string NewLauncherUrl { get; set; } = string.Empty;
+
     [JsonPropertyName("news_url")]
     public string NewsUrl { get; set; } = string.Empty;
 

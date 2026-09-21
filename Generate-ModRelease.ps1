@@ -542,6 +542,10 @@ if ($CreateFilesZip) {
     Write-Host "Compressione dei file per hash in _by_sha256.zip (cross-platform)..." -ForegroundColor Yellow
     New-StandardZipArchive -SourceDirectory $hashFilesOutputDir -DestinationZipPath $hashZipPath
     Write-Host "Creato archivio dei file hash: _by_sha256.zip" -ForegroundColor Green
+
+    # Rimuovi le cartelle non compresse files e _by_sha256 dall'output: servono solo i relativi archivi .zip
+    Remove-Item -LiteralPath $filesOutputDir -Recurse -Force -ErrorAction SilentlyContinue
+    Remove-Item -LiteralPath $hashFilesOutputDir -Recurse -Force -ErrorAction SilentlyContinue
 }
 
 # Pulisci cartella temporanea
@@ -556,77 +560,24 @@ $manifestObject["archive_sha256"] = $zipSha256
 $manifestJsonContent = ConvertTo-Json -InputObject $manifestObject -Depth 100
 [System.IO.File]::WriteAllText($manifestJsonPath, $manifestJsonContent, [System.Text.UTF8Encoding]::new($false))
 
-# 4. Creazione o aggiornamento di versions.json
+# 4. Creazione o aggiornamento di versions.json (solo versioni, hash e changelog)
 $versionsJsonPath = Join-Path $absoluteOutputDir "versions.json"
-$baseVersionsObject = @{
-    "mod_version" = $Version
-    "launcher_version" = $currentLauncherVersion
-    "mod_url" = "$modReleaseBaseUrl/$archiveName"
-    "mod_sha256" = $zipSha256
-    "mod_manifest_url" = "$modReleaseBaseUrl/manifest_files.json"
-    "mod_files_url" = "$modReleaseBaseUrl/files/"
-    "mod_hash_files_url" = "$modReleaseBaseUrl/_by_sha256/"
-    "mod_mirrors" = @()
-    "mod_files_mirrors" = @()
-    "mod_hash_files_mirrors" = @()
-    "launcher_url" = "https://sitodaking.it/Launcher/vanzakart_launcher.zip"
-    "launcher_mirrors" = @()
-    "changelog" = @()
+$baseVersionsObject = [ordered]@{
+    "mod_version" = if ($Channel -eq "Stable") { $Version } else { [string]$existingVersions.mod_version }
+    "mod_sha256" = if ($Channel -eq "Stable") { $zipSha256 } else { [string]$existingVersions.mod_sha256 }
+    "changelog" = if ($Channel -eq "Stable") { [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Modpack $Version" }) } else { [string[]]@($existingVersions.changelog) }
+
+    "beta_mod_version" = if ($Channel -eq "Beta") { $Version } else { [string]$existingVersions.beta_mod_version }
+    "beta_mod_sha256" = if ($Channel -eq "Beta") { $zipSha256 } else { [string]$existingVersions.beta_mod_sha256 }
+    "beta_changelog" = if ($Channel -eq "Beta") { [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Beta $Version" }) } else { [string[]]@($existingVersions.beta_changelog) }
+
     "music_pack_version" = [string]$existingVersions.music_pack_version
-    "music_pack_url" = "https://sitodaking.it/MusicPack/vanzakart_musicpack.zip"
-    "music_pack_mirrors" = @()
     "music_pack_sha256" = [string]$existingVersions.music_pack_sha256
-    "music_pack_changelog" = @()
-}
+    "music_pack_changelog" = [string[]]@($existingVersions.music_pack_changelog)
 
-# Preserva tutte le configurazioni del versions.json attuale.
-foreach ($prop in $existingVersions.PSObject.Properties) {
-    $baseVersionsObject[$prop.Name] = $prop.Value
+    "launcher_version" = $currentLauncherVersion
+    "launcher_changelog" = [string[]]@($existingVersions.launcher_changelog)
 }
-
-# Aggiorna soltanto il gruppo di proprietà del canale pubblicato. In questo modo
-# una release Beta non sostituisce mai i riferimenti Stable nel versions.json.
-$baseVersionsObject["launcher_version"] = $currentLauncherVersion
-if ($Channel -eq "Beta") {
-    $baseVersionsObject["beta_mod_version"] = $Version
-    $baseVersionsObject["beta_mod_sha256"] = $zipSha256
-    $baseVersionsObject["beta_mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
-    $baseVersionsObject["beta_mod_files_url"] = "$modReleaseBaseUrl/files/"
-    $baseVersionsObject["beta_mod_hash_files_url"] = "$modReleaseBaseUrl/_by_sha256/"
-    $baseVersionsObject["beta_mod_url"] = "$modReleaseBaseUrl/$archiveName"
-    $baseVersionsObject["beta_mod_mirrors"] = @()
-    $baseVersionsObject["beta_mod_files_mirrors"] = @()
-    $baseVersionsObject["beta_mod_hash_files_mirrors"] = @()
-    $baseVersionsObject["beta_changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Beta $Version" })
-}
-else {
-    $baseVersionsObject["mod_version"] = $Version
-    $baseVersionsObject["mod_sha256"] = $zipSha256
-    $baseVersionsObject["mod_manifest_url"] = "$modReleaseBaseUrl/manifest_files.json"
-    $baseVersionsObject["mod_files_url"] = "$modReleaseBaseUrl/files/"
-    $baseVersionsObject["mod_hash_files_url"] = "$modReleaseBaseUrl/_by_sha256/"
-    $baseVersionsObject["mod_url"] = "$modReleaseBaseUrl/$archiveName"
-    $baseVersionsObject["mod_mirrors"] = @($existingVersions.mod_mirrors)
-    $baseVersionsObject["mod_files_mirrors"] = @($existingVersions.mod_files_mirrors)
-    $baseVersionsObject["mod_hash_files_mirrors"] = @($existingVersions.mod_hash_files_mirrors)
-    $baseVersionsObject["changelog"] = [string[]]@(if ($Changelog.Count -gt 0) { $Changelog } else { "VanzaKart Modpack $Version" })
-}
-
-# Questi valori appartengono alle altre release e devono sempre restare invariati.
-$baseVersionsObject["launcher_url"] = if ($existingVersions.launcher_url) { [string]$existingVersions.launcher_url } else { "https://sitodaking.it/Launcher/vanzakart_launcher.zip" }
-$baseVersionsObject["launcher_mirrors"] = @($existingVersions.launcher_mirrors)
-$baseVersionsObject["news_url"] = if ($existingVersions.news_url) { [string]$existingVersions.news_url } elseif ($existingVersions.news_json_url) { [string]$existingVersions.news_json_url } else { "https://sitodaking.it:8443/Launcher/news.json" }
-$baseVersionsObject["leaderboard_api_url"] = if ($existingVersions.leaderboard_api_url) { [string]$existingVersions.leaderboard_api_url } else { "https://sitodaking.it:8443/api/vk_leaderboard.php" }
-$baseVersionsObject["leaderboard_details_api_url"] = if ($existingVersions.leaderboard_details_api_url) { [string]$existingVersions.leaderboard_details_api_url } else { "https://sitodaking.it:8443/api/leaderboard/" }
-$baseVersionsObject["rooms_api_url"] = if ($existingVersions.rooms_api_url) { [string]$existingVersions.rooms_api_url } else { "https://sitodaking.it:8443/api/vk_rooms.php" }
-$baseVersionsObject["beta_token_verify_api_url"] = if ($existingVersions.beta_token_verify_api_url) { [string]$existingVersions.beta_token_verify_api_url } else { "https://sitodaking.it:8443/api/vk_beta_token.php" }
-$baseVersionsObject["download_page_url"] = if ($existingVersions.download_page_url) { [string]$existingVersions.download_page_url } else { "https://vwfc.sitodaking.it/" }
-$baseVersionsObject["mii_rendering_archive_url"] = if ($existingVersions.mii_rendering_archive_url) { [string]$existingVersions.mii_rendering_archive_url } else { "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip" }
-$baseVersionsObject["music_pack_version"] = [string]$existingVersions.music_pack_version
-$baseVersionsObject["music_pack_url"] = if ($existingVersions.music_pack_url) { [string]$existingVersions.music_pack_url } else { "https://sitodaking.it/MusicPack/vanzakart_musicpack.zip" }
-$baseVersionsObject["music_pack_mirrors"] = @($existingVersions.music_pack_mirrors)
-$baseVersionsObject["music_pack_sha256"] = [string]$existingVersions.music_pack_sha256
-$baseVersionsObject["music_pack_changelog"] = @($existingVersions.music_pack_changelog)
 
 $versionsJsonContent = ConvertTo-Json -InputObject $baseVersionsObject -Depth 100
 [System.IO.File]::WriteAllText($versionsJsonPath, $versionsJsonContent, [System.Text.UTF8Encoding]::new($false))
@@ -678,15 +629,11 @@ Write-Host "Creato/Aggiornato il file: endpoints.json" -ForegroundColor Green
 Write-Host "`n=== PROCESSO COMPLETATO ===" -ForegroundColor Green
 Write-Host "I file generati nella cartella '$OutputDir' sono pronti per essere caricati!"
 Write-Host "Ecco le istruzioni per il rilascio:"
-Write-Host "1. Carica il contenuto di '$OutputDir' nella cartella /$serverDirectory/ del server."
-Write-Host "   - Carica 'versions.json' ed 'endpoints.json' in /Launcher/ per ultimi."
-Write-Host "   - Il file 'manifest_files.json' e '$archiveName' devono risiedere in $modReleaseBaseUrl/"
-Write-Host "   - La cartella 'files' deve risiedere in $modReleaseBaseUrl/files/"
-Write-Host "   - La cartella '_by_sha256' deve risiedere in $modReleaseBaseUrl/_by_sha256/"
-if ($CreateFilesZip) {
-    Write-Host "   - 'files.zip' e '_by_sha256.zip' sono archivi di trasferimento per caricare ed estrarre le rispettive cartelle sul server; il launcher non li usa direttamente per gli update."
-}
-Write-Host "2. Assicurati che i permessi di lettura sui file sul server siano corretti."
+Write-Host "1. Carica '$archiveName', 'manifest_files.json', 'files.zip' e '_by_sha256.zip' nella cartella /$serverDirectory/ del server."
+Write-Host "   - Estrai 'files.zip' dentro /$serverDirectory/files/"
+Write-Host "   - Estrai '_by_sha256.zip' dentro /$serverDirectory/_by_sha256/"
+Write-Host "2. Carica 'versions.json' ed 'endpoints.json' nella cartella /Launcher/ del server per ultimi."
+Write-Host "3. Assicurati che i permessi di lettura sui file sul server siano corretti."
 if ($interactiveLaunch) {
     [void](Read-Host "`nPremi INVIO; la console resterà aperta")
 }

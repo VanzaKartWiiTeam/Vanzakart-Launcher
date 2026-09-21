@@ -18,6 +18,11 @@ public sealed class RoomInfo
     public string Region { get; init; } = "Worldwide";
     public string Status { get; init; } = "In Lobby";
 
+    /// <summary>Room name with Wii private-use symbols removed, so it never draws as a box.</summary>
+    public string DisplayName => Services.WiiTextSanitizer.ToDisplay(Name);
+
+    public string DisplayHost => Services.WiiTextSanitizer.ToDisplay(Host);
+
     public string DisplayPlayerCount => $"{PlayerCount}/{MaxPlayers}";
     public bool IsRacing => string.Equals(Status, "Racing", StringComparison.OrdinalIgnoreCase);
 }

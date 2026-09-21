@@ -61,8 +61,8 @@ public partial class MiiEditorWindow : Window
         if (_hasUnsavedChanges && !_forceClose)
         {
             var result = ShowCustomDialog(
-                "Unsaved Changes",
-                "There are unsaved changes. Do you want to close without saving?",
+                Loc.T("Msg_UnsavedChanges2"),
+                Loc.T("Msg_ThereAreUnsavedChangesDoYouWant"),
                 MessageBoxButton.YesNo);
 
             if (result != MessageBoxResult.Yes)
@@ -96,14 +96,19 @@ public partial class MiiEditorWindow : Window
 
         var state = ReadState();
         PreviewNameTextBlock.Text = state.Name;
-        PreviewMetaTextBlock.Text = $"{(state.IsFemale ? "Female" : "Male")}   Color {state.FavoriteColorIndex + 1}   Born {state.BirthMonth}/{state.BirthDay}";
-        RenderStatusTextBlock.Text = renderImmediately ? "Renderer starting..." : "Preview queued...";
+        PreviewMetaTextBlock.Text = Loc.Format(
+            "Msg_MiiPreviewMeta",
+            Loc.T(state.IsFemale ? "Msg_Female" : "Msg_Male"),
+            state.FavoriteColorIndex + 1,
+            state.BirthMonth,
+            state.BirthDay);
+        RenderStatusTextBlock.Text = renderImmediately ? Loc.T("Msg_RendererStarting") : Loc.T("Msg_PreviewQueued");
         if (markDirty)
         {
             _hasUnsavedChanges = true;
         }
 
-        AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "No unsaved changes";
+        AutosaveTextBlock.Text = _hasUnsavedChanges ? Loc.T("Msg_UnsavedChanges") : Loc.T("Msg_NoUnsavedChanges");
         UpdateValueLabels();
 
         _ = PreviewRenderAsync(state, version, renderImmediately ? TimeSpan.Zero : TimeSpan.FromMilliseconds(260), token);
@@ -121,7 +126,7 @@ public partial class MiiEditorWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 PreviewPlaceholderTextBlock.Visibility = Visibility.Visible;
-                RenderStatusTextBlock.Text = "Rendering temporary preview...";
+                RenderStatusTextBlock.Text = Loc.T("Msg_RenderingTemporaryPreview");
             });
 
             var mii = _miiParser.CreateMii(state, "Editor temporary preview");
@@ -136,7 +141,7 @@ public partial class MiiEditorWindow : Window
                 SetPreviewImage(render.AvatarPath);
                 RenderStatusTextBlock.Text = render.Message;
                 PreviewPlaceholderTextBlock.Visibility = render.IsReady ? Visibility.Collapsed : Visibility.Visible;
-                AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "No unsaved changes";
+                AutosaveTextBlock.Text = _hasUnsavedChanges ? Loc.T("Msg_UnsavedChanges") : Loc.T("Msg_NoUnsavedChanges");
             });
         }
         catch (OperationCanceledException)
@@ -147,7 +152,7 @@ public partial class MiiEditorWindow : Window
             await Dispatcher.InvokeAsync(() =>
             {
                 RenderStatusTextBlock.Text = ex.Message;
-                AutosaveTextBlock.Text = _hasUnsavedChanges ? "Unsaved changes" : "Preview failed";
+                AutosaveTextBlock.Text = _hasUnsavedChanges ? Loc.T("Msg_UnsavedChanges") : Loc.T("Msg_PreviewFailed");
             });
         }
     }
@@ -305,7 +310,7 @@ public partial class MiiEditorWindow : Window
             _previewCts?.Cancel();
             var state = ReadState();
             AutosaveTextBlock.Text = "Saving...";
-            RenderStatusTextBlock.Text = "Writing real Mii data...";
+            RenderStatusTextBlock.Text = Loc.T("Msg_WritingRealMiiData");
             var profile = await _saveManagerService.UpdateMiiProfileAsync(_miiId, state);
 
             if (!string.IsNullOrWhiteSpace(_settings.UserFolderPath) && Directory.Exists(_settings.UserFolderPath))
@@ -313,16 +318,16 @@ public partial class MiiEditorWindow : Window
                 try
                 {
                     await _saveManagerService.SyncMiiToDolphinAsync(_settings, profile);
-                    AutosaveTextBlock.Text = "Saved and synced to Dolphin";
+                    AutosaveTextBlock.Text = Loc.T("Msg_SavedAndSyncedToDolphin");
                 }
                 catch (Exception ex)
                 {
-                    AutosaveTextBlock.Text = $"Saved locally. Dolphin sync: {ex.Message}";
+                    AutosaveTextBlock.Text = Loc.Format("Msg_SavedLocallyDolphinSync", ex.Message);
                 }
             }
             else
             {
-                AutosaveTextBlock.Text = "Saved locally";
+                AutosaveTextBlock.Text = Loc.T("Msg_SavedLocally");
             }
 
             _resetState = _saveManagerService.LoadMiiEditorState(_miiId);
@@ -333,7 +338,7 @@ public partial class MiiEditorWindow : Window
         }
         catch (Exception ex)
         {
-            AutosaveTextBlock.Text = "Save failed";
+            AutosaveTextBlock.Text = Loc.T("Msg_SaveFailed");
             RenderStatusTextBlock.Text = ex.Message;
         }
         finally
@@ -680,7 +685,7 @@ public partial class MiiEditorWindow : Window
                 button.ToolTip = option.Title;
                 var image = new Image { Width = 110, Height = 110, Stretch = System.Windows.Media.Stretch.Uniform };
                 System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, System.Windows.Media.BitmapScalingMode.HighQuality);
-                button.Content = new StackPanel { Children = { image, CreateOptionLabel($"Style {option.Value + 1}") } };
+                button.Content = new StackPanel { Children = { image, CreateOptionLabel(Loc.Format("Msg_Style", option.Value + 1)) } };
                 if (option.Mutate != null)
                 {
                     _ = RenderFeatureOptionAsync(image, option, token);
@@ -713,7 +718,7 @@ public partial class MiiEditorWindow : Window
                 button.ToolTip = option.Title;
                 var image = new Image { Width = 110, Height = 110, Stretch = System.Windows.Media.Stretch.Uniform };
                 System.Windows.Media.RenderOptions.SetBitmapScalingMode(image, System.Windows.Media.BitmapScalingMode.HighQuality);
-                button.Content = new StackPanel { Children = { image, CreateOptionLabel($"Style {option.Value + 1}") } };
+                button.Content = new StackPanel { Children = { image, CreateOptionLabel(Loc.Format("Msg_Style", option.Value + 1)) } };
                 if (option.Mutate != null)
                 {
                     _ = RenderFeatureOptionAsync(image, option, token);
@@ -826,47 +831,47 @@ public partial class MiiEditorWindow : Window
             return;
         }
 
-        FavoriteColorValueTextBlock.Text = $"Fav. color {GetSlider(FavoriteColorSlider) + 1}";
-        HeightValueTextBlock.Text = $"Height {GetSlider(HeightSlider)}";
-        WeightValueTextBlock.Text = $"Weight {GetSlider(WeightSlider)}";
-        BirthMonthValueTextBlock.Text = $"Birth Month {GetSlider(BirthMonthSlider)}";
-        BirthDayValueTextBlock.Text = $"Birth Day {GetSlider(BirthDaySlider)}";
-        FaceShapeValueTextBlock.Text = $"Face shape {GetSlider(FaceShapeSlider) + 1}";
-        SkinColorValueTextBlock.Text = $"Skin {GetSlider(SkinColorSlider) + 1}";
-        FacialFeatureValueTextBlock.Text = $"Features {GetSlider(FacialFeatureSlider) + 1}";
-        HairTypeValueTextBlock.Text = $"Hair style {GetSlider(HairTypeSlider) + 1}";
-        HairColorValueTextBlock.Text = $"Hair color {GetSlider(HairColorSlider) + 1}";
-        EyeTypeValueTextBlock.Text = $"Eye style {GetSlider(EyeTypeSlider) + 1}";
-        EyeRotationValueTextBlock.Text = $"Rotation {GetSlider(EyeRotationSlider)}";
-        EyeColorValueTextBlock.Text = $"Eye color {GetSlider(EyeColorSlider) + 1}";
-        EyeSizeValueTextBlock.Text = $"Eye size {GetSlider(EyeSizeSlider)}";
-        EyeSpacingValueTextBlock.Text = $"Eye spacing {GetSlider(EyeSpacingSlider)}";
-        EyeVerticalValueTextBlock.Text = $"Eye position {GetSlider(EyeVerticalSlider)}";
-        EyebrowTypeValueTextBlock.Text = $"Brow style {GetSlider(EyebrowTypeSlider) + 1}";
-        EyebrowRotationValueTextBlock.Text = $"Brow rotation {GetSlider(EyebrowRotationSlider)}";
-        EyebrowColorValueTextBlock.Text = $"Brow color {GetSlider(EyebrowColorSlider) + 1}";
-        EyebrowSizeValueTextBlock.Text = $"Brow size {GetSlider(EyebrowSizeSlider)}";
-        EyebrowSpacingValueTextBlock.Text = $"Brow spacing {GetSlider(EyebrowSpacingSlider)}";
-        EyebrowVerticalValueTextBlock.Text = $"Brow position {GetSlider(EyebrowVerticalSlider)}";
-        NoseTypeValueTextBlock.Text = $"Nose style {GetSlider(NoseTypeSlider) + 1}";
-        NoseSizeValueTextBlock.Text = $"Nose size {GetSlider(NoseSizeSlider)}";
-        NoseVerticalValueTextBlock.Text = $"Nose position {GetSlider(NoseVerticalSlider)}";
-        MouthTypeValueTextBlock.Text = $"Mouth style {GetSlider(MouthTypeSlider) + 1}";
-        MouthColorValueTextBlock.Text = $"Mouth color {GetSlider(MouthColorSlider) + 1}";
-        MouthSizeValueTextBlock.Text = $"Mouth size {GetSlider(MouthSizeSlider)}";
-        MouthVerticalValueTextBlock.Text = $"Mouth position {GetSlider(MouthVerticalSlider)}";
-        MustacheTypeValueTextBlock.Text = $"Mustache {GetSlider(MustacheTypeSlider) + 1}";
-        BeardTypeValueTextBlock.Text = $"Beard {GetSlider(BeardTypeSlider) + 1}";
-        FacialHairColorValueTextBlock.Text = $"Hair color {GetSlider(FacialHairColorSlider) + 1}";
-        MustacheSizeValueTextBlock.Text = $"Mustache size {GetSlider(MustacheSizeSlider)}";
-        MustacheVerticalValueTextBlock.Text = $"Mustache position {GetSlider(MustacheVerticalSlider)}";
-        GlassesTypeValueTextBlock.Text = $"Glasses style {GetSlider(GlassesTypeSlider) + 1}";
-        GlassesColorValueTextBlock.Text = $"Glasses color {GetSlider(GlassesColorSlider) + 1}";
-        GlassesSizeValueTextBlock.Text = $"Glasses size {GetSlider(GlassesSizeSlider)}";
-        GlassesVerticalValueTextBlock.Text = $"Glasses position {GetSlider(GlassesVerticalSlider)}";
-        MoleSizeValueTextBlock.Text = $"Mole size {GetSlider(MoleSizeSlider)}";
-        MoleVerticalValueTextBlock.Text = $"Mole vertical {GetSlider(MoleVerticalSlider)}";
-        MoleHorizontalValueTextBlock.Text = $"Mole horizontal {GetSlider(MoleHorizontalSlider)}";
+        FavoriteColorValueTextBlock.Text = Loc.Format("Msg_FavColor", GetSlider(FavoriteColorSlider) + 1);
+        HeightValueTextBlock.Text = Loc.Format("Msg_Height", GetSlider(HeightSlider));
+        WeightValueTextBlock.Text = Loc.Format("Msg_Weight", GetSlider(WeightSlider));
+        BirthMonthValueTextBlock.Text = Loc.Format("Msg_BirthMonth", GetSlider(BirthMonthSlider));
+        BirthDayValueTextBlock.Text = Loc.Format("Msg_BirthDay", GetSlider(BirthDaySlider));
+        FaceShapeValueTextBlock.Text = Loc.Format("Msg_FaceShape", GetSlider(FaceShapeSlider) + 1);
+        SkinColorValueTextBlock.Text = Loc.Format("Msg_Skin", GetSlider(SkinColorSlider) + 1);
+        FacialFeatureValueTextBlock.Text = Loc.Format("Msg_Features", GetSlider(FacialFeatureSlider) + 1);
+        HairTypeValueTextBlock.Text = Loc.Format("Msg_HairStyle", GetSlider(HairTypeSlider) + 1);
+        HairColorValueTextBlock.Text = Loc.Format("Msg_HairColor", GetSlider(HairColorSlider) + 1);
+        EyeTypeValueTextBlock.Text = Loc.Format("Msg_EyeStyle", GetSlider(EyeTypeSlider) + 1);
+        EyeRotationValueTextBlock.Text = Loc.Format("Msg_Rotation", GetSlider(EyeRotationSlider));
+        EyeColorValueTextBlock.Text = Loc.Format("Msg_EyeColor", GetSlider(EyeColorSlider) + 1);
+        EyeSizeValueTextBlock.Text = Loc.Format("Msg_EyeSize", GetSlider(EyeSizeSlider));
+        EyeSpacingValueTextBlock.Text = Loc.Format("Msg_EyeSpacing", GetSlider(EyeSpacingSlider));
+        EyeVerticalValueTextBlock.Text = Loc.Format("Msg_EyePosition", GetSlider(EyeVerticalSlider));
+        EyebrowTypeValueTextBlock.Text = Loc.Format("Msg_BrowStyle", GetSlider(EyebrowTypeSlider) + 1);
+        EyebrowRotationValueTextBlock.Text = Loc.Format("Msg_BrowRotation", GetSlider(EyebrowRotationSlider));
+        EyebrowColorValueTextBlock.Text = Loc.Format("Msg_BrowColor", GetSlider(EyebrowColorSlider) + 1);
+        EyebrowSizeValueTextBlock.Text = Loc.Format("Msg_BrowSize", GetSlider(EyebrowSizeSlider));
+        EyebrowSpacingValueTextBlock.Text = Loc.Format("Msg_BrowSpacing", GetSlider(EyebrowSpacingSlider));
+        EyebrowVerticalValueTextBlock.Text = Loc.Format("Msg_BrowPosition", GetSlider(EyebrowVerticalSlider));
+        NoseTypeValueTextBlock.Text = Loc.Format("Msg_NoseStyle", GetSlider(NoseTypeSlider) + 1);
+        NoseSizeValueTextBlock.Text = Loc.Format("Msg_NoseSize", GetSlider(NoseSizeSlider));
+        NoseVerticalValueTextBlock.Text = Loc.Format("Msg_NosePosition", GetSlider(NoseVerticalSlider));
+        MouthTypeValueTextBlock.Text = Loc.Format("Msg_MouthStyle", GetSlider(MouthTypeSlider) + 1);
+        MouthColorValueTextBlock.Text = Loc.Format("Msg_MouthColor", GetSlider(MouthColorSlider) + 1);
+        MouthSizeValueTextBlock.Text = Loc.Format("Msg_MouthSize", GetSlider(MouthSizeSlider));
+        MouthVerticalValueTextBlock.Text = Loc.Format("Msg_MouthPosition", GetSlider(MouthVerticalSlider));
+        MustacheTypeValueTextBlock.Text = Loc.Format("Msg_Mustache", GetSlider(MustacheTypeSlider) + 1);
+        BeardTypeValueTextBlock.Text = Loc.Format("Msg_Beard", GetSlider(BeardTypeSlider) + 1);
+        FacialHairColorValueTextBlock.Text = Loc.Format("Msg_HairColor", GetSlider(FacialHairColorSlider) + 1);
+        MustacheSizeValueTextBlock.Text = Loc.Format("Msg_MustacheSize", GetSlider(MustacheSizeSlider));
+        MustacheVerticalValueTextBlock.Text = Loc.Format("Msg_MustachePosition", GetSlider(MustacheVerticalSlider));
+        GlassesTypeValueTextBlock.Text = Loc.Format("Msg_GlassesStyle", GetSlider(GlassesTypeSlider) + 1);
+        GlassesColorValueTextBlock.Text = Loc.Format("Msg_GlassesColor", GetSlider(GlassesColorSlider) + 1);
+        GlassesSizeValueTextBlock.Text = Loc.Format("Msg_GlassesSize", GetSlider(GlassesSizeSlider));
+        GlassesVerticalValueTextBlock.Text = Loc.Format("Msg_GlassesPosition", GetSlider(GlassesVerticalSlider));
+        MoleSizeValueTextBlock.Text = Loc.Format("Msg_MoleSize", GetSlider(MoleSizeSlider));
+        MoleVerticalValueTextBlock.Text = Loc.Format("Msg_MoleVertical", GetSlider(MoleVerticalSlider));
+        MoleHorizontalValueTextBlock.Text = Loc.Format("Msg_MoleHorizontal", GetSlider(MoleHorizontalSlider));
     }
 
     private async Task RenderFeatureOptionAsync(Image image, FeatureOption option, CancellationToken cancellationToken)
@@ -916,11 +921,11 @@ public partial class MiiEditorWindow : Window
         try
         {
             await _saveManagerService.ExportMiiProfileAsync(_miiId, dialog.FileName);
-            AutosaveTextBlock.Text = $"Exported: {dialog.FileName}";
+            AutosaveTextBlock.Text = Loc.Format("Msg_Exported", dialog.FileName);
         }
         catch (Exception ex)
         {
-            AutosaveTextBlock.Text = $"Export failed: {ex.Message}";
+            AutosaveTextBlock.Text = Loc.Format("Msg_ExportFailed", ex.Message);
         }
     }
 

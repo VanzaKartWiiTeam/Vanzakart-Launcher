@@ -33,10 +33,10 @@ public sealed class AddonInfo : INotifyPropertyChanged
     }
 
     [JsonIgnore]
-    public string StatusText => IsEnabled ? "Enabled" : "Disabled";
+    public string StatusText => Services.Loc.T(IsEnabled ? "Msg_Enabled" : "Msg_Disabled");
 
     [JsonIgnore]
-    public string FileCountText => Files.Count == 1 ? "1 file" : $"{Files.Count} files";
+    public string FileCountText => Services.Loc.Format(Files.Count == 1 ? "Msg_OneFile" : "Msg_FileCount", Files.Count);
 
     public event PropertyChangedEventHandler? PropertyChanged;
 }

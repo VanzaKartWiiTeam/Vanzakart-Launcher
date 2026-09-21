@@ -152,14 +152,14 @@ public sealed class MkwiiSaveParserService
             {
                 cards.Add(new SaveProfileInfo
                 {
-                    DisplayName = "Vuota",
-                    Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
+                    DisplayName = Loc.T("Msg_EmptyLicense"),
+                    Subtitle = Loc.Format("Msg_SlotU2022", slot + 1, BuildRegionLabel(rksysPath)),
                     FilePath = rksysPath,
-                    SourceLabel = "Dolphin save",
-                    MiiName = "Nessun Mii",
+                    SourceLabel = Loc.T("Msg_DolphinSave"),
+                    MiiName = Loc.T("Msg_NoMii"),
                     AvatarInitial = " ",
                     AvatarImagePath = string.Empty,
-                    AvatarStatus = "Empty slot",
+                    AvatarStatus = Loc.T("Msg_EmptySlot"),
                     AccentColor = "#555555",
                     FriendCode = string.Empty,
                     ProfileId = 0,
@@ -190,14 +190,14 @@ public sealed class MkwiiSaveParserService
             {
                 cards.Add(new SaveProfileInfo
                 {
-                    DisplayName = "Vuota",
-                    Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
+                    DisplayName = Loc.T("Msg_EmptyLicense"),
+                    Subtitle = Loc.Format("Msg_SlotU2022", slot + 1, BuildRegionLabel(rksysPath)),
                     FilePath = rksysPath,
-                    SourceLabel = "Dolphin save",
-                    MiiName = "Nessun Mii",
+                    SourceLabel = Loc.T("Msg_DolphinSave"),
+                    MiiName = Loc.T("Msg_NoMii"),
                     AvatarInitial = " ",
                     AvatarImagePath = string.Empty,
-                    AvatarStatus = "Empty slot",
+                    AvatarStatus = Loc.T("Msg_EmptySlot"),
                     AccentColor = "#555555",
                     FriendCode = string.Empty,
                     ProfileId = 0,
@@ -215,9 +215,13 @@ public sealed class MkwiiSaveParserService
                 continue;
             }
 
-            var displayName = string.IsNullOrWhiteSpace(licenseName)
-                ? $"License {slot + 1}"
-                : licenseName;
+            // Display-only: Wii keyboard symbols live in the private use area and
+            // have no glyph on Windows, so they are dropped rather than drawn as boxes.
+            var displayName = WiiTextSanitizer.ToDisplay(licenseName);
+            if (string.IsNullOrWhiteSpace(displayName))
+            {
+                displayName = Loc.Format("Msg_LicenseSlot", slot + 1);
+            }
 
             var gameId = GetGameIdFromPath(rksysPath);
             var friendCode = profileId != 0 && !string.IsNullOrEmpty(gameId)
@@ -227,15 +231,15 @@ public sealed class MkwiiSaveParserService
             cards.Add(new SaveProfileInfo
             {
                 DisplayName = displayName,
-                Subtitle = $"Slot {slot + 1}  \u2022  {BuildRegionLabel(rksysPath)}",
+                Subtitle = Loc.Format("Msg_SlotU2022", slot + 1, BuildRegionLabel(rksysPath)),
                 FilePath = rksysPath,
-                SourceLabel = "Dolphin save",
-                MiiName = mii?.Name ?? "Mii not found in RFL_DB.dat",
+                SourceLabel = Loc.T("Msg_DolphinSave"),
+                MiiName = mii != null ? WiiTextSanitizer.ToDisplay(mii.Name) : Loc.T("Msg_MiiNotFoundInDb"),
                 AvatarInitial = BuildInitial(mii?.Name ?? displayName),
                 AvatarImagePath = mii?.AvatarImagePath ?? string.Empty,
                 AvatarStatus = mii == null
-                    ? "Mii not found in Dolphin database"
-                    : string.IsNullOrWhiteSpace(mii.AvatarImagePath) ? "Render queued" : "Rendered",
+                    ? Loc.T("Msg_MiiNotInDolphinDb")
+                    : string.IsNullOrWhiteSpace(mii.AvatarImagePath) ? Loc.T("Msg_RenderQueued") : Loc.T("Msg_Rendered"),
                 AccentColor = mii?.FavoriteColor ?? "#39E7FF",
                 FriendCode = friendCode,
                 ProfileId = profileId,
@@ -680,9 +684,7 @@ public sealed class MkwiiSaveParserService
             return string.Empty;
         }
 
-        return Encoding.BigEndianUnicode.GetString(bytes, offset, byteCount)
-            .Replace("\0", string.Empty, StringComparison.Ordinal)
-            .Trim();
+        return WiiTextSanitizer.Clean(Encoding.BigEndianUnicode.GetString(bytes, offset, byteCount));
     }
 
     private static void WriteMiiString(byte[] bytes, int offset, string value)
@@ -693,10 +695,16 @@ public sealed class MkwiiSaveParserService
         }
 
         Array.Clear(bytes, offset, 20);
-        var name = string.IsNullOrWhiteSpace(value) ? "Mii" : value.Trim();
+        var name = WiiTextSanitizer.Clean(value);
+        if (string.IsNullOrWhiteSpace(name))
+        {
+            name = "Mii";
+        }
+
         if (name.Length > 10)
         {
-            name = name[..10];
+            var cut = char.IsHighSurrogate(name[9]) ? 9 : 10;
+            name = name[..cut];
         }
 
         var encoded = Encoding.BigEndianUnicode.GetBytes(name);
@@ -705,9 +713,7 @@ public sealed class MkwiiSaveParserService
 
     private static string BuildInitial(string value)
     {
-        return string.IsNullOrWhiteSpace(value)
-            ? "M"
-            : value.Trim()[0].ToString().ToUpperInvariant();
+        return WiiTextSanitizer.Initial(value);
     }
 
     private static string BuildRegionLabel(string rksysPath)
