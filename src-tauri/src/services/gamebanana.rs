@@ -48,6 +48,9 @@ const MAX_CATALOG_PAGES: usize = 200;
 const CATALOG_CONCURRENCY: usize = 6;
 const DETAIL_CONCURRENCY: usize = 6;
 
+/// Nome con cui l'operazione firma i progressi e occupa il turno (§D-086).
+pub const OPERATION: &str = "gamebanana";
+
 /// Gli unici host da cui questo modulo accetta di scaricare.
 const ALLOWED_HOSTS: [&str; 2] = ["gamebanana.com", "files.gamebanana.com"];
 
@@ -730,7 +733,7 @@ pub async fn install(
     file_id: i64,
     progress: ProgressSink,
 ) -> AppResult<AddonView> {
-    let guard = state.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+    let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
 
     let result = install_inner(state, mod_id, file_id, &progress, &cancel).await;

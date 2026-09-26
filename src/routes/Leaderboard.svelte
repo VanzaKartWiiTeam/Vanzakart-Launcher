@@ -13,10 +13,14 @@
    * Il dettaglio sta **accanto** alla tabella, non sotto: sotto lo si trovava
    * solo scorrendo, e chi cliccava una riga non vedeva succedere niente
    * (§D-066).
+   *
+   * Ogni giocatore porta la sua streak — i giorni di gioco consecutivi — con
+   * la stessa fiammella del sito (§D-085).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import StreakBadge from '$lib/components/StreakBadge.svelte';
   import { formatRelative } from '$lib/stores/app.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
   import type { LeaderboardEntry } from '$lib/api/types';
@@ -142,6 +146,9 @@
 
             <span class="name">{entry.name}</span>
             <span class="points">{t('board.vr', { points: formatNumber(entry.points) })}</span>
+            {#if entry.streak > 0}
+              <StreakBadge days={entry.streak} vacation={entry.streakVacation} size="md" />
+            {/if}
             <span class="vk-faint sub">
               {t('board.podiumSub', { wins: entry.wins, winrate: entry.winrate.toFixed(1) })}
             </span>
@@ -165,6 +172,7 @@
           <span>{t('board.col.pos')}</span>
           <span>{t('board.col.player')}</span>
           <span class="num">{t('board.col.vr')}</span>
+          <span class="num">{t('board.col.streak')}</span>
           <span class="num">{t('board.col.day')}</span>
           <span class="num">{t('board.col.wins')}</span>
           <span class="num">{t('board.col.games')}</span>
@@ -201,6 +209,9 @@
                 {/if}
               </span>
               <span class="num strong">{formatNumber(entry.points)}</span>
+              <span class="num streak-cell">
+                <StreakBadge days={entry.streak} vacation={entry.streakVacation} />
+              </span>
               <span
                 class="num gain"
                 class:up={entry.vrLast24Hours > 0}
@@ -280,6 +291,20 @@
             <div>
               <span class="vk-faint">{t('board.online')}</span>
               <strong>{formatRelative(player.lastSeen) || t('common.dash')}</strong>
+            </div>
+            <div class="streak-stat">
+              <span class="vk-faint">{t('board.streak')}</span>
+              <strong>
+                <StreakBadge
+                  days={player.streak}
+                  vacation={player.streakVacation}
+                  size="md"
+                  withLabel
+                />
+              </strong>
+              {#if player.streakVacation}
+                <span class="vk-faint streak-note">{t('streak.vacation')}</span>
+              {/if}
             </div>
           </div>
 
@@ -462,7 +487,7 @@
 
   .row {
     display: grid;
-    grid-template-columns: 52px 1fr 92px 72px 78px 72px;
+    grid-template-columns: 52px 1fr 92px 76px 72px 78px 72px;
     align-items: center;
     gap: 12px;
     width: 100%;
@@ -541,6 +566,21 @@
   .gain {
     font-size: var(--vk-fs-micro);
     color: var(--vk-text-faint);
+  }
+
+  .streak-cell {
+    display: flex;
+    justify-content: flex-end;
+  }
+
+  /* La streak occupa tutta la riga del dettaglio: è una cifra con la sua
+     spiegazione, non un numero fra i numeri. */
+  .details-grid .streak-stat {
+    grid-column: 1 / -1;
+  }
+
+  .streak-note {
+    font-size: var(--vk-fs-micro);
   }
 
   .gain.up,
@@ -728,7 +768,8 @@
       grid-template-columns: 40px 1fr 80px 64px;
     }
     .row > :nth-child(5),
-    .row > :nth-child(6) {
+    .row > :nth-child(6),
+    .row > :nth-child(7) {
       display: none;
     }
   }

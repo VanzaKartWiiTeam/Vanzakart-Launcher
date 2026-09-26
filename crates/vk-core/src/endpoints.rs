@@ -131,6 +131,14 @@ pub struct EndpointsInfo {
     pub server_base_url: String,
     #[serde(default, rename = "rank_images_base_url")]
     pub rank_images_base_url: String,
+    /// Classifica del sito (`leaderboard.php`): l'unica che oggi porta la
+    /// streak dei giocatori.
+    #[serde(default, rename = "site_leaderboard_api_url")]
+    pub site_leaderboard_api_url: String,
+    /// Radice delle API del time trial (`…/api/timetrial/`): piste, record,
+    /// classifiche e download dei ghost.
+    #[serde(default, rename = "timetrial_api_url")]
+    pub timetrial_api_url: String,
 }
 
 impl EndpointsInfo {
@@ -256,6 +264,8 @@ impl EndpointsInfo {
         merge_url!(mii_rendering_archive_url);
         merge_url!(server_base_url);
         merge_url!(rank_images_base_url);
+        merge_url!(site_leaderboard_api_url);
+        merge_url!(timetrial_api_url);
 
         merge_mirrors!(mod_mirrors);
         merge_mirrors!(mod_files_mirrors);

@@ -34,6 +34,15 @@ const INDEX_MAX_PAGES: u32 = 5;
 /// Per quanto l'indice dei giocatori resta valido senza richiederlo.
 const INDEX_TTL: Duration = Duration::from_secs(120);
 
+/// Chiavi con cui un giocatore può portare la streak. `leaderboard.php` usa
+/// le prime; le altre sono le forme che il backend .NET ha già usato altrove.
+const STREAK_KEYS: [&str; 3] = ["streak", "currentStreak", "current_streak"];
+const VACATION_KEYS: [&str; 3] = ["streakVacation", "streak_vacation", "onVacation"];
+
+/// Quanti giocatori chiedere alla classifica del sito in una volta: tutti.
+/// Senza l'immagine del Mii ogni riga pesa poche centinaia di byte.
+const STREAK_FETCH_LIMIT: u32 = 10_000;
+
 /// Colori di ripiego per chi non ha un Mii: gli stessi degli amici.
 const ACCENTS: [&str; 6] = [
     "#39E7FF", "#FF3B7A", "#FFD166", "#4DFFB0", "#9D5CFF", "#FF8800",
@@ -43,7 +52,7 @@ const ACCENTS: [&str; 6] = [
 // Lettura tollerante dei payload
 // ---------------------------------------------------------------------------
 
-mod loose {
+pub(crate) mod loose {
     use serde_json::Value;
 
     /// Primo valore non nullo fra le chiavi indicate.
@@ -322,11 +331,19 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
     let payload: Value = serde_json::from_str(vk_core::json::strip_leading_noise(&raw))
         .map_err(|error| AppError::Internal(format!("invalid leaderboard response: {error}")))?;
 
-    let mut entries: Vec<LeaderboardEntry> = loose::array(&payload, &["players"])
+    let players = loose::array(&payload, &["players"]);
+    let mut entries: Vec<LeaderboardEntry> = players
         .iter()
         .enumerate()
         .map(|(index, player)| entry(player, index, offset))
         .collect();
+
+    // `vk_leaderboard.php` non manda ancora la streak: finché non lo fa la si
+    // prende dalla classifica del sito. Quando comincerà a mandarla, questa
+    // seconda richiesta smette da sola di partire (§D-085).
+    if !players.is_empty() && !carries_streak(players) {
+        attach_streaks(state, &mut entries).await;
+    }
 
     attach_rank_images(state, &mut entries).await;
 
@@ -378,6 +395,8 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
         vr_last_24_hours: loose::int(value, &["vr_last_24_hours", "vr_gain_24h", "vrLast24Hours"]),
         vr_last_week: loose::int(value, &["vr_gain_week", "vrLastWeek", "vr_last_week"]),
         vr_last_month: loose::int(value, &["vr_gain_month", "vrLastMonth", "vr_last_month"]),
+        streak: loose::count(value, &STREAK_KEYS),
+        streak_vacation: loose::flag(value, &VACATION_KEYS),
         // La riempie `attach_rank_images`, che prima deve scaricare il file.
         rank_image: None,
         name,
@@ -385,6 +404,119 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
         avatar_initial: face.avatar_initial,
         accent_color: face.accent_color,
     }
+}
+
+// ---------------------------------------------------------------------------
+// Streak
+// ---------------------------------------------------------------------------
+
+/// `true` se almeno un giocatore della risposta porta la streak.
+///
+/// Basta la chiave, anche a zero: vuol dire che il server la manda, e una
+/// streak persa è un'informazione, non un buco da riempire.
+fn carries_streak(players: &[Value]) -> bool {
+    players
+        .iter()
+        .any(|player| loose::pick(player, &STREAK_KEYS).is_some())
+}
+
+/// Streak dei giocatori per friend code.
+#[derive(Debug, Default)]
+pub struct StreakIndex {
+    players: HashMap<String, (u32, bool)>,
+}
+
+impl StreakIndex {
+    /// Giorni e vacanza di un friend code, comunque sia scritto.
+    pub fn get(&self, friend_code: &str) -> Option<(u32, bool)> {
+        self.players.get(&digits(friend_code)).copied()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.players.is_empty()
+    }
+
+    fn from_payload(payload: &Value) -> Self {
+        let players = loose::array(payload, &["players"])
+            .iter()
+            .filter_map(|player| {
+                let key = digits(&loose::text(player, &["fc", "friendCode", "friend_code"]));
+                (!key.is_empty()).then(|| {
+                    (
+                        key,
+                        (
+                            loose::count(player, &STREAK_KEYS),
+                            loose::flag(player, &VACATION_KEYS),
+                        ),
+                    )
+                })
+            })
+            .collect();
+        Self { players }
+    }
+}
+
+/// Mette in ogni riga la streak presa dalla classifica del sito.
+///
+/// Se la classifica del sito non risponde, le righe restano a zero: la
+/// classifica si mostra lo stesso, senza fiammelle, invece di fallire.
+async fn attach_streaks(state: &Arc<AppState>, entries: &mut [LeaderboardEntry]) {
+    let index = streak_index(state).await;
+    for entry in entries {
+        if let Some((days, vacation)) = index.get(&entry.friend_code) {
+            entry.streak = days;
+            entry.streak_vacation = vacation;
+        }
+    }
+}
+
+/// Streak di tutti i giocatori, con la stessa validità dell'indice amici.
+pub async fn streak_index(state: &Arc<AppState>) -> Arc<StreakIndex> {
+    let cached = {
+        let guard = state.streak_index.read().await;
+        guard.clone()
+    };
+    if let Some((fetched_at, index)) = cached {
+        if fetched_at.elapsed() < INDEX_TTL {
+            return index;
+        }
+    }
+
+    let index = Arc::new(fetch_streak_index(state).await.unwrap_or_else(|error| {
+        tracing::debug!(
+            error = %vk_core::redact::redact(&error.to_string()),
+            "streak non disponibili"
+        );
+        StreakIndex::default()
+    }));
+
+    // Come per l'indice amici: un indice vuoto non si tiene, il prossimo
+    // tentativo deve poter riuscire subito.
+    if !index.is_empty() {
+        *state.streak_index.write().await = Some((Instant::now(), index.clone()));
+    }
+    index
+}
+
+async fn fetch_streak_index(state: &Arc<AppState>) -> AppResult<StreakIndex> {
+    let base = state
+        .endpoints
+        .read()
+        .await
+        .site_leaderboard_api_url
+        .clone();
+    if base.trim().is_empty() {
+        return Ok(StreakIndex::default());
+    }
+
+    // `mii=0`: l'immagine del Mii pesa qualche KB a riga e qui non serve.
+    let separator = if base.contains('?') { '&' } else { '?' };
+    let url = format!("{base}{separator}mii=0&limit={STREAK_FETCH_LIMIT}&offset=0");
+
+    let raw = state.downloader.get_string(&url).await?;
+    let payload: Value = serde_json::from_str(vk_core::json::strip_leading_noise(&raw))
+        .map_err(|error| AppError::Internal(format!("invalid site leaderboard: {error}")))?;
+    Ok(StreakIndex::from_payload(&payload))
 }
 
 // ---------------------------------------------------------------------------
@@ -585,6 +717,8 @@ fn stats_of(entry: LeaderboardEntry) -> PlayerStatsView {
         prestige_rank: entry.prestige_rank,
         rank_image: entry.rank_image,
         last_seen: entry.last_seen,
+        streak: entry.streak,
+        streak_vacation: entry.streak_vacation,
     }
 }
 
@@ -730,6 +864,62 @@ mod tests {
         assert_eq!(index.get("0000-0002-0202").unwrap().points, 15088);
         assert_eq!(index.get("000000020202").unwrap().points, 15088);
         assert!(index.get("1111-2222-3333").is_none());
+    }
+
+    #[test]
+    fn the_streak_is_read_when_the_server_sends_it() {
+        let entry = player(r#"{"name":"lacly","streak":6,"streakVacation":false}"#);
+        assert_eq!(entry.streak, 6);
+        assert!(!entry.streak_vacation);
+
+        let on_vacation = player(r#"{"streak":"12","streak_vacation":1}"#);
+        assert_eq!(on_vacation.streak, 12);
+        assert!(on_vacation.streak_vacation);
+
+        // Un valore negativo non è una streak: vale zero.
+        assert_eq!(player(r#"{"streak":-3}"#).streak, 0);
+    }
+
+    /// È la forma di oggi di `vk_leaderboard.php`: nessuna chiave di streak,
+    /// quindi va presa dalla classifica del sito.
+    #[test]
+    fn a_payload_without_streak_keys_asks_for_the_site_leaderboard() {
+        let today = json(r#"[{"name":"a","points":10},{"name":"b"}]"#);
+        assert!(!carries_streak(today.as_array().unwrap()));
+
+        // Anche una streak a zero dice che il server la manda.
+        let updated = json(r#"[{"name":"a","streak":0},{"name":"b"}]"#);
+        assert!(carries_streak(updated.as_array().unwrap()));
+    }
+
+    #[test]
+    fn the_site_leaderboard_is_indexed_by_friend_code() {
+        // Righe prese dalla risposta vera di `leaderboard.php?mii=0`.
+        let index = StreakIndex::from_payload(&json(
+            r#"{
+                "success": true,
+                "meta": {"limit": 3, "offset": 0, "count": 3, "total": 124},
+                "players": [
+                    {"position":1,"name":"lacly","points":22123,"fc":"0000-0002-0202","streak":6,"streakVacation":false,"mii_image":null},
+                    {"position":2,"name":"BAMM99x","points":11963,"fc":"4176-1182-7933","streak":0,"streakVacation":false},
+                    {"position":3,"name":"sossio","fc":"5078-0614-0949","streak":4,"streakVacation":true},
+                    {"position":4,"name":"senza fc","streak":9}
+                ]
+            }"#,
+        ));
+
+        assert_eq!(index.get("0000-0002-0202"), Some((6, false)));
+        assert_eq!(index.get("000000020202"), Some((6, false)));
+        assert_eq!(index.get("4176-1182-7933"), Some((0, false)));
+        assert_eq!(index.get("5078 0614 0949"), Some((4, true)));
+        assert_eq!(index.get("1111-2222-3333"), None);
+        // Chi non ha un friend code non si può abbinare a nessuno.
+        assert_eq!(index.players.len(), 3);
+    }
+
+    #[test]
+    fn a_broken_site_leaderboard_yields_an_empty_index() {
+        assert!(StreakIndex::from_payload(&json(r#"{"error":"x"}"#)).is_empty());
     }
 
     #[test]

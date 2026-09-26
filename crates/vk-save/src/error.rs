@@ -21,6 +21,9 @@ pub enum SaveError {
     #[error("checksum mismatch: expected {expected:#010X}, computed {actual:#010X}")]
     ChecksumMismatch { expected: u32, actual: u32 },
 
+    #[error("invalid ghost: {0}")]
+    InvalidGhost(String),
+
     #[error("write operation not enabled: {0}")]
     WriteNotEnabled(String),
 }

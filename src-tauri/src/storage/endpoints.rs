@@ -130,6 +130,14 @@ mod tests {
         assert!(!endpoints.rooms_api_url.is_empty());
         assert!(!endpoints.beta_token_verify_api_url.is_empty());
         assert!(!endpoints.resolved_news_url().is_empty());
+        assert_eq!(
+            endpoints.site_leaderboard_api_url,
+            "https://vanzakart.net:8443/api/leaderboard.php"
+        );
+        assert_eq!(
+            endpoints.timetrial_api_url,
+            "https://vanzakart.net:8443/api/timetrial/"
+        );
     }
 
     #[test]
@@ -142,6 +150,8 @@ mod tests {
             ("music_pack_url", &endpoints.music_pack_url),
             ("leaderboard", &endpoints.leaderboard_api_url),
             ("rooms", &endpoints.rooms_api_url),
+            ("site_leaderboard", &endpoints.site_leaderboard_api_url),
+            ("timetrial", &endpoints.timetrial_api_url),
         ] {
             assert!(
                 vk_core::endpoints::is_safe_endpoint(url),

@@ -81,38 +81,190 @@ pub const fn platform_name() -> &'static str {
 /// troncato (vedi [`matches_process_name`]). Il nome resta come ripiego per i
 /// processi di cui non si riesce a leggere il percorso.
 pub fn is_executable_running(executable: &Path) -> bool {
-    let Some(file_name) = executable
-        .file_name()
-        .map(|name| name.to_string_lossy().to_string())
-    else {
+    let Some(target) = ExecutableTarget::new(executable) else {
         return false;
     };
-    if file_name.trim().is_empty() {
-        return false;
-    }
+    process_snapshot()
+        .iter()
+        .any(|process| target.matches(process))
+}
 
-    let stem = executable
-        .file_stem()
-        .map(|value| value.to_string_lossy().to_string())
-        .unwrap_or_else(|| file_name.clone());
-    let target = std::fs::canonicalize(executable).ok();
+/// Un processo, ridotto a ciò che serve per riconoscerlo.
+#[derive(Debug, Clone)]
+struct ProcessInfo {
+    pid: u32,
+    parent: Option<u32>,
+    name: String,
+    /// Percorso dell'eseguibile già risolto, quando il sistema lo espone.
+    exe: Option<std::path::PathBuf>,
+}
 
+/// I processi vivi della macchina.
+///
+/// Gli zombie restano fuori: un processo morto ma non ancora raccolto dal
+/// padre compare ancora con il suo nome, e contarlo vorrebbe dire credere
+/// Dolphin aperto quando non lo è più.
+fn process_snapshot() -> Vec<ProcessInfo> {
     let mut system = sysinfo::System::new();
     system.refresh_processes(sysinfo::ProcessesToUpdate::All, true);
 
-    system.processes().values().any(|process| {
-        if let (Some(target), Some(path)) = (target.as_deref(), process.exe()) {
+    system
+        .processes()
+        .values()
+        .filter(|process| is_alive(process.status()))
+        .map(|process| ProcessInfo {
+            pid: process.pid().as_u32(),
+            parent: process.parent().map(sysinfo::Pid::as_u32),
+            name: process.name().to_string_lossy().to_string(),
+            exe: process
+                .exe()
+                .map(|path| std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())),
+        })
+        .collect()
+}
+
+fn is_alive(status: sysinfo::ProcessStatus) -> bool {
+    !matches!(
+        status,
+        sysinfo::ProcessStatus::Zombie | sysinfo::ProcessStatus::Dead
+    )
+}
+
+/// L'eseguibile che si cerca fra i processi.
+struct ExecutableTarget {
+    file_name: String,
+    stem: String,
+    canonical: Option<std::path::PathBuf>,
+}
+
+impl ExecutableTarget {
+    fn new(executable: &Path) -> Option<Self> {
+        let file_name = executable.file_name()?.to_string_lossy().to_string();
+        if file_name.trim().is_empty() {
+            return None;
+        }
+        Some(Self {
+            stem: executable.file_stem().map_or_else(
+                || file_name.clone(),
+                |value| value.to_string_lossy().to_string(),
+            ),
+            file_name,
+            canonical: std::fs::canonicalize(executable).ok(),
+        })
+    }
+
+    fn matches(&self, process: &ProcessInfo) -> bool {
+        if let (Some(target), Some(path)) = (self.canonical.as_deref(), process.exe.as_deref()) {
             // `starts_with` copre i bundle di macOS, dove il processo vive in
             // `Contents/MacOS/` dentro l'applicazione che si sta cercando.
-            let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-            if resolved == target || resolved.starts_with(target) {
+            if path == target || path.starts_with(target) {
                 return true;
             }
         }
+        matches_process_name(&process.name, &self.file_name)
+            || matches_process_name(&process.name, &self.stem)
+    }
+}
 
-        let name = process.name().to_string_lossy().to_string();
-        matches_process_name(&name, &file_name) || matches_process_name(&name, &stem)
-    })
+/// Processi da chiudere per chiudere `target`: quelli che corrispondono e
+/// tutti i loro discendenti, mai `own_pid`.
+///
+/// I discendenti servono agli AppImage: il processo che porta il nome del file
+/// è il runtime che monta l'immagine, e Dolphin vero è un suo figlio che
+/// sopravvivrebbe alla chiusura del solo padre.
+fn processes_to_terminate(
+    processes: &[ProcessInfo],
+    target: &ExecutableTarget,
+    own_pid: u32,
+) -> Vec<u32> {
+    let mut selected: Vec<u32> = processes
+        .iter()
+        .filter(|process| process.pid != own_pid && target.matches(process))
+        .map(|process| process.pid)
+        .collect();
+
+    let mut cursor = 0;
+    while cursor < selected.len() {
+        let parent = selected[cursor];
+        for child in processes
+            .iter()
+            .filter(|process| process.parent == Some(parent))
+        {
+            if child.pid != own_pid && !selected.contains(&child.pid) {
+                selected.push(child.pid);
+            }
+        }
+        cursor += 1;
+    }
+
+    selected
+}
+
+/// Esito della chiusura forzata di un eseguibile.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TerminateReport {
+    /// Processi trovati e a cui è stata chiesta la chiusura.
+    pub found: usize,
+    /// Processi ancora vivi allo scadere dell'attesa.
+    pub remaining: usize,
+}
+
+/// Chiude **a forza** ogni processo di `executable`, e i processi che ha
+/// avviato, poi aspetta fino a `timeout` che spariscano.
+///
+/// A forza vuol dire `TerminateProcess` su Windows e `SIGKILL` su Linux e
+/// macOS. Una chiusura gentile farebbe salvare a Dolphin la configurazione che
+/// ha in memoria sopra quella appena scritta dal launcher, e su Windows
+/// aprirebbe la domanda "vuoi fermare l'emulazione?" che nessuno vede
+/// (§D-089). Bloccante: va chiamata fuori dal runtime asincrono.
+pub fn terminate_executable(executable: &Path, timeout: std::time::Duration) -> TerminateReport {
+    let Some(target) = ExecutableTarget::new(executable) else {
+        return TerminateReport {
+            found: 0,
+            remaining: 0,
+        };
+    };
+
+    let pids = processes_to_terminate(&process_snapshot(), &target, std::process::id());
+    if pids.is_empty() {
+        return TerminateReport {
+            found: 0,
+            remaining: 0,
+        };
+    }
+
+    let wanted: Vec<sysinfo::Pid> = pids.iter().copied().map(sysinfo::Pid::from_u32).collect();
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&wanted), true);
+    for pid in &wanted {
+        if let Some(process) = system.process(*pid) {
+            if !process.kill() {
+                tracing::warn!(pid = pid.as_u32(), "chiusura del processo rifiutata");
+            }
+        }
+    }
+
+    let deadline = std::time::Instant::now() + timeout;
+    let remaining = loop {
+        system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&wanted), true);
+        let alive = wanted
+            .iter()
+            .filter(|pid| {
+                system
+                    .process(**pid)
+                    .is_some_and(|process| is_alive(process.status()))
+            })
+            .count();
+        if alive == 0 || std::time::Instant::now() >= deadline {
+            break alive;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    };
+
+    TerminateReport {
+        found: pids.len(),
+        remaining,
+    }
 }
 
 /// Confronta il nome di un processo con quello atteso.
@@ -442,6 +594,115 @@ mod tests {
     fn the_current_process_is_detected_as_running() {
         let current = std::env::current_exe().expect("eseguibile corrente");
         assert!(is_executable_running(&current));
+    }
+
+    fn process(pid: u32, parent: Option<u32>, name: &str, exe: Option<&str>) -> ProcessInfo {
+        ProcessInfo {
+            pid,
+            parent,
+            name: name.into(),
+            exe: exe.map(std::path::PathBuf::from),
+        }
+    }
+
+    #[test]
+    fn the_matching_process_and_its_children_are_selected() {
+        let target = ExecutableTarget {
+            file_name: "Dolphin.AppImage".into(),
+            stem: "Dolphin".into(),
+            canonical: Some("/home/a/Apps/Dolphin.AppImage".into()),
+        };
+        let processes = [
+            // Il runtime dell'AppImage, riconosciuto dal percorso.
+            process(
+                10,
+                Some(1),
+                "Dolphin.AppImag",
+                Some("/home/a/Apps/Dolphin.AppImage"),
+            ),
+            // Dolphin vero, figlio del runtime, con un altro nome.
+            process(
+                11,
+                Some(10),
+                "dolphin-emu",
+                Some("/tmp/.mount_x/usr/bin/dolphin-emu"),
+            ),
+            // Un nipote, per esempio un processo di supporto.
+            process(12, Some(11), "helper", None),
+            // Il launcher, che non si chiude mai da solo.
+            process(20, Some(1), "vanzakart-launc", Some("/opt/vk/launcher")),
+            process(30, Some(1), "firefox", Some("/usr/bin/firefox")),
+        ];
+
+        let mut selected = processes_to_terminate(&processes, &target, 20);
+        selected.sort_unstable();
+        assert_eq!(selected, vec![10, 11, 12]);
+    }
+
+    #[test]
+    fn a_bundle_process_matches_its_app_and_the_launcher_is_spared() {
+        let target = ExecutableTarget {
+            file_name: "Dolphin.app".into(),
+            stem: "Dolphin".into(),
+            canonical: Some("/Applications/Dolphin.app".into()),
+        };
+        let processes = [
+            process(
+                5,
+                Some(1),
+                "Dolphin",
+                Some("/Applications/Dolphin.app/Contents/MacOS/Dolphin"),
+            ),
+            // Stesso nome, ma è il processo che chiama: resta.
+            process(6, Some(1), "Dolphin", None),
+        ];
+
+        assert_eq!(processes_to_terminate(&processes, &target, 6), vec![5]);
+    }
+
+    #[test]
+    fn nothing_is_selected_when_nothing_matches() {
+        let target = ExecutableTarget::new(Path::new("/opt/QuestoNonEsisteDavvero")).unwrap();
+        let processes = [process(1, None, "init", Some("/sbin/init"))];
+        assert!(processes_to_terminate(&processes, &target, 99).is_empty());
+    }
+
+    #[test]
+    fn terminating_a_missing_executable_does_nothing() {
+        let report = terminate_executable(
+            Path::new("/percorso/inesistente/QuestoNonEsisteDavvero.exe"),
+            std::time::Duration::from_millis(10),
+        );
+        assert_eq!(report.found, 0);
+        assert_eq!(report.remaining, 0);
+    }
+
+    /// Il processo "Dolphin" del test che segue: una copia di questo stesso
+    /// binario di test, che dorme finché qualcuno non la chiude.
+    #[test]
+    #[ignore = "si avvia solo come processo figlio del test di chiusura"]
+    fn sleeper_for_the_terminate_test() {
+        if std::env::var_os("VK_TERMINATE_SLEEPER").is_some() {
+            std::thread::sleep(std::time::Duration::from_secs(60));
+        }
+    }
+
+    #[test]
+    fn a_running_executable_is_really_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let (copy, mut child) = crate::testkit::spawn_fake_dolphin(dir.path());
+
+        // Un thread raccoglie il figlio quando muore: senza, su Unix
+        // resterebbe zombie, come un Dolphin avviato dal launcher.
+        let reaper = std::thread::spawn(move || child.wait());
+
+        let report = terminate_executable(&copy, std::time::Duration::from_secs(10));
+        assert!(report.found >= 1, "{report:?}");
+        assert_eq!(report.remaining, 0, "{report:?}");
+
+        let status = reaper.join().unwrap().unwrap();
+        assert!(!status.success(), "chiuso a forza, non uscito da sé");
+        assert!(!is_executable_running(&copy));
     }
 
     #[test]

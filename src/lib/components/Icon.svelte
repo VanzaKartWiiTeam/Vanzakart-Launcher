@@ -33,7 +33,10 @@
     | 'swap'
     | 'save'
     | 'heart'
-    | 'chevron';
+    | 'chevron'
+    | 'fire'
+    | 'umbrella'
+    | 'stopwatch';
 
   const PATHS: Record<IconName, string> = {
     play: 'M8 5v14l11-7z',
@@ -75,7 +78,14 @@
     save: 'M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7zm-5 16a3 3 0 1 1 0-6 3 3 0 0 1 0 6m3-10H5V5h10z',
     heart:
       'M12 21.35 10.55 20C5.4 15.36 2 12.27 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.77-3.4 6.86-8.55 11.53z',
-    chevron: 'M7.4 9.6 12 14.2l4.6-4.6L18 11l-6 6-6-6z'
+    chevron: 'M7.4 9.6 12 14.2l4.6-4.6L18 11l-6 6-6-6z',
+    // La streak, come sul sito: una fiamma per i giorni consecutivi…
+    fire: 'M12 2c.5 4 6.5 6.5 6.5 12.5a6.5 6.5 0 0 1-13 0c0-3 1.5-5 3-6.5.2 2 1 3.3 2.2 3.8C10.2 8.5 11 5 12 2z',
+    // …e un ombrellone quando il giocatore è in vacanza e la streak è ferma.
+    umbrella:
+      'M12 2A10 10 0 0 0 2 12h9v6.5a1.5 1.5 0 0 1-3 0H6a3.5 3.5 0 0 0 7 0V12h9A10 10 0 0 0 12 2z',
+    stopwatch:
+      'M9 1h6v2H9zM12 4a9 9 0 1 0 9 9 9 9 0 0 0-9-9m0 2a7 7 0 1 1 0 14 7 7 0 0 1 0-14m-1 2v6h2V8zm7.3-3.7 1.4-1.4 1.4 1.4-1.4 1.4z'
   };
 </script>
 

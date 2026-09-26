@@ -12,9 +12,10 @@
   import logo from '$lib/assets/logo.png';
   import { app, formatDate, formatPlayTime } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
+  import { operationLabel, operations, phaseLabel } from '$lib/stores/operations.svelte';
+  import { formatRemaining } from '$lib/stores/transfer';
 
   let launching = $state(false);
-  let installing = $state(false);
   let checking = $state(false);
   let verifying = $state(false);
   let confirmOutdated = $state(false);
@@ -31,9 +32,21 @@
 
   const mod = $derived(app.modState);
   const stats = $derived(app.status?.stats ?? null);
-  const percent = $derived(app.progress.percent ?? 0);
-  const showProgress = $derived(
-    app.progress.phase !== 'Idle' && app.progress.phase !== 'Completed'
+
+  /**
+   * L'operazione in corso, qualunque sia. La barra dell'eroe diceva solo
+   * "Download 42%" anche quando a scaricare era il music pack: adesso dice
+   * cosa (§D-086).
+   */
+  const active = $derived(operations.active);
+  const activeProgress = $derived(active ? operations.progressOf(active) : null);
+  const percent = $derived(activeProgress?.percent ?? 0);
+  const remaining = $derived(formatRemaining(operations.remaining));
+  const installing = $derived(operations.busyWith('mods'));
+
+  /** Con l'opzione attiva e Dolphin aperto, l'avvio comincia chiudendolo. */
+  const willCloseDolphin = $derived(
+    Boolean(app.status?.dolphinRunning && app.settings?.closeRunningDolphin)
   );
 
   const badgeTone = $derived(
@@ -81,9 +94,13 @@
         return;
       }
 
-      await api.launchGame();
+      const result = await api.launchGame();
       app.setStatusKey('home.launched', {}, 'success');
-      app.toast(t('home.raceStarted'), t('home.raceStartedBody'), 'success');
+      app.toast(
+        t('home.raceStarted'),
+        result.closedPrevious ? t('home.dolphinRestarted') : t('home.raceStartedBody'),
+        'success'
+      );
       await app.refresh();
     } catch (error) {
       app.toast(t('home.launchFailed'), api.errorMessage(error), 'danger');
@@ -106,11 +123,12 @@
   }
 
   async function install() {
-    if (installing) return;
-    installing = true;
-    app.resetProgress();
+    if (operations.busy) return;
     try {
-      const outcome = await api.installMods();
+      const outcome = await operations.run('mods', () => api.installMods(), {
+        title: 'VanzaKart Modpack',
+        describe: (result) => result.summary
+      });
       app.toast(
         outcome.wasUpdate ? t('home.updateDone') : t('home.installDone'),
         outcome.summary,
@@ -119,9 +137,9 @@
       for (const warning of outcome.warnings) app.toast(t('common.warning'), warning, 'warning');
       await app.refresh();
     } catch (error) {
-      app.toast(t('home.operationFailed'), api.errorMessage(error), 'danger');
-    } finally {
-      installing = false;
+      if (api.errorCode(error) !== 'cancelled') {
+        app.toast(t('home.operationFailed'), api.errorMessage(error), 'danger');
+      }
     }
   }
 
@@ -160,31 +178,42 @@
       <h2 class="hero-title">VANZAKART</h2>
 
       <button class="vk-play" onclick={play} disabled={launching || installing}>
-        {launching ? t('home.launching') : t('home.play')}
+        {launching
+          ? willCloseDolphin
+            ? t('home.closingDolphin')
+            : t('home.launching')
+          : t('home.play')}
       </button>
 
       <p class="status-line" data-tone={app.statusTone}>{app.statusLine}</p>
 
-      {#if showProgress}
+      {#if active}
         <div
           class="vk-progress progress"
-          class:vk-progress--indeterminate={app.progress.percent === null}
+          class:vk-progress--indeterminate={(activeProgress?.percent ?? null) === null}
         >
           <div class="vk-progress__fill" style="width: {percent}%"></div>
         </div>
-      {/if}
 
-      <p class="progress-line">
-        <span>{app.progress.phase}</span>
-        <span class="sep">/</span>
-        <strong>{Math.round(percent)}%</strong>
-        {#if app.progress.bytesLabel}
-          <span class="vk-faint">{app.progress.bytesLabel}</span>
-        {/if}
-        {#if app.progress.speedLabel}
-          <span class="speed">{app.progress.speedLabel}</span>
-        {/if}
-      </p>
+        <p class="progress-line">
+          <strong class="what">{operationLabel(active)}</strong>
+          <span class="sep">·</span>
+          <span>{activeProgress ? phaseLabel(activeProgress.phase) : t('ops.starting')}</span>
+          <span class="sep">/</span>
+          <strong>{Math.round(percent)}%</strong>
+          {#if activeProgress?.bytesLabel}
+            <span class="vk-faint">{activeProgress.bytesLabel}</span>
+          {/if}
+          {#if activeProgress?.speedLabel}
+            <span class="speed">{activeProgress.speedLabel}</span>
+          {/if}
+          {#if remaining}
+            <span class="speed">{t('ops.remaining', { time: remaining })}</span>
+          {/if}
+        </p>
+      {:else if willCloseDolphin}
+        <p class="progress-line vk-faint">{t('home.dolphinWillClose')}</p>
+      {/if}
     </div>
 
     <div class="hero-art">
@@ -270,12 +299,19 @@
         <button
           class="vk-btn"
           onclick={checkUpdates}
-          disabled={checking || installing || verifying}
+          disabled={checking || operations.busy || verifying}
         >
           <Icon name="refresh" size={14} />
           {checking ? t('home.checking') : t('home.checkUpdates')}
         </button>
-        <button class="vk-btn vk-btn--primary" onclick={install} disabled={installing || verifying}>
+        <button
+          class="vk-btn vk-btn--primary"
+          onclick={install}
+          disabled={operations.busy || verifying}
+          title={operations.blockedBy('mods') && active
+            ? t('ops.waiting', { operation: operationLabel(active) })
+            : undefined}
+        >
           <Icon name="download" size={14} />
           {installing
             ? t('common.working')
@@ -286,7 +322,7 @@
         <button
           class="vk-btn"
           onclick={verify}
-          disabled={verifying || installing || !mod?.installed}
+          disabled={verifying || operations.busy || !mod?.installed}
         >
           <Icon name="check" size={14} />
           {verifying ? t('home.verifying') : t('home.verify')}
@@ -424,6 +460,10 @@
 
   .sep {
     color: var(--vk-text-faint);
+  }
+
+  .what {
+    color: var(--vk-text);
   }
 
   /* La velocità è l'unica cifra che si guarda mentre si aspetta: si stacca. */

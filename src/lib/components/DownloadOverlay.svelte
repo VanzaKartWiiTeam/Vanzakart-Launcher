@@ -14,6 +14,8 @@
   import Icon from '$lib/components/Icon.svelte';
   import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
+  import { isCancellable, operations, phaseLabel } from '$lib/stores/operations.svelte';
+  import { formatRemaining } from '$lib/stores/transfer';
 
   interface Props {
     open: boolean;
@@ -25,10 +27,13 @@
 
   const { open, title, subtitle = '' }: Props = $props();
 
-  const percent = $derived(app.progress.percent);
+  /** Il progresso dell'operazione in corso, non l'ultimo evento qualunque. */
+  const progress = $derived(operations.active ? operations.progressOf(operations.active) : null);
+  const percent = $derived(progress?.percent ?? null);
   const indeterminate = $derived(percent === null);
   const width = $derived(Math.min(100, Math.max(0, percent ?? 0)));
   let cancelling = $state(false);
+  const remaining = $derived(formatRemaining(operations.remaining));
 
   async function cancel() {
     cancelling = true;
@@ -59,18 +64,23 @@
       </div>
 
       <div class="meta">
-        <span class="phase">{app.progress.detail || app.progress.phase}</span>
+        <span class="phase"
+          >{progress?.detail || (progress ? phaseLabel(progress.phase) : t('ops.starting'))}</span
+        >
         <span class="vk-spacer"></span>
-        {#if app.progress.bytesLabel}
-          <span class="vk-faint">{app.progress.bytesLabel}</span>
+        {#if progress?.bytesLabel}
+          <span class="vk-faint">{progress.bytesLabel}</span>
         {/if}
-        {#if app.progress.speedLabel}
-          <span class="speed">{app.progress.speedLabel}</span>
+        {#if progress?.speedLabel}
+          <span class="speed">{progress.speedLabel}</span>
+        {/if}
+        {#if remaining}
+          <span class="speed">{t('ops.remaining', { time: remaining })}</span>
         {/if}
       </div>
 
       <div class="actions">
-        <button class="vk-btn" onclick={cancel} disabled={cancelling}>
+        <button class="vk-btn" onclick={cancel} disabled={cancelling || !isCancellable(progress)}>
           {cancelling ? t('download.cancelling') : t('common.cancel')}
         </button>
       </div>

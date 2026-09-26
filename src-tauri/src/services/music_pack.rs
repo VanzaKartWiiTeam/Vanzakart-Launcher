@@ -29,6 +29,9 @@ const DISPLAY_NAME: &str = "VanzaKart Music Pack";
 const AUTHOR: &str = "VanzaKart Team";
 const SOURCE: &str = "Official VanzaKart package";
 
+/// Nome con cui l'operazione firma i progressi e occupa il turno (§D-086).
+pub const OPERATION: &str = "music-pack";
+
 /// Stato del music pack per il canale selezionato.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -129,7 +132,7 @@ pub async fn status(state: &Arc<AppState>) -> AppResult<MusicPackStatus> {
 
 /// Installa il music pack, o lo aggiorna se è già presente.
 pub async fn install(state: &Arc<AppState>, progress: ProgressSink) -> AppResult<MusicPackOutcome> {
-    let guard = state.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+    let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
 
     let result = install_inner(state, &progress, &cancel).await;

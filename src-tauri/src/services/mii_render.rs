@@ -42,6 +42,9 @@ const RENDER_WIDTH: u32 = 512;
 /// Tentativi di render, come `MiiAvatarRenderService.MaxAttempts`.
 const MAX_ATTEMPTS: usize = 3;
 
+/// Nome con cui l'operazione firma i progressi e occupa il turno (§D-086).
+pub const OPERATION: &str = "mii-renderer";
+
 /// Inquadrature che il servizio di Mii Studio sa produrre.
 ///
 /// Sono i due valori che il legacy passa nel parametro `type`: il ritratto e
@@ -135,7 +138,7 @@ pub async fn install_runtime(
     state: &Arc<AppState>,
     progress: ProgressSink,
 ) -> AppResult<MiiRendererStatus> {
-    let guard = state.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+    let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
 
     let result = install_runtime_inner(state, &progress, &cancel).await;

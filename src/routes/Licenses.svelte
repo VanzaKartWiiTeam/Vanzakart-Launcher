@@ -19,6 +19,7 @@
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import { forget as forgetRenders } from '$lib/mii/render';
   import { app } from '$lib/stores/app.svelte';
+  import { operations } from '$lib/stores/operations.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { LicenseView, MiiView, MiiRendererStatus, SaveOverview } from '$lib/api/types';
 
@@ -641,7 +642,10 @@
       {:else}
         <button
           class="vk-btn vk-btn--primary compact"
-          onclick={() => withRenderer('install', api.installMiiRenderer)}
+          onclick={() =>
+            withRenderer('install', () =>
+              operations.run('mii-renderer', () => api.installMiiRenderer())
+            )}
           disabled={rendererBusy !== ''}
         >
           <Icon name="download" size={14} />

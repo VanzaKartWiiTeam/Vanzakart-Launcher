@@ -71,6 +71,8 @@ export const it = {
   'page.rooms.subtitle': 'Chi sta giocando adesso.',
   'page.leaderboard.title': 'Leaderboard',
   'page.leaderboard.subtitle': 'Classifica VR globale.',
+  'page.ghosts.title': 'Time Trial',
+  'page.ghosts.subtitle': 'Record e ghost da scaricare per ogni pista.',
   'page.friends.title': 'Friends',
   'page.friends.subtitle': 'Amici salvati nella licenza.',
   'page.mods.title': 'Mods',
@@ -754,7 +756,126 @@ export const it = {
   'miicat.moleOff': 'Senza',
   'miicat.moleOn': 'Con neo',
   'miicat.moleVertical': 'Posizione verticale',
-  'miicat.moleHorizontal': 'Posizione orizzontale'
+  'miicat.moleHorizontal': 'Posizione orizzontale',
+
+  // ── Operazioni lunghe ────────────────────────────────────────────────────
+  'ops.kind.mods': 'Modpack',
+  'ops.kind.musicPack': 'Music Pack',
+  'ops.kind.gamebanana': 'Addon da GameBanana',
+  'ops.kind.launcher': 'Aggiornamento del launcher',
+  'ops.kind.miiRenderer': 'Render dei Mii',
+  'ops.busy': 'È già in corso un’operazione: {operation}. Aspetta che finisca.',
+  'ops.waiting': 'In attesa: {operation} in corso.',
+  'ops.starting': 'Avvio…',
+  'ops.remaining': 'mancano {time}',
+  'ops.done': 'Completato.',
+  'ops.cancelled': 'Annullato: non è stato modificato niente.',
+  'ops.openPage': 'Apri la pagina del download',
+  'phase.connecting': 'Connessione',
+  'phase.backup': 'Backup',
+  'phase.download': 'Download',
+  'phase.verifying': 'Verifica',
+  'phase.installing': 'Installazione',
+  'phase.updating': 'Aggiornamento',
+  'phase.recovery': 'Recupero',
+  'phase.rollback': 'Ripristino',
+  'phase.completed': 'Completato',
+  'phase.error': 'Errore',
+  'phase.idle': 'In attesa',
+
+  // ── Streak ───────────────────────────────────────────────────────────────
+  'streak.tooltip': '{days} giorni di gioco consecutivi',
+  'streak.vacation': 'In vacanza: la streak è congelata',
+  'streak.none': 'Nessuna streak in corso',
+  'streak.day': 'giorno',
+  'streak.days': 'giorni',
+  'board.col.streak': 'Streak',
+  'board.streak': 'Streak',
+
+  // ── Avvio con Dolphin aperto ─────────────────────────────────────────────
+  'home.closingDolphin': 'CHIUDO DOLPHIN…',
+  'home.dolphinRestarted': 'Dolphin era già aperto: è stato chiuso e riavviato con VanzaKart.',
+  'home.dolphinWillClose':
+    'Dolphin è aperto: premendo PLAY viene chiuso e riavviato con la modpack.',
+  'settings.closeDolphin': 'Chiudi Dolphin se è già aperto',
+  'settings.closeDolphinHint':
+    'Premendo PLAY con Dolphin aperto, il launcher lo chiude e lo riavvia con le impostazioni appena salvate. Spento, ti chiede di chiuderlo tu.',
+
+  // ── Music pack ───────────────────────────────────────────────────────────
+  'mods.checkMusicAvailable': 'Disponibile il music pack {version}.',
+  'mods.musicFailed': 'Music pack non installato',
+  'mods.musicDescription':
+    'Le tracce audio della modpack: vanno in My Stuff e si attivano o disattivano quando vuoi.',
+  'mods.musicNeedsModpack':
+    'Il music pack va dentro la cartella My Stuff della modpack: installa prima la modpack.',
+  'mods.installModpackFirst': 'Installa la modpack',
+  'mods.musicUpdate': 'Aggiorna alla {version}',
+  'mods.musicInstall': 'Installa il music pack',
+  'mods.musicOnHint': 'In gioco senti le tracce del music pack.',
+  'mods.musicOffHint': 'In gioco senti le tracce originali.',
+  'mods.musicRemoveTitle': 'Rimuovere il music pack?',
+  'mods.musicRemoveBody':
+    'Le tracce del music pack vengono tolte da My Stuff e tornano quelle originali. Puoi reinstallarlo quando vuoi.',
+
+  // ── Time Trial ───────────────────────────────────────────────────────────
+  'ghosts.search': 'Cerca una pista…',
+  'ghosts.allFolders': 'Cartella dei ghost',
+  'ghosts.allFoldersHint': 'Apri la cartella in cui il gioco tiene i ghost della modpack',
+  'ghosts.allTracks': 'Tutte',
+  'ghosts.onlyRecords': 'Con record ({count})',
+  'ghosts.recordsUnavailable':
+    'I record non si sono potuti leggere: le piste ci sono, e aprendone una si vedono i tempi.',
+  'ghosts.unavailable': 'Time trial non disponibile.',
+  'ghosts.noTracks': 'Il server non ha ancora piste per il time trial.',
+  'ghosts.noMatch': 'Nessuna pista corrisponde alla ricerca.',
+  'ghosts.count': '{shown} di {total} piste',
+  'ghosts.laps': '{count} giri',
+  'ghosts.installedCount': '{count} ghost in questa pista',
+  'ghosts.noRecord': 'Nessun tempo ancora',
+  'ghosts.back': 'Tutte le piste',
+  'ghosts.backHint': 'Torna alla lista delle piste (Esc)',
+  'ghosts.track': 'Pista',
+  'ghosts.record': 'Record',
+  'ghosts.folder': 'Cartella',
+  'ghosts.fix': 'Risolvi',
+  'ghosts.whereHint':
+    'Il ghost scaricato va nella cartella in cui lo cerca il gioco: lo trovi in Time Trial la prossima volta che apri la pista, anche con Dolphin già aperto.',
+  'ghosts.boardUnavailable': 'Classifica non disponibile.',
+  'ghosts.noTimes': 'Nessun tempo per questa pista.',
+  'ghosts.noTimesHint': 'Il primo tempo registrato sarà il record.',
+  'ghosts.col.player': 'Giocatore',
+  'ghosts.col.time': 'Tempo',
+  'ghosts.col.lap': 'Giro',
+  'ghosts.col.combo': 'Combo',
+  'ghosts.col.date': 'Data',
+  'ghosts.col.ghost': 'Ghost',
+  'ghosts.splits': 'Giri: {laps}',
+  'ghosts.shroomless': 'senza funghi',
+  'ghosts.installedBadge': 'Installato',
+  'ghosts.remove': 'Togli il ghost',
+  'ghosts.downloadHint': 'Scarica il ghost e mettilo dove il gioco lo cerca',
+  'ghosts.downloading': 'Scarico…',
+  'ghosts.download': 'Scarica',
+  'ghosts.total': '{count} tempi',
+  'ghosts.bestLap': 'giro più veloce {time}',
+  'ghosts.page': 'Pagina {page} di {pages}',
+  'ghosts.installed': 'Ghost installato',
+  'ghosts.alreadyInstalled': 'Ghost già presente',
+  'ghosts.installedBody': '{player} · {time} su {track}. Lo trovi in Time Trial.',
+  'ghosts.installFailed': 'Ghost non installato',
+  'ghosts.removed': 'Ghost tolto',
+  'ghosts.removedBody': 'Il ghost di {player} non compare più in Time Trial.',
+  'ghosts.blocker.noUserFolder':
+    'Imposta la cartella User di Dolphin nelle impostazioni: è lì che il gioco tiene i ghost.',
+  'ghosts.blocker.modNotInstalled':
+    'Installa la modpack {channel}: i ghost si installano accanto ai suoi dati.',
+  'ghosts.blocker.noTrackMap':
+    'La modpack installata non ha la tabella delle piste: riparala dalla pagina Mods.',
+  'ghosts.blocker.trackMissing': 'Questa pista non c’è nella tua versione della modpack.',
+  'ghosts.controller.wheel': 'Volante',
+  'ghosts.controller.nunchuk': 'Nunchuk',
+  'ghosts.controller.classic': 'Classic Controller',
+  'ghosts.controller.gamecube': 'GameCube'
 } as const;
 
 /**

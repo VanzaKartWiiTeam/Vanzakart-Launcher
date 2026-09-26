@@ -18,6 +18,8 @@ pub struct LaunchResult {
     pub pid: u32,
     pub descriptor_path: String,
     pub channel: vk_core::Channel,
+    /// `true` se prima di avviare è stato chiuso un Dolphin già aperto.
+    pub closed_previous: bool,
 }
 
 /// Motivo per cui l'avvio non è possibile, con la pagina dove risolverlo.
@@ -110,17 +112,65 @@ pub async fn preflight(state: &Arc<AppState>) -> AppResult<Option<LaunchBlocker>
         }));
     }
 
-    if crate::platform::is_executable_running(&settings.dolphin()) {
+    // Con l'opzione attiva un Dolphin già aperto non è un ostacolo: `launch`
+    // lo chiude da sé prima di avviare (§D-089).
+    let close_running = state.preferences.read().await.close_running_dolphin;
+    if !close_running && crate::platform::is_executable_running(&settings.dolphin()) {
         return Ok(Some(LaunchBlocker {
             code: "dolphin-running".into(),
-            message: "Chiudi Dolphin prima di avviare: deve rileggere la modalità e i binding \
-                      salvati dal launcher."
+            message: "Dolphin is already open. Close it before starting: it has to re-read the \
+                      mode and the bindings saved by the launcher. You can let the launcher close \
+                      it for you from Settings → Launch options."
                 .into(),
             navigate_to: "home".into(),
         }));
     }
 
     Ok(None)
+}
+
+/// Quanto aspettare che Dolphin sparisca dopo averlo chiuso.
+const CLOSE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// Chiude il Dolphin configurato se è aperto. `true` se c'era.
+///
+/// Prima chiude la sessione di gioco registrata, così il tempo giocato fino a
+/// qui non va perso; poi chiude il processo e i suoi figli e aspetta che
+/// spariscano davvero. Se qualcosa resta in piedi — un Dolphin avviato come
+/// amministratore, che l'utente normale non può chiudere — si ferma con un
+/// errore invece di avviarne un secondo accanto.
+pub async fn close_running_dolphin(state: &Arc<AppState>) -> AppResult<bool> {
+    let dolphin = state.settings.read().await.dolphin();
+    if !crate::platform::is_executable_running(&dolphin) {
+        return Ok(false);
+    }
+
+    let _ = finish_session(state).await;
+
+    let target = dolphin.clone();
+    let report = tokio::task::spawn_blocking(move || {
+        crate::platform::terminate_executable(&target, CLOSE_TIMEOUT)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+
+    if report.remaining > 0 || crate::platform::is_executable_running(&dolphin) {
+        return Err(AppError::Dolphin(vk_dolphin::DolphinError::LaunchFailed(
+            "Dolphin is open and could not be closed. Close it yourself and try again \
+             (if it was started as administrator, only an administrator can close it)."
+                .into(),
+        )));
+    }
+
+    // Su Windows un processo appena terminato può tenere ancora per un
+    // istante i file che aveva aperti: la NAND, i salvataggi, gli INI.
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+    tracing::info!(
+        processes = report.found,
+        "Dolphin già aperto chiuso prima dell'avvio"
+    );
+    Ok(true)
 }
 
 /// Genera il descrittore e avvia Dolphin.
@@ -132,7 +182,21 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
     let channel = state.channel().await;
     let layout = state.layout(channel).await;
     let settings = state.settings.read().await.clone();
-    let options = state.preferences.read().await.launch_options();
+    let (options, close_running) = {
+        let preferences = state.preferences.read().await;
+        (
+            preferences.launch_options(),
+            preferences.close_running_dolphin,
+        )
+    };
+
+    // 0. Un Dolphin già aperto non rileggerebbe binding e modalità scritti
+    //    dal launcher: con l'opzione attiva lo si chiude (§D-089).
+    let closed_previous = if close_running {
+        close_running_dolphin(state).await?
+    } else {
+        false
+    };
 
     // 1. Descrittore Riivolution.
     let descriptor = GameModDescriptor::build(
@@ -159,10 +223,17 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
     // eredita anche Dolphin, che è di sistema, non parte (§D-074).
     crate::platform::clean_child_environment(&mut command);
 
-    let child = command.spawn().map_err(|error| {
+    let mut child = command.spawn().map_err(|error| {
         AppError::Dolphin(vk_dolphin::DolphinError::LaunchFailed(error.to_string()))
     })?;
     let pid = child.id();
+
+    // Qualcuno deve raccogliere Dolphin quando esce: su Linux e macOS un
+    // figlio mai atteso resta zombie, e agli occhi del sistema risulta ancora
+    // "aperto" finché il launcher non si chiude.
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
 
     // 3. Statistiche e tracciamento della sessione.
     {
@@ -182,6 +253,7 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
         pid,
         descriptor_path: descriptor_path.to_string_lossy().to_string(),
         channel,
+        closed_previous,
     })
 }
 
@@ -379,6 +451,47 @@ mod tests {
             .options
             .iter()
             .any(|option| option.option_name == "Seperate Savegame"));
+    }
+
+    /// Il caso della richiesta: Dolphin già aperto e Gioca premuto. Con
+    /// l'opzione spenta resta l'avviso di sempre; accesa, il launcher lo chiude
+    /// da sé.
+    #[tokio::test]
+    async fn an_open_dolphin_is_closed_only_when_the_option_says_so() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+        seed_ready_to_play(dir.path(), &state).await;
+
+        let (fake, mut child) = crate::testkit::spawn_fake_dolphin(dir.path());
+        state.settings.write().await.dolphin_path = fake.to_string_lossy().to_string();
+        let reaper = std::thread::spawn(move || child.wait());
+
+        state.preferences.write().await.close_running_dolphin = false;
+        let blocker = preflight(&state).await.unwrap().expect("atteso un blocco");
+        assert_eq!(blocker.code, "dolphin-running");
+        assert!(blocker.message.contains("Settings"), "{}", blocker.message);
+
+        state.preferences.write().await.close_running_dolphin = true;
+        assert!(preflight(&state).await.unwrap().is_none());
+
+        // La sessione aperta viene chiusa e il tempo contato.
+        *state.game_session.write().await = Some(GameSession {
+            pid: 1,
+            started_at: std::time::Instant::now(),
+        });
+
+        assert!(close_running_dolphin(&state).await.unwrap());
+        assert!(!crate::platform::is_executable_running(&fake));
+        assert!(state.game_session.read().await.is_none());
+        assert!(!reaper.join().unwrap().unwrap().success());
+
+        // Già chiuso: non c'è più niente da fare.
+        assert!(!close_running_dolphin(&state).await.unwrap());
+    }
+
+    #[test]
+    fn closing_dolphin_is_the_default() {
+        assert!(crate::storage::preferences::UserPreferences::default().close_running_dolphin);
     }
 
     #[tokio::test]

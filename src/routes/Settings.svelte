@@ -511,6 +511,19 @@
         <label class="switch">
           <input
             type="checkbox"
+            checked={settings?.closeRunningDolphin ?? true}
+            onchange={(event) =>
+              updatePreference({ closeRunningDolphin: event.currentTarget.checked })}
+          />
+          <span>
+            <strong>{t('settings.closeDolphin')}</strong>
+            <span class="vk-faint">{t('settings.closeDolphinHint')}</span>
+          </span>
+        </label>
+
+        <label class="switch">
+          <input
+            type="checkbox"
             checked={settings?.autoCheckUpdates ?? true}
             onchange={(event) =>
               updatePreference({ autoCheckUpdates: event.currentTarget.checked })}

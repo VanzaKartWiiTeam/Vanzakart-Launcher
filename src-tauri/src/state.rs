@@ -41,7 +41,13 @@ pub struct AppState {
     pub endpoints: RwLock<EndpointsInfo>,
     pub remote: RwLock<RemoteVersions>,
     /// Garantisce che un solo aggiornamento della modpack sia in corso.
+    ///
+    /// Non va preso direttamente: [`AppState::begin_operation`] lo prende e
+    /// registra anche *quale* operazione lo tiene, che è ciò che la UI mostra.
     pub mod_operation: Mutex<()>,
+    /// Tipo dell'operazione lunga in corso — lo stesso nome che viaggia nei
+    /// progressi (`mods`, `music-pack`, …) — o `None` se non ce n'è.
+    current_operation: std::sync::Mutex<Option<&'static str>>,
     /// Token dell'operazione in corso, per l'annullamento dalla UI.
     pub cancel: RwLock<CancelToken>,
     /// Processo di gioco attivo, se presente.
@@ -60,6 +66,25 @@ pub struct AppState {
             std::sync::Arc<crate::services::community::PlayerIndex>,
         )>,
     >,
+    /// Streak dei giocatori per friend code, prese dalla classifica del sito
+    /// finché quella del launcher non le manda (§D-085).
+    pub streak_index: RwLock<
+        Option<(
+            std::time::Instant,
+            std::sync::Arc<crate::services::community::StreakIndex>,
+        )>,
+    >,
+    /// Mette in fila le scritture dei ghost: due download dello stesso tempo
+    /// sceglierebbero lo stesso nome di file.
+    pub ghost_writes: Mutex<()>,
+    /// Piste e record del time trial, tenuti qualche minuto: la lista delle
+    /// piste si apre e si richiude spesso (§D-087).
+    pub ghost_catalog: RwLock<
+        Option<(
+            std::time::Instant,
+            std::sync::Arc<crate::services::ghosts::RemoteCatalog>,
+        )>,
+    >,
 }
 
 /// Sessione di gioco in corso.
@@ -67,6 +92,25 @@ pub struct AppState {
 pub struct GameSession {
     pub pid: u32,
     pub started_at: std::time::Instant,
+}
+
+/// Operazione lunga in corso: tiene il lucchetto e il suo nome finché vive.
+///
+/// Il nome sparisce insieme al lucchetto anche quando l'operazione finisce con
+/// un errore o con un panic: un nome rimasto appeso direbbe alla UI che c'è un
+/// download in corso che non esiste più.
+#[must_use = "l'operazione finisce quando la guardia viene rilasciata"]
+pub struct OperationGuard<'a> {
+    _lock: tokio::sync::MutexGuard<'a, ()>,
+    slot: &'a std::sync::Mutex<Option<&'static str>>,
+}
+
+impl Drop for OperationGuard<'_> {
+    fn drop(&mut self) {
+        if let Ok(mut slot) = self.slot.lock() {
+            *slot = None;
+        }
+    }
 }
 
 impl AppState {
@@ -117,10 +161,14 @@ impl AppState {
             endpoints: RwLock::new(endpoints),
             remote: RwLock::new(RemoteVersions::default()),
             mod_operation: Mutex::new(()),
+            current_operation: std::sync::Mutex::new(None),
             cancel: RwLock::new(CancelToken::new()),
             game_session: RwLock::new(None),
             gamebanana_catalog: RwLock::new(None),
             leaderboard_index: RwLock::new(None),
+            streak_index: RwLock::new(None),
+            ghost_writes: Mutex::new(()),
+            ghost_catalog: RwLock::new(None),
         }))
     }
 
@@ -133,6 +181,29 @@ impl AppState {
     pub async fn layout(&self, channel: vk_core::Channel) -> vk_core::ModLayout {
         let settings = self.settings.read().await;
         vk_core::ModLayout::new(settings.mod_folder(&self.paths), channel)
+    }
+
+    /// Comincia un'operazione lunga, se non ce n'è già una.
+    ///
+    /// Una sola alla volta, qualunque sia: il download della modpack, del music
+    /// pack, di un addon o l'aggiornamento del launcher scrivono nelle stesse
+    /// cartelle o si contendono la banda, e due insieme si intralcerebbero.
+    /// `kind` è lo stesso nome con cui l'operazione firma i propri progressi,
+    /// così la UI sa a quale card appartiene (§D-086).
+    pub fn begin_operation(&self, kind: &'static str) -> AppResult<OperationGuard<'_>> {
+        let lock = self.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+        if let Ok(mut slot) = self.current_operation.lock() {
+            *slot = Some(kind);
+        }
+        Ok(OperationGuard {
+            _lock: lock,
+            slot: &self.current_operation,
+        })
+    }
+
+    /// Nome dell'operazione lunga in corso, se c'è.
+    pub fn current_operation(&self) -> Option<&'static str> {
+        self.current_operation.lock().ok().and_then(|slot| *slot)
     }
 
     /// Sostituisce il token di annullamento e restituisce quello nuovo.
@@ -241,6 +312,27 @@ mod tests {
         state.cancel_current().await;
         assert!(second.is_cancelled());
         assert!(!first.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn an_operation_is_named_while_it_runs_and_only_one_at_a_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::bootstrap_isolated(AppPaths::at(dir.path().join("VanzaKart")))
+            .await
+            .unwrap();
+
+        assert_eq!(state.current_operation(), None);
+
+        let guard = state.begin_operation("music-pack").unwrap();
+        assert_eq!(state.current_operation(), Some("music-pack"));
+
+        // Una seconda operazione, di qualunque tipo, aspetta il suo turno.
+        assert!(matches!(state.begin_operation("mods"), Err(AppError::Busy)));
+        assert_eq!(state.current_operation(), Some("music-pack"));
+
+        drop(guard);
+        assert_eq!(state.current_operation(), None);
+        assert!(state.begin_operation("mods").is_ok());
     }
 
     #[test]

@@ -86,12 +86,13 @@ describe('formatBytes', () => {
 });
 
 describe('routing', () => {
-  it('mantiene l’ordine della sidebar legacy', () => {
+  it('mantiene l’ordine della sidebar legacy, con il time trial dopo la classifica', () => {
     expect(ROUTES).toEqual([
       'home',
       'news',
       'rooms',
       'leaderboard',
+      'ghosts',
       'friends',
       'mods',
       'licenses',

@@ -19,6 +19,7 @@
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import StreakBadge from '$lib/components/StreakBadge.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import { app } from '$lib/stores/app.svelte';
@@ -285,6 +286,9 @@
                 allungavano la riga e si leggono per intero in Leaderboard.
               -->
               {#if friend.stats}
+                {#if friend.stats.streak > 0}
+                  <StreakBadge days={friend.stats.streak} vacation={friend.stats.streakVacation} />
+                {/if}
                 <span class="stat-vr">
                   {t('friends.vr', { points: formatNumber(friend.stats.points) })}
                 </span>

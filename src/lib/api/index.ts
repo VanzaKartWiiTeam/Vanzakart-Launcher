@@ -25,6 +25,9 @@ import type {
   DolphinSettings,
   FriendView,
   GameBananaSearchResult,
+  GhostCatalogView,
+  GhostInstallOutcome,
+  GhostLeaderboardView,
   InstallOutcome,
   IntegrityReport,
   LaunchBlocker,
@@ -97,6 +100,9 @@ export const verifyMods = () => call<IntegrityReport>('mods_verify');
 export const setChannel = (channel: Channel) => call<ModStatus>('mods_set_channel', { channel });
 export const cancelOperation = () => call<void>('operation_cancel');
 
+/** Tipo dell'operazione lunga in corso nel backend, o `null`. */
+export const getCurrentOperation = () => call<string | null>('operation_current');
+
 // --- GameBanana -----------------------------------------------------------
 
 export const searchGameBanana = (query: string, sort: string, page = 1) =>
@@ -137,6 +143,7 @@ export const updatePreferences = (preferences: {
   myStuffEnabled?: boolean;
   autoCheckUpdates?: boolean;
   downloadConcurrency?: number;
+  closeRunningDolphin?: boolean;
 }) => call<SettingsView>('preferences_update', preferences);
 
 // --- Impostazioni di Dolphin ---------------------------------------------
@@ -159,6 +166,26 @@ export const fetchNews = () => call<NewsItem[]>('news_fetch');
 export const fetchRooms = () => call<RoomsSummary>('rooms_fetch');
 export const fetchLeaderboard = (offset = 0) =>
   call<LeaderboardPage>('leaderboard_fetch', { offset });
+
+// --- Ghost del time trial ---------------------------------------------------
+
+/** Piste, record e ghost già presenti. `refresh` salta la cache di 5 minuti. */
+export const fetchGhostCatalog = (refresh = false) =>
+  call<GhostCatalogView>('ghost_catalog', { refresh });
+
+export const fetchGhostLeaderboard = (trackId: number, page = 1) =>
+  call<GhostLeaderboardView>('ghost_leaderboard', { trackId, page });
+
+/** Solo identificativi: l'indirizzo del file lo costruisce il backend. */
+export const installGhost = (trackId: number, submissionId: number) =>
+  call<GhostInstallOutcome>('ghost_install', { trackId, submissionId });
+
+/** Toglie un ghost scaricato dal launcher; restituisce quanti ne restano. */
+export const removeGhost = (submissionId: number) => call<number>('ghost_remove', { submissionId });
+
+/** Apre la cartella dei ghost di una pista, o di tutte. */
+export const openGhostFolder = (trackId?: number) =>
+  call<string>('ghost_open_folder', { trackId: trackId ?? null });
 
 // --- Beta -----------------------------------------------------------------
 

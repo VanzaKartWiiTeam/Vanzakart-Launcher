@@ -9,6 +9,7 @@
   import type { IconName } from './Icon.svelte';
   import { app, PAGE_META, TEAM_LINKS, type Route } from '$lib/stores/app.svelte';
   import { t, type TranslationKey } from '$lib/stores/i18n.svelte';
+  import { operationLabel, operations, type OperationKind } from '$lib/stores/operations.svelte';
 
   interface Group {
     label: TranslationKey;
@@ -17,7 +18,7 @@
 
   const GROUPS: Group[] = [
     { label: 'sidebar.group.general', routes: ['home', 'news'] },
-    { label: 'sidebar.group.online', routes: ['rooms', 'leaderboard', 'friends'] },
+    { label: 'sidebar.group.online', routes: ['rooms', 'leaderboard', 'ghosts', 'friends'] },
     { label: 'sidebar.group.customize', routes: ['mods', 'licenses'] },
     { label: 'sidebar.group.other', routes: ['settings', 'debug'] }
   ];
@@ -27,6 +28,7 @@
     news: 'NEWS',
     rooms: 'ROOMS',
     leaderboard: 'LEADERBOARD',
+    ghosts: 'TIME TRIAL',
     friends: 'FRIENDS',
     mods: 'MODS',
     licenses: 'MII & LICENSES',
@@ -35,6 +37,17 @@
   };
 
   const visible = $derived(new Set(app.visibleRoutes));
+
+  /** Dove si guarda ogni operazione: la pagina con la sua barra completa. */
+  const OPERATION_ROUTES: Record<OperationKind, Route> = {
+    mods: 'mods',
+    'music-pack': 'mods',
+    gamebanana: 'mods',
+    launcher: 'home',
+    'mii-renderer': 'licenses'
+  };
+
+  const activePercent = $derived(operations.percent);
 
   async function open(url: string) {
     try {
@@ -65,6 +78,34 @@
       {/if}
     {/each}
   </div>
+
+  <!--
+    Un download in corso si vede da ogni pagina: senza, andare altrove a
+    metà di un aggiornamento faceva credere che si fosse fermato. Un clic
+    riporta alla pagina con la barra completa (§D-086).
+  -->
+  {#if operations.active}
+    {@const kind = operations.active}
+    <button
+      class="activity"
+      onclick={() => app.navigate(OPERATION_ROUTES[kind])}
+      title={t('ops.openPage')}
+    >
+      <span class="activity-head">
+        <Icon name="download" size={14} />
+        <span class="activity-label">{operationLabel(kind)}</span>
+        <span class="activity-percent">
+          {activePercent === null ? '…' : `${Math.round(activePercent)}%`}
+        </span>
+      </span>
+      <span
+        class="vk-progress activity-bar"
+        class:vk-progress--indeterminate={activePercent === null}
+      >
+        <span class="vk-progress__fill" style="width: {activePercent ?? 0}%"></span>
+      </span>
+    </button>
+  {/if}
 
   <div class="vk-card vk-card--mini community">
     <p class="vk-eyebrow">{t('sidebar.community')}</p>
@@ -154,6 +195,58 @@
 
   .community {
     flex: none;
+  }
+
+  .activity {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    flex: none;
+    margin-top: auto;
+    padding: 10px 12px;
+    border: 1px solid color-mix(in srgb, var(--vk-cyan) 35%, var(--vk-stroke));
+    border-radius: var(--vk-radius-input);
+    background: var(--vk-panel-soft);
+    color: var(--vk-text);
+    text-align: left;
+    box-shadow: 0 0 14px rgb(0 242 255 / 0.12);
+  }
+
+  .activity:hover {
+    border-color: var(--vk-cyan);
+  }
+
+  .activity-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: var(--vk-fs-micro);
+    font-weight: 800;
+  }
+
+  .activity-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .activity-percent {
+    color: var(--vk-cyan-soft);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .activity-bar {
+    display: block;
+    width: 100%;
+    height: 8px;
+  }
+
+  /* Dentro un pulsante ci vanno solo elementi in linea: la barra è fatta di
+     `span`, che vanno resi blocchi perché larghezza e altezza contino. */
+  .activity-bar .vk-progress__fill {
+    display: block;
   }
 
   .hint {

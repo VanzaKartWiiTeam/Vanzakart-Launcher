@@ -30,5 +30,7 @@
   "download_page_url": "https://vwfc.vanzakart.net/",
   "mii_rendering_archive_url": "https://web.archive.org/web/20180502054513id_/http://download-cdn.miitomo.com/native/20180125111639/android/v2/asset_model_character_mii_AFLResHigh_2_3_dat.zip",
   "server_base_url": "https://vanzakart.net:8443/",
-  "rank_images_base_url": "https://vanzakart.net:8443/FOOTAGE/ranks/"
+  "rank_images_base_url": "https://vanzakart.net:8443/FOOTAGE/ranks/",
+  "site_leaderboard_api_url": "https://vanzakart.net:8443/api/leaderboard.php",
+  "timetrial_api_url": "https://vanzakart.net:8443/api/timetrial/"
 }

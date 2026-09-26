@@ -69,6 +69,7 @@ impl AppError {
             Self::Dolphin(vk_dolphin::DolphinError::ModNotInstalled(_)) => "mod-not-installed",
             Self::Dolphin(vk_dolphin::DolphinError::ModIncomplete(_)) => "mod-incomplete",
             Self::Dolphin(_) => "dolphin",
+            Self::Save(vk_save::SaveError::InvalidGhost(_)) => "ghost-invalid",
             Self::Save(_) => "save",
             // I codici dell'installer sono già stabili e già pensati per la
             // UI: si passano tali e quali invece di appiattirli su uno solo.

@@ -10,10 +10,10 @@
    * lui (vedi `docs/decisions.md` §D-030).
    */
   import * as api from '$lib/api';
-  import DownloadOverlay from '$lib/components/DownloadOverlay.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { app, formatBytes } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
+  import { operationLabel, operations } from '$lib/stores/operations.svelte';
   import type { GameBananaFile, GameBananaMod } from '$lib/api/types';
 
   interface Props {
@@ -41,9 +41,14 @@
   let hasMore = $state(false);
   let truncated = $state(false);
   let expanded = $state<number | null>(null);
-  let installing = $state('');
-  /** Cosa si sta scaricando, per il pannello del download. */
-  let downloading = $state<{ mod: string; file: string } | null>(null);
+
+  /**
+   * Il file in download, dallo store delle operazioni: il browser può essere
+   * stato chiuso e riaperto a metà, e il pulsante deve ancora dirlo (§D-086).
+   * Il pannello del download lo mostra la pagina Mods.
+   */
+  const installing = $derived(operations.busyWith('gamebanana') ? (operations.meta.key ?? '') : '');
+  const blocked = $derived(operations.busy);
   /** Anteprime che il server non ha servito: al loro posto la sagoma. */
   let broken = $state<string[]>([]);
 
@@ -91,11 +96,25 @@
   }
 
   async function install(item: GameBananaMod, file: GameBananaFile) {
-    installing = `${item.id}-${file.fileId}`;
-    downloading = { mod: item.name, file: file.fileName };
-    app.resetProgress();
+    if (operations.busy) {
+      app.toast(
+        t('gb.downloadFailed'),
+        t('ops.waiting', { operation: operationLabel(operations.active!) }),
+        'warning'
+      );
+      return;
+    }
     try {
-      const addon = await api.installGameBananaFile(item.id, file.fileId);
+      const addon = await operations.run(
+        'gamebanana',
+        () => api.installGameBananaFile(item.id, file.fileId),
+        {
+          title: item.name,
+          subtitle: file.fileName,
+          key: `${item.id}-${file.fileId}`,
+          describe: (result) => result.name
+        }
+      );
       app.toast(
         t('gb.installed'),
         t('gb.installedBody', { name: addon.name, count: addon.fileCount }),
@@ -109,10 +128,6 @@
         message,
         'warning'
       );
-    } finally {
-      installing = '';
-      downloading = null;
-      app.resetProgress();
     }
   }
 
@@ -190,7 +205,7 @@
               <button
                 class="vk-btn vk-btn--primary act"
                 onclick={() => primary(item)}
-                disabled={installing !== ''}
+                disabled={blocked}
               >
                 <Icon name="download" size={14} />
                 {busy(item) ? t('gb.downloading') : t('gb.install')}
@@ -229,7 +244,7 @@
                   <button
                     class="vk-btn vk-btn--primary act"
                     onclick={() => install(item, file)}
-                    disabled={installing !== ''}
+                    disabled={blocked}
                   >
                     <Icon name="download" size={14} />
                     {installing === `${item.id}-${file.fileId}`
@@ -254,12 +269,6 @@
     </div>
   {/if}
 </section>
-
-<DownloadOverlay
-  open={downloading !== null}
-  title={downloading?.mod ?? ''}
-  subtitle={downloading?.file ?? ''}
-/>
 
 <style>
   .controls {

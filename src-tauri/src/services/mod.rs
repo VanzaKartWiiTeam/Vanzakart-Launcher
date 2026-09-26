@@ -11,6 +11,7 @@ pub mod controller;
 pub mod diagnostics;
 pub mod dolphin;
 pub mod gamebanana;
+pub mod ghosts;
 pub mod launch;
 pub mod launcher;
 pub mod mii;

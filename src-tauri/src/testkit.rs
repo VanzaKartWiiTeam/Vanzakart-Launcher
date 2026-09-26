@@ -47,6 +47,50 @@ pub fn install_modpack(layout: &ModLayout) {
     std::fs::write(xml, riivolution_xml(layout.directory_name())).unwrap();
 }
 
+/// Un "Dolphin" finto ma vivo: una copia di questo binario di test, con un
+/// nome unico, che dorme finché qualcuno non la chiude.
+///
+/// Il nome unico è ciò che rende il test sicuro: chiudere "Dolphin.exe" per
+/// nome, in una CI o sul computer di chi sviluppa, chiuderebbe quello vero.
+/// Restituisce il percorso della copia e il processo avviato.
+pub fn spawn_fake_dolphin(dir: &std::path::Path) -> (std::path::PathBuf, std::process::Child) {
+    let unique = format!(
+        "vk-fake-dolphin-{}-{}{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |elapsed| elapsed.as_nanos()),
+        std::env::consts::EXE_SUFFIX
+    );
+    let copy = dir.join(unique);
+    std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
+
+    let child = std::process::Command::new(&copy)
+        .args([
+            "--ignored",
+            "--exact",
+            "platform::tests::sleeper_for_the_terminate_test",
+            "--test-threads=1",
+        ])
+        .env("VK_TERMINATE_SLEEPER", "1")
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .unwrap();
+
+    // Il processo deve risultare in esecuzione prima che il test prosegua.
+    let started = std::time::Instant::now();
+    while !crate::platform::is_executable_running(&copy) {
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(10),
+            "il processo di prova non è mai partito"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(50));
+    }
+
+    (copy, child)
+}
+
 /// Sostituisce il descrittore con un `<wiidisc/>` vuoto: sintatticamente
 /// valido, completamente inerte. È il guasto osservato sul campo.
 pub fn break_modpack(layout: &ModLayout) {

@@ -16,6 +16,7 @@
   import { relaunch } from '@tauri-apps/plugin-process';
 
   import * as api from '$lib/api';
+  import { operations } from '$lib/stores/operations.svelte';
   import Icon from '$lib/components/Icon.svelte';
   import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
@@ -79,7 +80,9 @@
     error = '';
 
     try {
-      await api.installLauncherUpdate();
+      // Dallo store delle operazioni: finché si aggiorna il launcher, gli
+      // altri download aspettano invece di contendersi la cartella (§D-086).
+      await operations.run('launcher', () => api.installLauncherUpdate());
       stage = 'done';
       // Un istante perché si legga "installato" prima che la finestra sparisca.
       setTimeout(() => void relaunch(), 900);

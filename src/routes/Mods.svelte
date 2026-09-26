@@ -7,6 +7,13 @@
    * installati e GameBanana — che nel legacy sono i due pulsanti larghi
    * `InstalledAddonsTabButton` / `GameBananaTabButton`.
    *
+   * Ogni download della pagina passa dallo store delle operazioni (§D-086):
+   * la barra con fase, byte, velocità e tempo che manca è la stessa per la
+   * modpack, per il music pack e per gli addon di GameBanana, resta al suo
+   * posto se si cambia pagina a metà, e mentre gira un download gli altri
+   * pulsanti dicono che cosa stanno aspettando invece di fallire con
+   * "occupato".
+   *
    * Il canale di rilascio non sta qui: si sceglie una volta, in Impostazioni →
    * Percorsi, e non ha ragione di occupare spazio in una pagina che si usa a
    * ogni aggiornamento (vedi `docs/decisions.md` §D-039).
@@ -16,17 +23,20 @@
   import { getCurrentWebview } from '@tauri-apps/api/webview';
 
   import * as api from '$lib/api';
+  import DownloadOverlay from '$lib/components/DownloadOverlay.svelte';
   import GameBananaBrowser from '$lib/components/GameBananaBrowser.svelte';
   import Icon from '$lib/components/Icon.svelte';
+  import Modal from '$lib/components/Modal.svelte';
   import Switch from '$lib/components/Switch.svelte';
+  import TransferProgress from '$lib/components/TransferProgress.svelte';
   import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
+  import { operationLabel, operations } from '$lib/stores/operations.svelte';
   import type { AddonView, ConflictView, IntegrityReport, MusicPackStatus } from '$lib/api/types';
 
   type Tab = 'addons' | 'gamebanana';
 
   let tab = $state<Tab>('addons');
-  let installing = $state(false);
   let verifying = $state(false);
   let checking = $state(false);
   /** Un archivio sta passando sopra la finestra: la zona di rilascio si accende. */
@@ -36,23 +46,31 @@
   let addons = $state<AddonView[]>([]);
   let addonBusy = $state('');
   let musicPack = $state<MusicPackStatus | null>(null);
-  let musicBusy = $state('');
+  /** Levetta o rimozione del music pack: operazioni brevi, senza barra. */
+  let musicBusy = $state<'' | 'toggle' | 'uninstall'>('');
+  let confirmMusicRemoval = $state(false);
   /** Anteprime che il server non ha servito: al loro posto la sagoma. */
   let brokenPreviews = $state<string[]>([]);
 
   /**
-   * Cosa sta succedendo, e com'e' finito.
-   *
-   * Il legacy teneva una riga di stato sempre visibile sotto i pulsanti: senza,
-   * premere "Verifica" cambia solo l'etichetta di un pulsante e l'operazione
-   * sembra non essere partita.
+   * Esito della verifica, che non è un download e quindi non passa dallo
+   * store: dice se ci sono file da ripristinare.
    */
   type Activity = { tone: 'busy' | 'ok' | 'warn'; text: string };
   let activity = $state<Activity | null>(null);
 
   const mod = $derived(app.modState);
-  const percent = $derived(app.progress.percent ?? 0);
-  const running = $derived(installing && app.progress.phase !== 'Idle');
+
+  const modRunning = $derived(operations.busyWith('mods'));
+  const musicRunning = $derived(operations.busyWith('music-pack'));
+
+  /**
+   * Perché un pulsante di download è spento: c'è già un'altra operazione.
+   * Vuoto quando si può partire.
+   */
+  const waitingFor = $derived(
+    operations.active ? t('ops.waiting', { operation: operationLabel(operations.active) }) : ''
+  );
 
   /**
    * Il music pack è un addon gestito: compare nella sua card e non fra gli
@@ -96,6 +114,21 @@
           : { tone: 'vk-badge--success', label: t('home.badge.upToDate') }
   );
 
+  /** Stato del music pack in una parola, per il badge. */
+  const musicHealth = $derived(
+    !musicPack || musicPack.blocker
+      ? null
+      : !musicPack.installed
+        ? { tone: '', label: t('mods.musicNotInstalled') }
+        : musicPack.updateAvailable
+          ? { tone: 'vk-badge--warning', label: t('home.badge.update') }
+          : { tone: 'vk-badge--success', label: t('home.badge.upToDate') }
+  );
+
+  const musicChangelog = $derived(
+    (musicPack?.changelog ?? []).filter((line) => line.trim() !== '')
+  );
+
   $effect(() => {
     void loadAddons();
   });
@@ -135,19 +168,28 @@
     };
   });
 
-  /** Ricontrolla il manifest remoto senza installare niente. */
+  /**
+   * Ricontrolla il manifest remoto senza installare niente.
+   *
+   * Aggiorna anche il music pack: la sua versione disponibile arriva dallo
+   * stesso `versions.json`, e la card restava ferma a prima del controllo.
+   */
   async function checkUpdates() {
     checking = true;
     try {
       await api.checkUpdates();
       await app.refresh();
+      await loadAddons();
       const state = app.modState;
+      const musicUpdate = musicPack?.installed && musicPack.updateAvailable;
       app.toast(
         t('mods.checkTitle'),
         state?.updateAvailable
           ? t('mods.checkAvailable', { version: state.latestVersion })
-          : t('mods.checkUpToDate'),
-        state?.updateAvailable ? 'info' : 'success'
+          : musicUpdate
+            ? t('mods.checkMusicAvailable', { version: musicPack?.latestVersion ?? '' })
+            : t('mods.checkUpToDate'),
+        state?.updateAvailable || musicUpdate ? 'info' : 'success'
       );
     } catch (error) {
       app.toast(t('home.checkFailed'), api.errorMessage(error), 'warning');
@@ -179,27 +221,53 @@
     }
   }
 
-  async function withMusic(action: string, run: () => Promise<unknown>, done?: string) {
-    if (installing || musicBusy) return;
-    musicBusy = action;
+  /**
+   * Installa o aggiorna il music pack.
+   *
+   * L'esito finisce nella card — sotto la barra — e in un avviso: chi è
+   * andato su un'altra pagina durante il download lo vede lo stesso.
+   */
+  async function installMusicPack() {
     try {
-      await run();
+      const outcome = await operations.run('music-pack', () => api.installMusicPack(), {
+        title: 'VanzaKart Music Pack',
+        describe: (result) => result.summary
+      });
+      app.toast('VanzaKart Music Pack', outcome.summary, 'success');
+    } catch (error) {
+      if (api.errorCode(error) !== 'cancelled') {
+        app.toast(t('mods.musicFailed'), api.errorMessage(error), 'warning');
+      }
+    } finally {
       await loadAddons();
-      if (done) app.toast('VanzaKart Music Pack', done, 'success');
+    }
+  }
+
+  async function toggleMusicPack() {
+    if (!musicPack || musicBusy || operations.busy) return;
+    musicBusy = 'toggle';
+    try {
+      musicPack = await api.setMusicPackEnabled(!musicPack.enabled);
     } catch (error) {
       app.toast(t('home.operationFailed'), api.errorMessage(error), 'warning');
     } finally {
       musicBusy = '';
-      if (action === 'install') app.resetProgress();
     }
   }
 
-  async function installMusicPack() {
-    app.resetProgress();
-    await withMusic('install', async () => {
-      const outcome = await api.installMusicPack();
-      app.toast('VanzaKart Music Pack', outcome.summary, 'success');
-    });
+  async function uninstallMusicPack() {
+    confirmMusicRemoval = false;
+    musicBusy = 'uninstall';
+    try {
+      musicPack = await api.uninstallMusicPack();
+      operations.clearOutcome('music-pack');
+      app.toast('VanzaKart Music Pack', t('mods.musicRemoved'), 'success');
+      await loadAddons();
+    } catch (error) {
+      app.toast(t('home.operationFailed'), api.errorMessage(error), 'warning');
+    } finally {
+      musicBusy = '';
+    }
   }
 
   /** Il nome proposto è quello del file, senza estensione. */
@@ -274,27 +342,26 @@
   }
 
   async function run(action: 'install' | 'repair') {
-    if (installing) return;
-    installing = true;
+    if (operations.busy) return;
     integrity = null;
-    activity = {
-      tone: 'busy',
-      text: action === 'install' ? t('mods.preparing') : t('mods.repairing')
-    };
-    app.resetProgress();
+    activity = null;
 
     try {
-      const outcome = action === 'install' ? await api.installMods() : await api.repairMods();
-      activity = { tone: outcome.warnings.length > 0 ? 'warn' : 'ok', text: outcome.summary };
+      const outcome = await operations.run(
+        'mods',
+        () => (action === 'install' ? api.installMods() : api.repairMods()),
+        {
+          title: 'VanzaKart Modpack',
+          describe: (result) => result.summary
+        }
+      );
       for (const warning of outcome.warnings) app.toast(t('common.warning'), warning, 'warning');
       await app.refresh();
       await loadAddons();
     } catch (error) {
-      const message = api.errorMessage(error);
-      activity = { tone: 'warn', text: message };
-      app.toast(t('home.operationFailed'), message, 'danger');
-    } finally {
-      installing = false;
+      if (api.errorCode(error) !== 'cancelled') {
+        app.toast(t('home.operationFailed'), api.errorMessage(error), 'danger');
+      }
     }
   }
 
@@ -353,10 +420,11 @@
       <button
         class="vk-btn vk-btn--primary main"
         onclick={() => run('install')}
-        disabled={installing || verifying}
+        disabled={operations.busy || verifying}
+        title={operations.blockedBy('mods') ? waitingFor : undefined}
       >
         <Icon name="download" size={15} />
-        {installing
+        {modRunning
           ? t('common.working')
           : !mod?.installed
             ? t('mods.install')
@@ -369,7 +437,7 @@
         <button
           class="vk-btn"
           onclick={checkUpdates}
-          disabled={installing || verifying || checking}
+          disabled={operations.busy || verifying || checking}
         >
           <Icon name="refresh" size={14} />
           {checking ? t('home.checking') : t('mods.updates')}
@@ -377,7 +445,7 @@
         <button
           class="vk-btn"
           onclick={() => run('repair')}
-          disabled={installing || verifying || !mod?.installed}
+          disabled={operations.busy || verifying || !mod?.installed}
         >
           <Icon name="repair" size={14} />
           {t('mods.repair')}
@@ -385,7 +453,7 @@
         <button
           class="vk-btn"
           onclick={verify}
-          disabled={verifying || installing || !mod?.installed}
+          disabled={verifying || operations.busy || !mod?.installed}
         >
           <Icon name="check" size={14} />
           {verifying ? t('home.verifying') : t('home.verify')}
@@ -394,7 +462,7 @@
           class="vk-btn"
           title={t('mods.modFolderTitle')}
           onclick={() => openFolder('mod')}
-          disabled={installing}
+          disabled={modRunning}
         >
           <Icon name="folder" size={14} />
           {t('mods.modFolder')}
@@ -402,34 +470,13 @@
       </div>
     </div>
 
-    {#if running}
-      <div class="progress-block">
-        <div class="vk-progress" class:vk-progress--indeterminate={app.progress.percent === null}>
-          <div class="vk-progress__fill" style="width: {percent}%"></div>
-        </div>
-        <div class="progress-meta">
-          <span>{app.progress.phase} — {app.progress.detail}</span>
-          <span class="vk-spacer"></span>
-          {#if app.progress.filesTotal > 0}
-            <span class="vk-faint">
-              {t('mods.files', {
-                done: app.progress.filesDone,
-                total: app.progress.filesTotal
-              })}
-            </span>
-          {/if}
-          {#if app.progress.bytesLabel}
-            <span class="vk-faint">{app.progress.bytesLabel}</span>
-          {/if}
-          {#if app.progress.speedLabel}
-            <span class="speed">{app.progress.speedLabel}</span>
-          {/if}
-          <button class="vk-btn vk-btn--ghost small" onclick={() => api.cancelOperation()}>
-            {t('common.cancel')}
-          </button>
-        </div>
-      </div>
-    {:else if verifying}
+    {#if operations.blockedBy('mods')}
+      <p class="waiting"><Icon name="warning" size={13} /> {waitingFor}</p>
+    {/if}
+
+    <TransferProgress kind="mods" onretry={() => run('install')} />
+
+    {#if verifying}
       <div class="progress-block">
         <div class="vk-progress vk-progress--indeterminate">
           <div class="vk-progress__fill"></div>
@@ -437,26 +484,20 @@
       </div>
     {/if}
 
-    {#if activity && !running}
+    {#if activity && !verifying}
       <div class="activity" data-tone={activity.tone}>
-        {#if activity.tone === 'busy'}
-          <span class="dot busy" aria-hidden="true"></span>
-        {:else}
-          <Icon name={activity.tone === 'ok' ? 'check' : 'warning'} size={14} />
-        {/if}
+        <Icon name={activity.tone === 'ok' ? 'check' : 'warning'} size={14} />
         <span>{activity.text}</span>
-        {#if activity.tone !== 'busy'}
-          <button
-            class="vk-btn vk-btn--ghost small dismiss"
-            aria-label={t('common.hide')}
-            onclick={() => {
-              activity = null;
-              integrity = null;
-            }}
-          >
-            ✕
-          </button>
-        {/if}
+        <button
+          class="vk-btn vk-btn--ghost small dismiss"
+          aria-label={t('common.hide')}
+          onclick={() => {
+            activity = null;
+            integrity = null;
+          }}
+        >
+          ✕
+        </button>
       </div>
     {/if}
 
@@ -489,76 +530,119 @@
 
   <!-- ── MUSIC PACK ──────────────────────────────────────────────────── -->
   <section class="vk-card music">
-    <div class="music-id">
-      <p class="music-name">
-        VanzaKart Music Pack
+    <header class="modpack-head">
+      <div class="identity">
+        <span class="music-glyph" aria-hidden="true">♪</span>
+        <div>
+          <h2 class="music-name">VanzaKart Music Pack</h2>
+          <p class="vk-faint music-note">{t('mods.musicDescription')}</p>
+        </div>
+        {#if musicHealth}
+          <span class="vk-badge {musicHealth.tone}">{musicHealth.label}</span>
+        {/if}
         {#if musicPack?.installed}
           <span class="vk-badge {musicPack.enabled ? 'vk-badge--success' : ''}">
             {musicPack.enabled ? t('mods.musicActive') : t('mods.musicInactive')}
           </span>
         {/if}
-      </p>
-      {#if musicPack?.blocker}
-        <p class="vk-faint music-note">{musicPack.blocker}</p>
-      {:else}
-        <p class="vk-faint music-note">
-          {musicPack?.installedVersion || t('mods.musicNotInstalled')}
-          {#if musicPack?.updateAvailable && musicPack.latestVersion}
-            → {musicPack.latestVersion}
-          {/if}
-          {#if musicPack?.installed}
-            · {t('mods.tracks', { count: musicPack.fileCount })}
-          {/if}
-        </p>
-      {/if}
-    </div>
+      </div>
 
-    {#if !musicPack?.blocker}
-      <div class="music-actions">
-        {#if musicBusy === 'install' && running}
-          <div class="vk-progress music-progress">
-            <div class="vk-progress__fill" style="width: {percent}%"></div>
+      {#if musicPack && !musicPack.blocker}
+        <div class="versions">
+          <div class="version">
+            <span class="vk-eyebrow">{t('home.installedLabel')}</span>
+            <strong>{musicPack.installedVersion || '—'}</strong>
           </div>
-        {:else}
-          {#if !musicPack?.installed || musicPack.updateAvailable}
-            <button
-              class="vk-btn vk-btn--primary"
-              onclick={installMusicPack}
-              disabled={installing || musicBusy !== ''}
-            >
-              <Icon name="download" size={14} />
-              {musicPack?.installed ? t('mods.update') : t('mods.install')}
-            </button>
-          {/if}
+          <span class="arrow" class:pending={musicPack.updateAvailable} aria-hidden="true">
+            {musicPack.updateAvailable ? '→' : '·'}
+          </span>
+          <div class="version" class:next={musicPack.updateAvailable}>
+            <span class="vk-eyebrow">{t('home.availableLabel')}</span>
+            <strong>{musicPack.latestVersion || '—'}</strong>
+          </div>
+        </div>
+      {/if}
+    </header>
 
-          {#if musicPack?.installed}
+    {#if musicPack?.blocker}
+      <div class="blocker">
+        <Icon name="warning" size={16} />
+        <p>{t('mods.musicNeedsModpack')}</p>
+        <button
+          class="vk-btn vk-btn--primary"
+          onclick={() => run('install')}
+          disabled={operations.busy}
+        >
+          <Icon name="download" size={14} />
+          {t('mods.installModpackFirst')}
+        </button>
+      </div>
+    {:else}
+      <div class="actions">
+        {#if !musicPack?.installed || musicPack.updateAvailable || musicRunning}
+          <button
+            class="vk-btn vk-btn--primary main"
+            onclick={installMusicPack}
+            disabled={operations.busy || musicBusy !== ''}
+            title={operations.blockedBy('music-pack') ? waitingFor : undefined}
+          >
+            <Icon name="download" size={15} />
+            {musicRunning
+              ? t('common.working')
+              : musicPack?.installed
+                ? t('mods.musicUpdate', { version: musicPack.latestVersion })
+                : t('mods.musicInstall')}
+          </button>
+        {/if}
+
+        {#if musicPack?.installed}
+          <div class="music-toggle">
             <Switch
               checked={musicPack.enabled}
               label={musicPack.enabled ? t('mods.musicDisable') : t('mods.musicEnable')}
               busy={musicBusy === 'toggle'}
-              disabled={musicBusy !== ''}
-              onchange={() =>
-                withMusic('toggle', async () => {
-                  musicPack = await api.setMusicPackEnabled(!musicPack!.enabled);
-                })}
+              disabled={musicBusy !== '' || operations.busy}
+              onchange={toggleMusicPack}
             />
+            <span class="vk-faint">
+              {musicPack.enabled ? t('mods.musicOnHint') : t('mods.musicOffHint')}
+            </span>
+          </div>
+
+          <div class="secondary">
+            <span class="vk-faint tracks">{t('mods.tracks', { count: musicPack.fileCount })}</span>
             <button
               class="vk-btn vk-btn--danger"
-              onclick={() =>
-                withMusic(
-                  'uninstall',
-                  async () => {
-                    musicPack = await api.uninstallMusicPack();
-                  },
-                  t('mods.musicRemoved')
-                )}
-              disabled={musicBusy !== ''}
+              onclick={() => (confirmMusicRemoval = true)}
+              disabled={musicBusy !== '' || operations.busy}
             >
-              {t('common.remove')}
+              <Icon name="trash" size={14} />
+              {musicBusy === 'uninstall' ? t('mods.wait') : t('common.remove')}
             </button>
-          {/if}
+          </div>
         {/if}
       </div>
+
+      {#if operations.blockedBy('music-pack') && (!musicPack?.installed || musicPack.updateAvailable)}
+        <p class="waiting"><Icon name="warning" size={13} /> {waitingFor}</p>
+      {/if}
+
+      <TransferProgress kind="music-pack" onretry={installMusicPack} />
+
+      {#if musicChangelog.length > 0}
+        <details class="changelog-block">
+          <summary>
+            {t('mods.changelogTitle', {
+              version: musicPack?.latestVersion || t('mods.versionAvailable')
+            })}
+          </summary>
+          <ul class="changelog">
+            {#each musicChangelog as line, index (index)}
+              <li>{line}</li>
+            {/each}
+          </ul>
+        </details>
+      {/if}
     {/if}
   </section>
 
@@ -572,6 +656,9 @@
     <button class="tab" class:active={tab === 'gamebanana'} onclick={() => (tab = 'gamebanana')}>
       <Icon name="external" size={15} />
       GameBanana
+      {#if operations.busyWith('gamebanana')}
+        <span class="count live">{Math.round(operations.percent ?? 0)}%</span>
+      {/if}
     </button>
   </nav>
 
@@ -723,6 +810,28 @@
   {/if}
 </div>
 
+<!--
+  Il pannello del download di GameBanana sta qui e non dentro il browser:
+  passando alla scheda degli addon a metà download il browser sparisce, il
+  download no, e il pannello deve restare (§D-086).
+-->
+<DownloadOverlay
+  open={operations.busyWith('gamebanana')}
+  title={operations.meta.title ?? ''}
+  subtitle={operations.meta.subtitle ?? ''}
+/>
+
+<Modal
+  open={confirmMusicRemoval}
+  title={t('mods.musicRemoveTitle')}
+  confirmLabel={t('common.remove')}
+  danger
+  onconfirm={uninstallMusicPack}
+  oncancel={() => (confirmMusicRemoval = false)}
+>
+  {t('mods.musicRemoveBody')}
+</Modal>
+
 <style>
   .page {
     display: flex;
@@ -826,29 +935,23 @@
 
   .secondary {
     display: flex;
+    align-items: center;
     gap: 8px;
     flex-wrap: wrap;
   }
 
-  .progress-block {
-    margin-top: 16px;
-  }
-
-  .progress-meta {
+  /* Un'altra operazione tiene il turno: lo si dice sotto i pulsanti spenti. */
+  .waiting {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-top: 8px;
+    gap: 6px;
+    margin: 10px 0 0;
     font-size: var(--vk-fs-micro);
     color: var(--vk-text-secondary);
   }
 
-  /* La velocità è l'unica cifra che si guarda mentre si aspetta: si stacca. */
-  .speed {
-    color: var(--vk-cyan-soft);
-    font-weight: 800;
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
+  .progress-block {
+    margin-top: 16px;
   }
 
   .small {
@@ -940,36 +1043,67 @@
   /* ---- Music pack ---- */
 
   .music {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    padding: 16px 26px;
+    padding: 22px 26px;
+  }
+
+  .music-glyph {
+    display: grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    flex: none;
+    border-radius: 12px;
+    background: var(--vk-play-gradient);
+    font-size: 20px;
+    font-weight: 900;
+    color: #fff;
+    box-shadow: 0 0 14px rgb(255 0 102 / 0.3);
   }
 
   .music-name {
-    display: flex;
-    align-items: center;
-    gap: 10px;
     margin: 0;
     font-size: var(--vk-fs-card-title);
     font-weight: 900;
   }
 
   .music-note {
-    margin: 3px 0 0;
+    margin: 2px 0 0;
     font-size: var(--vk-fs-micro);
   }
 
-  .music-actions {
+  .music-toggle {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
+    font-size: var(--vk-fs-micro);
   }
 
-  .music-progress {
-    width: 220px;
+  .tracks {
+    font-size: var(--vk-fs-micro);
+  }
+
+  .music .secondary {
+    margin-left: auto;
+  }
+
+  .blocker {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid color-mix(in srgb, var(--vk-warning) 40%, var(--vk-stroke));
+    border-radius: var(--vk-radius-badge);
+    background: color-mix(in srgb, var(--vk-warning) 8%, transparent);
+    color: var(--vk-warning);
+    font-size: var(--vk-fs-small);
+  }
+
+  .blocker p {
+    flex: 1;
+    min-width: 200px;
+    margin: 0;
   }
 
   /* ---- Schede ---- */
@@ -1032,6 +1166,12 @@
     border-radius: 999px;
     background: rgb(255 255 255 / 0.1);
     font-size: var(--vk-fs-eyebrow);
+  }
+
+  .count.live {
+    background: color-mix(in srgb, var(--vk-cyan) 25%, transparent);
+    color: var(--vk-cyan-soft);
+    font-variant-numeric: tabular-nums;
   }
 
   /* ---- Addon ---- */
@@ -1225,10 +1365,13 @@
   }
 
   @media (max-width: 720px) {
-    .modpack-head,
-    .music {
+    .modpack-head {
       align-items: flex-start;
       flex-direction: column;
+    }
+
+    .music .secondary {
+      margin-left: 0;
     }
   }
 </style>

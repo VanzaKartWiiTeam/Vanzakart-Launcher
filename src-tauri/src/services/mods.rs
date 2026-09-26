@@ -65,6 +65,9 @@ pub async fn check_updates(state: &Arc<AppState>) -> AppResult<ModStatus> {
 /// reinstallazione del launcher e alla cancellazione dei suoi dati.
 const INSTALLED_VERSION_STAMP: &str = "installed_version.txt";
 
+/// Nome con cui l'operazione firma i progressi e occupa il turno (§D-086).
+pub const OPERATION: &str = "mods";
+
 fn version_stamp(layout: &ModLayout) -> PathBuf {
     layout.user_data_root().join(INSTALLED_VERSION_STAMP)
 }
@@ -244,7 +247,7 @@ pub async fn install(
     force_full: bool,
     progress: ProgressSink,
 ) -> AppResult<InstallOutcome> {
-    let guard = state.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+    let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
 
     let result = install_inner(state, force_full, &progress, &cancel).await;

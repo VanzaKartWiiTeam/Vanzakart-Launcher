@@ -23,6 +23,10 @@ pub struct UserPreferences {
     pub mod_option_choice: i32,
     pub channel: Channel,
     pub download_concurrency: usize,
+    /// Premendo Gioca con Dolphin già aperto, il launcher lo chiude e riparte
+    /// invece di fermarsi con un avviso (§D-089). Attiva di default, anche per
+    /// chi aggiorna: `serde(default)` prende il valore da `Default`.
+    pub close_running_dolphin: bool,
     pub window: WindowPreferences,
     pub stats: PlayStats,
     pub last_known: LastKnownVersions,
@@ -61,6 +65,7 @@ impl Default for UserPreferences {
             mod_option_choice: 2,
             channel: Channel::Stable,
             download_concurrency: vk_core::update::DEFAULT_DOWNLOAD_CONCURRENCY,
+            close_running_dolphin: true,
             window: WindowPreferences::default(),
             stats: PlayStats::default(),
             last_known: LastKnownVersions::default(),
@@ -221,6 +226,22 @@ mod tests {
         save(&paths, &preferences).await.unwrap();
 
         assert_eq!(load(&paths).await.unwrap(), preferences);
+    }
+
+    /// Chi aggiorna dalla 2.1 ha un `preferences.json` senza la chiave: deve
+    /// ritrovarsi l'opzione attiva, come chi installa da zero.
+    #[test]
+    fn closing_dolphin_is_on_by_default_even_for_old_files() {
+        assert!(UserPreferences::default().close_running_dolphin);
+
+        let old: UserPreferences =
+            serde_json::from_str(r#"{"schemaVersion":1,"separateSavegame":false}"#).unwrap();
+        assert!(old.close_running_dolphin);
+        assert!(!old.separate_savegame);
+
+        let off: UserPreferences =
+            serde_json::from_str(r#"{"closeRunningDolphin":false}"#).unwrap();
+        assert!(!off.close_running_dolphin);
     }
 
     #[tokio::test]

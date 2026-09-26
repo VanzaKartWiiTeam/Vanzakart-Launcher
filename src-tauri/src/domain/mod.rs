@@ -94,6 +94,8 @@ pub struct SettingsView {
     pub my_stuff_enabled: bool,
     pub auto_check_updates: bool,
     pub download_concurrency: usize,
+    /// Chiude da sé un Dolphin già aperto quando si preme Gioca.
+    pub close_running_dolphin: bool,
 }
 
 /// Aggiornamento di stato inviato durante un'operazione lunga.
@@ -215,6 +217,10 @@ pub struct LeaderboardEntry {
     pub vr_last_24_hours: i32,
     pub vr_last_week: i32,
     pub vr_last_month: i32,
+    /// Giorni di gioco consecutivi; 0 quando la streak è persa (§D-085).
+    pub streak: u32,
+    /// In vacanza: la streak è congelata, non persa.
+    pub streak_vacation: bool,
     /// Percorso locale dell'immagine del rank, se già in cache.
     pub rank_image: Option<String>,
     /// Payload di render del Mii del giocatore, vuoto quando il server non
@@ -287,6 +293,9 @@ pub struct PlayerStatsView {
     /// Immagine del rank come data URI, quando esiste.
     pub rank_image: Option<String>,
     pub last_seen: Option<String>,
+    /// Giorni di gioco consecutivi, come nella classifica (§D-085).
+    pub streak: u32,
+    pub streak_vacation: bool,
 }
 
 /// Un amico salvato dentro una licenza.

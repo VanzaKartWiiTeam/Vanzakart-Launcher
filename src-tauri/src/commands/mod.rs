@@ -206,13 +206,13 @@ pub async fn mods_check_updates(state: Shared<'_>) -> AppResult<ModStatus> {
 
 #[tauri::command]
 pub async fn mods_install(app: AppHandle, state: Shared<'_>) -> AppResult<InstallOutcome> {
-    let sink = progress_sink(app, "mods");
+    let sink = progress_sink(app, services::mods::OPERATION);
     services::mods::install(&state.inner().clone(), false, sink).await
 }
 
 #[tauri::command]
 pub async fn mods_repair(app: AppHandle, state: Shared<'_>) -> AppResult<InstallOutcome> {
-    let sink = progress_sink(app, "mods");
+    let sink = progress_sink(app, services::mods::OPERATION);
     services::mods::install(&state.inner().clone(), true, sink).await
 }
 
@@ -233,6 +233,15 @@ pub async fn mods_set_channel(state: Shared<'_>, channel: String) -> AppResult<M
 pub async fn operation_cancel(state: Shared<'_>) -> AppResult<()> {
     state.inner().cancel_current().await;
     Ok(())
+}
+
+/// Tipo dell'operazione lunga in corso, o `null`.
+///
+/// La UI la tiene già da sé; questa serve a ritrovarla quando la webview si
+/// ricarica a metà di un download (§D-086).
+#[tauri::command]
+pub fn operation_current(state: Shared<'_>) -> Option<String> {
+    state.inner().current_operation().map(str::to_string)
 }
 
 // ---------------------------------------------------------------------------
@@ -267,7 +276,7 @@ pub async fn gamebanana_install(
     mod_id: i64,
     file_id: i64,
 ) -> AppResult<crate::domain::AddonView> {
-    let sink = progress_sink(app, "gamebanana");
+    let sink = progress_sink(app, services::gamebanana::OPERATION);
     services::gamebanana::install(&state.inner().clone(), mod_id, file_id, sink).await
 }
 
@@ -288,7 +297,7 @@ pub async fn music_pack_install(
     app: AppHandle,
     state: Shared<'_>,
 ) -> AppResult<services::music_pack::MusicPackOutcome> {
-    let sink = progress_sink(app, "music-pack");
+    let sink = progress_sink(app, services::music_pack::OPERATION);
     services::music_pack::install(&state.inner().clone(), sink).await
 }
 
@@ -385,6 +394,7 @@ pub async fn preferences_update(
     my_stuff_enabled: Option<bool>,
     auto_check_updates: Option<bool>,
     download_concurrency: Option<usize>,
+    close_running_dolphin: Option<bool>,
 ) -> AppResult<SettingsView> {
     let state = state.inner().clone();
     {
@@ -400,6 +410,9 @@ pub async fn preferences_update(
         }
         if let Some(value) = download_concurrency {
             preferences.download_concurrency = value.clamp(1, 12);
+        }
+        if let Some(value) = close_running_dolphin {
+            preferences.close_running_dolphin = value;
         }
     }
     state.persist_preferences().await?;
@@ -476,6 +489,64 @@ pub async fn leaderboard_fetch(
     offset: Option<u32>,
 ) -> AppResult<LeaderboardPage> {
     services::community::leaderboard(&state.inner().clone(), offset.unwrap_or(0)).await
+}
+
+// ---------------------------------------------------------------------------
+// Ghost del time trial
+// ---------------------------------------------------------------------------
+
+/// Le piste del time trial, con record e stato dei ghost locali.
+#[tauri::command]
+pub async fn ghost_catalog(
+    state: Shared<'_>,
+    refresh: Option<bool>,
+) -> AppResult<services::ghosts::GhostCatalogView> {
+    services::ghosts::catalog(&state.inner().clone(), refresh.unwrap_or(false)).await
+}
+
+/// Una pagina della classifica di una pista.
+#[tauri::command]
+pub async fn ghost_leaderboard(
+    state: Shared<'_>,
+    track_id: i64,
+    page: Option<u32>,
+) -> AppResult<services::ghosts::GhostLeaderboardView> {
+    services::ghosts::leaderboard(&state.inner().clone(), track_id, page.unwrap_or(1)).await
+}
+
+/// Scarica un ghost nella cartella in cui il gioco lo cerca.
+///
+/// Solo identificativi: l'indirizzo del file lo costruisce il backend.
+#[tauri::command]
+pub async fn ghost_install(
+    state: Shared<'_>,
+    track_id: i64,
+    submission_id: i64,
+) -> AppResult<services::ghosts::GhostInstallOutcome> {
+    services::ghosts::install(&state.inner().clone(), track_id, submission_id).await
+}
+
+/// Toglie un ghost scaricato dal launcher. Restituisce i ghost rimasti.
+#[tauri::command]
+pub async fn ghost_remove(state: Shared<'_>, submission_id: i64) -> AppResult<usize> {
+    services::ghosts::remove(&state.inner().clone(), submission_id).await
+}
+
+/// Apre la cartella dei ghost di una pista, o quella di tutti i ghost.
+#[tauri::command]
+pub async fn ghost_open_folder(
+    app: AppHandle,
+    state: Shared<'_>,
+    track_id: Option<i64>,
+) -> AppResult<String> {
+    use tauri_plugin_opener::OpenerExt;
+
+    let path = services::ghosts::folder(&state.inner().clone(), track_id).await?;
+    std::fs::create_dir_all(&path).map_err(|error| AppError::io(&path, error))?;
+    app.opener()
+        .open_path(path.to_string_lossy().to_string(), None::<&str>)
+        .map_err(|error| AppError::Internal(error.to_string()))?;
+    Ok(vk_core::redact::redact(&path.to_string_lossy()))
 }
 
 // ---------------------------------------------------------------------------
@@ -685,7 +756,7 @@ pub async fn launcher_update_install(
     app: AppHandle,
     state: Shared<'_>,
 ) -> AppResult<services::launcher::LauncherUpdateOutcome> {
-    let sink = progress_sink(app, "launcher");
+    let sink = progress_sink(app, services::launcher::OPERATION);
     services::launcher::install(&state.inner().clone(), sink).await
 }
 
@@ -887,7 +958,7 @@ pub async fn mii_renderer_install(
     app: AppHandle,
     state: Shared<'_>,
 ) -> AppResult<services::mii_render::MiiRendererStatus> {
-    let sink = progress_sink(app, "mii-renderer");
+    let sink = progress_sink(app, services::mii_render::OPERATION);
     services::mii_render::install_runtime(&state.inner().clone(), sink).await
 }
 

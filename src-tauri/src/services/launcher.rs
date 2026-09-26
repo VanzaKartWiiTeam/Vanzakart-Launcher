@@ -37,6 +37,9 @@ use crate::state::{AppState, LAUNCHER_VERSION};
 /// dichiara la chiave.
 const INSTALL_MANIFEST_URL: &str = "https://vanzakart.net:8443/Launcher/install.json";
 
+/// Nome con cui l'operazione firma i progressi e occupa il turno (§D-086).
+pub const OPERATION: &str = "launcher";
+
 /// Stato dell'aggiornamento del launcher, per il frontend.
 #[derive(Debug, Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -195,7 +198,7 @@ pub async fn install(
     state: &Arc<AppState>,
     progress: ProgressSink,
 ) -> AppResult<LauncherUpdateOutcome> {
-    let guard = state.mod_operation.try_lock().map_err(|_| AppError::Busy)?;
+    let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
 
     let result = async {

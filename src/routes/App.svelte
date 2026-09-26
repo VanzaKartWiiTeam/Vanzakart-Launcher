@@ -15,9 +15,11 @@
   import UpdateNotice from '$lib/components/UpdateNotice.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import { app, PAGE_META } from '$lib/stores/app.svelte';
+  import { operations } from '$lib/stores/operations.svelte';
 
   import Debug from './Debug.svelte';
   import Friends from './Friends.svelte';
+  import Ghosts from './Ghosts.svelte';
   import Home from './Home.svelte';
   import Leaderboard from './Leaderboard.svelte';
   import Licenses from './Licenses.svelte';
@@ -33,12 +35,11 @@
     let unlisten: (() => void) | undefined;
 
     void (async () => {
-      unlisten = await api.onProgress((event) => {
-        if (disposed) return;
-        app.progress = event;
-        if (event.detail)
-          app.setStatusLine(event.detail, event.phase === 'Error' ? 'danger' : 'info');
-      });
+      // I progressi li ascolta lo store delle operazioni, che vive fuori dalle
+      // pagine: un download continua a vedersi anche cambiando pagina.
+      const stop = await operations.listen();
+      if (disposed) stop();
+      else unlisten = stop;
 
       try {
         await app.refresh();
@@ -98,6 +99,8 @@
               <Rooms />
             {:else if app.route === 'leaderboard'}
               <Leaderboard />
+            {:else if app.route === 'ghosts'}
+              <Ghosts />
             {:else if app.route === 'friends'}
               <Friends />
             {:else if app.route === 'mods'}

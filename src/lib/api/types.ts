@@ -62,6 +62,8 @@ export interface SettingsView {
   myStuffEnabled: boolean;
   autoCheckUpdates: boolean;
   downloadConcurrency: number;
+  /** Chiude da sé un Dolphin già aperto quando si preme Gioca. */
+  closeRunningDolphin: boolean;
 }
 
 export type ProgressPhase =
@@ -123,6 +125,8 @@ export interface LaunchResult {
   pid: number;
   descriptorPath: string;
   channel: Channel;
+  /** `true` se prima di avviare è stato chiuso un Dolphin già aperto. */
+  closedPrevious: boolean;
 }
 
 export interface NewsItem {
@@ -189,6 +193,10 @@ export interface LeaderboardEntry {
   vrLast24Hours: number;
   vrLastWeek: number;
   vrLastMonth: number;
+  /** Giorni di gioco consecutivi; 0 quando la streak è persa. */
+  streak: number;
+  /** In vacanza: la streak è congelata, non persa. */
+  streakVacation: boolean;
   rankImage: string | null;
   /** Payload di render del Mii; vuoto quando il server non ne manda uno valido. */
   studioData: string;
@@ -341,6 +349,8 @@ export interface PlayerStatsView {
   /** Immagine del rank come data URI, quando esiste. */
   rankImage: string | null;
   lastSeen: string | null;
+  streak: number;
+  streakVacation: boolean;
 }
 
 export interface FriendView {
@@ -668,4 +678,90 @@ export interface ControllerProfile {
 export interface ApiError {
   code: string;
   message: string;
+}
+
+// --- Ghost del time trial ----------------------------------------------------
+
+/**
+ * Perché un ghost non si può installare. `''` quando si può.
+ *
+ * - `no-user-folder`: manca la cartella User di Dolphin;
+ * - `mod-not-installed`: manca la modpack del canale scelto;
+ * - `no-track-map`: la modpack non ha la tabella delle piste;
+ * - `track-not-in-modpack`: la pista non c'è nella versione installata.
+ */
+export type GhostBlocker =
+  '' | 'no-user-folder' | 'mod-not-installed' | 'no-track-map' | 'track-not-in-modpack';
+
+export interface GhostRecordView {
+  submissionId: number;
+  playerName: string;
+  /** Due lettere, per esempio `IT`; vuoto se il server non lo sa. */
+  country: string;
+  finishTimeMs: number;
+  finishTime: string;
+  dateSet: string;
+  character: string;
+  vehicle: string;
+}
+
+export interface GhostTrackView {
+  id: number;
+  courseId: number;
+  name: string;
+  category: string;
+  laps: number;
+  sortOrder: number;
+  record: GhostRecordView | null;
+  installable: boolean;
+  blocker: GhostBlocker;
+  /** Ghost già presenti nella cartella della pista. */
+  installedCount: number;
+}
+
+export interface GhostCatalogView {
+  tracks: GhostTrackView[];
+  channel: Channel;
+  cc: number;
+  blocker: GhostBlocker;
+  recordsAvailable: boolean;
+}
+
+export interface GhostEntryView {
+  submissionId: number;
+  rank: number;
+  playerName: string;
+  miiName: string;
+  country: string;
+  countryName: string;
+  finishTimeMs: number;
+  finishTime: string;
+  fastestLap: string;
+  lapSplits: string[];
+  character: string;
+  vehicle: string;
+  /** 0 volante, 1 Wii Remote + Nunchuk, 2 Classic Controller, 3 GameCube. */
+  controller: number;
+  automaticDrift: boolean;
+  shroomless: boolean;
+  dateSet: string;
+  /** Scaricato dal launcher e ancora al suo posto. */
+  installed: boolean;
+}
+
+export interface GhostLeaderboardView {
+  track: GhostTrackView;
+  entries: GhostEntryView[];
+  page: number;
+  totalPages: number;
+  total: number;
+  fastestLap: string;
+}
+
+export interface GhostInstallOutcome {
+  submissionId: number;
+  trackName: string;
+  fileName: string;
+  alreadyPresent: boolean;
+  installedCount: number;
 }

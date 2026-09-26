@@ -22,6 +22,7 @@ export const ROUTES = [
   'news',
   'rooms',
   'leaderboard',
+  'ghosts',
   'friends',
   'mods',
   'licenses',
@@ -230,6 +231,7 @@ export const PAGE_META: Record<
     subtitle: 'page.leaderboard.subtitle',
     icon: 'trophy'
   },
+  ghosts: { title: 'page.ghosts.title', subtitle: 'page.ghosts.subtitle', icon: 'stopwatch' },
   friends: { title: 'page.friends.title', subtitle: 'page.friends.subtitle', icon: 'friends' },
   mods: { title: 'page.mods.title', subtitle: 'page.mods.subtitle', icon: 'package' },
   licenses: { title: 'page.licenses.title', subtitle: 'page.licenses.subtitle', icon: 'license' },

@@ -40,6 +40,7 @@ pub async fn settings_view(state: &Arc<AppState>) -> AppResult<SettingsView> {
         my_stuff_enabled: preferences.mod_option_choice == 2,
         auto_check_updates: preferences.auto_check_updates,
         download_concurrency: preferences.effective_concurrency(),
+        close_running_dolphin: preferences.close_running_dolphin,
     })
 }
 
