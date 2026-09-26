@@ -93,6 +93,12 @@ pub fn launch_detached(executable: &Path) -> InstallResult<()> {
 /// Su macOS un binario in esecuzione si può cancellare: il file scompare dal
 /// filesystem e il processo continua a girare sull'inode già aperto. Non
 /// serve rimandare nulla a dopo l'uscita.
+/// Qui non esiste un'installazione "per tutto il PC" che cambi i permessi:
+/// l'installer gira come l'utente e scrive dove l'utente può scrivere.
+pub fn secure_machine_install(_install_dir: &Path, _protected_dir: &Path) -> InstallResult<()> {
+    Ok(())
+}
+
 pub fn schedule_removal(paths: &[PathBuf]) -> InstallResult<bool> {
     for path in paths {
         crate::fsops::remove_path(path)?;
@@ -175,6 +181,7 @@ mod tests {
             uninstaller: None,
             version: "2.0.0",
             size_bytes: 1024,
+            machine_wide: false,
         };
         assert!(register_uninstall(&registration)
             .expect("nessuna")

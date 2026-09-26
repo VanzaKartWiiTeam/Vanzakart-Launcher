@@ -144,6 +144,12 @@ pub fn launch_detached(executable: &Path) -> InstallResult<()> {
 
 /// Come su macOS: cancellare un eseguibile in esecuzione è lecito, quindi la
 /// rimozione avviene subito e non resta nessuno script in giro.
+/// Qui non esiste un'installazione "per tutto il PC" che cambi i permessi:
+/// l'installer gira come l'utente e scrive dove l'utente può scrivere.
+pub fn secure_machine_install(_install_dir: &Path, _protected_dir: &Path) -> InstallResult<()> {
+    Ok(())
+}
+
 pub fn schedule_removal(paths: &[PathBuf]) -> InstallResult<bool> {
     for path in paths {
         crate::fsops::remove_path(path)?;

@@ -451,7 +451,12 @@ fn refresh_registration(
             uninstaller: Some(record.uninstaller.as_path()).filter(|path| path.exists()),
             version: record.version.as_str(),
             size_bytes: staged.bytes,
+            machine_wide: record.machine_wide,
         };
+        // In un'installazione per tutto il PC la voce sta in HKLM, che il
+        // launcher senza permessi di amministratore non può riscrivere: la
+        // versione mostrata fra i programmi resta quella dell'installazione
+        // finché non si ripassa dall'installer (§D-091).
         if let Err(error) = platform::register_uninstall(&registration) {
             tracing::warn!(%error, "voce fra i programmi installati non aggiornata");
         }

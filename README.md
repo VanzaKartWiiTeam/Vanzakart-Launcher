@@ -15,7 +15,7 @@ non raggiunge la parità funzionale: vedi [`docs/status.md`](docs/status.md).
 | Piattaforme | Windows | Windows, macOS, Linux |
 | UI | WPF | Svelte 5 in una webview, stessa identità grafica |
 | Aggiornamento del launcher | script PowerShell non firmato | in loco, nella cartella d’installazione, con impronta e firma Ed25519 verificate prima |
-| Installazione | Setup e Uninstaller in WPF, solo Windows | stessa procedura guidata su Windows, macOS e Linux (`setup/`), con lo stesso pacchetto che usa l’aggiornamento |
+| Installazione | Setup e Uninstaller in WPF, solo Windows | stessa procedura guidata su Windows, macOS e Linux (`setup/`), con lo stesso pacchetto che usa l’aggiornamento; su Windows in Programmi, per tutto il PC |
 | Configurazione | registro di Windows + AppDir | un file JSON per OS, scritture atomiche |
 | Log | percorsi e URL in chiaro | sanitizzati in scrittura e in lettura |
 | Avvio di Dolphin | `UseShellExecute = true` | `std::process` con argomenti separati |

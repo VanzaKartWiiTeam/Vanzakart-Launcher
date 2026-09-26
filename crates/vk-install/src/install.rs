@@ -98,6 +98,8 @@ pub struct Preflight {
     pub launcher_running: bool,
     /// Il pacchetto dichiara un'impronta con cui verificare il download.
     pub verifiable: bool,
+    /// Installazione per tutto il PC: Windows, dentro Programmi (§D-090).
+    pub machine_wide: bool,
 }
 
 impl Preflight {
@@ -211,6 +213,7 @@ impl Installer {
             writable: is_writable(&install_dir),
             launcher_running: platform::is_running(&executable),
             verifiable: !package.sha256.is_empty(),
+            machine_wide: paths::is_machine_wide(&install_dir),
             install_dir,
         })
     }
@@ -280,6 +283,11 @@ impl Installer {
         ));
 
         // 4. Disinstallatore, scorciatoie, registrazione.
+        //
+        // In Programmi l'installazione è per tutto il PC: collegamenti e
+        // registrazione li vedono tutti gli utenti, non solo quello che ha
+        // digitato la password di amministratore (§D-090).
+        let machine_wide = paths::is_machine_wide(&install_dir);
         let uninstaller = if options.copy_uninstaller {
             self.place_uninstaller(&install_dir)?
         } else {
@@ -291,10 +299,16 @@ impl Installer {
         record.payload = installed.entries.clone();
         if let Some(uninstaller) = &uninstaller {
             record.uninstaller = uninstaller.clone();
-            if let Ok(relative) = uninstaller.strip_prefix(&install_dir) {
-                let relative = relative.to_path_buf();
-                if !record.payload.contains(&relative) {
-                    record.payload.push(relative);
+            // Il registro elenca le voci di primo livello: per un
+            // disinstallatore nella sottocartella protetta è la sottocartella.
+            if let Some(top) = uninstaller
+                .strip_prefix(&install_dir)
+                .ok()
+                .and_then(|relative| relative.components().next())
+            {
+                let top = PathBuf::from(top.as_os_str());
+                if !record.payload.contains(&top) {
+                    record.payload.push(top);
                 }
             }
         }
@@ -309,6 +323,7 @@ impl Installer {
             quick_launch: options.quick_launch_shortcut,
             uninstall_entry: options.uninstall_entry,
             path_symlink: options.path_symlink,
+            machine_wide,
         };
         for artifact in platform::create_shortcuts(&request) {
             record.add_artifact(artifact);
@@ -321,6 +336,7 @@ impl Installer {
                 uninstaller: uninstaller.as_deref(),
                 version: &manifest.version,
                 size_bytes: installed.bytes,
+                machine_wide,
             };
             match platform::register_uninstall(&registration) {
                 Ok(artifacts) => {
@@ -340,6 +356,20 @@ impl Installer {
         // Il registro appena arricchito va riscritto: deve contenere anche se
         // stesso, altrimenti la disinstallazione lo lascia lì.
         let _ = record.save();
+
+        // 5. Permessi, per ultimi: prima si chiude la sottocartella del
+        //    disinstallatore, poi si apre il resto agli utenti, così che il
+        //    launcher possa aggiornarsi da sé senza chiedere la password
+        //    (§D-091). Se non riesce l'installazione resta valida: il launcher
+        //    rimanderà alla pagina dei download invece di aggiornarsi da solo.
+        if machine_wide {
+            if let Err(error) = platform::secure_machine_install(
+                &install_dir,
+                &paths::uninstaller_dir(&install_dir),
+            ) {
+                tracing::warn!(%error, "permessi dell'installazione per tutto il PC non applicati");
+            }
+        }
 
         progress(
             ProgressUpdate::new(Phase::Completed, "Installation complete").with_percent(100.0),
@@ -431,7 +461,9 @@ impl Installer {
     /// dall'argomento `--uninstall` (§D-053). Copiarlo evita di dover
     /// mantenere due applicazioni quasi identiche.
     fn place_uninstaller(&self, install_dir: &Path) -> InstallResult<Option<PathBuf>> {
-        let target = install_dir.join(paths::uninstaller_name());
+        let directory = paths::uninstaller_dir(install_dir);
+        fsops::ensure_dir(&directory)?;
+        let target = directory.join(paths::uninstaller_name());
         if same_file(&self.setup_bundle, &target) {
             return Ok(Some(target));
         }

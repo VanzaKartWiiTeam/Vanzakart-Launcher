@@ -63,6 +63,8 @@ export interface Preflight {
   writable: boolean;
   launcherRunning: boolean;
   verifiable: boolean;
+  /** Installazione per tutto il PC: Windows, dentro Programmi. */
+  machineWide: boolean;
 }
 
 export interface Artifact {

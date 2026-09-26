@@ -11,7 +11,8 @@
 //! | Funzione | Windows | macOS | Linux |
 //! | --- | --- | --- | --- |
 //! | `create_shortcuts` | `.lnk` su desktop, menu Start, avvio veloce | alias sul desktop | `.desktop` in `~/.local/share/applications` |
-//! | `register_uninstall` | chiave `Uninstall` in HKCU | registro su file | registro su file |
+//! | `register_uninstall` | chiave `Uninstall` in HKCU, o HKLM per tutto il PC | registro su file | registro su file |
+//! | `secure_machine_install` | permessi della cartella in Programmi | niente | niente |
 //! | `schedule_removal` | script differito, l'exe è bloccato | rimozione immediata | rimozione immediata |
 
 use std::path::{Path, PathBuf};
@@ -52,6 +53,9 @@ pub struct ShortcutRequest<'a> {
     pub uninstall_entry: bool,
     /// Collegamento in una cartella del `PATH` (solo Linux).
     pub path_symlink: bool,
+    /// Installazione per tutto il PC: collegamenti comuni a ogni utente
+    /// (solo Windows, §D-090).
+    pub machine_wide: bool,
 }
 
 /// Dati della registrazione fra i programmi installati.
@@ -62,6 +66,8 @@ pub struct UninstallRegistration<'a> {
     pub uninstaller: Option<&'a Path>,
     pub version: &'a str,
     pub size_bytes: u64,
+    /// Installazione per tutto il PC: la voce va in HKLM (solo Windows).
+    pub machine_wide: bool,
 }
 
 /// Percorso dell'installer così come l'utente lo ha avviato.

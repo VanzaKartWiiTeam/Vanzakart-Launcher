@@ -64,6 +64,8 @@ export const en: SetupDictionary = {
     'It stays where it is: the new launcher installs into a folder of its own and, the first time it starts, imports the old settings without touching its files. When you no longer need it, remove it with its own uninstaller.',
   'welcome.footnote':
     'Installing needs no administrator rights and leaves the game data already on this computer alone.',
+  'welcome.footnote.windows':
+    'The launcher goes into Program Files, for every user of this PC: that is why Windows asked for administrator rights. The game data already here is left alone, and the launcher will update itself without asking for them again.',
 
   // ── Folder and shortcuts ────────────────────────────────────────────────
   'folder.eyebrow': 'Step 2',
@@ -100,6 +102,9 @@ export const en: SetupDictionary = {
   'checks.writable': 'Folder writable',
   'checks.writable.yes': 'yes',
   'checks.writable.no': 'no, more permissions needed',
+  'checks.scope': 'Installed for',
+  'checks.scope.everyone': 'every user of this PC',
+  'checks.scope.me': 'your user only',
   'checks.running': 'Launcher running',
   'checks.running.yes': 'yes, close it',
   'checks.running.no': 'no',
@@ -112,7 +117,8 @@ export const en: SetupDictionary = {
     'There is not enough room on the chosen drive. Free some space or pick another folder.',
   'checks.launcherOpen':
     'VanzaKart Launcher is open. Close it and run the checks again: its files cannot be replaced while it is running.',
-  'checks.notWritable': 'The chosen folder cannot be written to. Pick one inside your user folder.',
+  'checks.notWritable':
+    'The chosen folder cannot be written to. Pick another one, for example one of those suggested in the previous step.',
   'checks.readyBefore': 'All set: press',
   'checks.readyAfter': 'to continue.',
 

@@ -53,6 +53,11 @@
         tone: preflight.writable ? 'ok' : 'bad'
       },
       {
+        label: t('checks.scope'),
+        value: preflight.machineWide ? t('checks.scope.everyone') : t('checks.scope.me'),
+        tone: 'ok'
+      },
+      {
         label: t('checks.running'),
         value: preflight.launcherRunning ? t('checks.running.yes') : t('checks.running.no'),
         tone: preflight.launcherRunning ? 'bad' : 'ok'

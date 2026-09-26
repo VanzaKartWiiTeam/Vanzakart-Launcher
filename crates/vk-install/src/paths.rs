@@ -6,14 +6,20 @@
 
 use std::path::PathBuf;
 
-/// Nome della cartella d'installazione predefinita su Windows.
-///
-/// È lo stesso che userebbe l'installer NSIS di Tauri in modalità
-/// `currentUser` (`$LOCALAPPDATA\<productName>`): se l'utente non cambia
-/// cartella, un aggiornamento passato dall'updater firmato sovrascrive
-/// *questa* installazione invece di crearne una seconda (§D-052).
+/// Nome della cartella d'installazione su Windows, sia in Programmi sia in
+/// `%LOCALAPPDATA%` (§D-052, §D-090).
 #[cfg(windows)]
 const WINDOWS_DIR_NAME: &str = "VanzaKart Launcher";
+
+/// Sottocartella che, in un'installazione per tutto il PC, contiene il
+/// disinstallatore e la copia del registro che lui legge.
+///
+/// È l'unica parte della cartella che gli utenti non possono modificare: il
+/// disinstallatore gira come amministratore, e se stesse in una cartella
+/// scrivibile da tutti basterebbe mettergli accanto una DLL, o ritoccare il
+/// registro che legge, per fargli eseguire o cancellare qualunque cosa con i
+/// permessi di amministratore (§D-091).
+pub const PROTECTED_DIR_NAME: &str = "Uninstall";
 
 /// Su Linux la cartella è in minuscolo e senza spazi, come vuole l'abitudine
 /// del sistema: finisce dentro `Exec=` del file `.desktop`.
@@ -55,9 +61,17 @@ pub fn record_path() -> Option<PathBuf> {
 pub const RECORD_FILE_NAME: &str = "install.json";
 
 /// Cartella d'installazione predefinita per la piattaforma corrente.
+///
+/// Su Windows è `Programmi`: l'installer gira come amministratore e installa
+/// per tutto il PC (§D-090). Chi ha già un'installazione altrove se la vede
+/// proporre lo stesso, perché la procedura guidata parte da
+/// [`crate::install::suggested_install_dir`].
 pub fn default_install_dir() -> PathBuf {
     #[cfg(windows)]
     {
+        if let Some(programs) = program_files_dir() {
+            return programs.join(WINDOWS_DIR_NAME);
+        }
         if let Some(local) = dirs::data_local_dir() {
             return local.join(WINDOWS_DIR_NAME);
         }
@@ -80,15 +94,76 @@ pub fn default_install_dir() -> PathBuf {
     std::env::temp_dir().join(LINUX_DIR_NAME)
 }
 
+/// `Programmi` a 64 bit, quello in cui va un programma a 64 bit.
+///
+/// `ProgramW6432` vale anche per un processo a 32 bit, dove `ProgramFiles`
+/// indicherebbe la cartella `(x86)`.
+#[cfg(windows)]
+pub fn program_files_dir() -> Option<PathBuf> {
+    ["ProgramW6432", "ProgramFiles"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .find(|path| path.is_absolute())
+}
+
+/// Le cartelle "Programmi" della macchina.
+fn program_files_roots() -> Vec<PathBuf> {
+    ["ProgramW6432", "ProgramFiles", "ProgramFiles(x86)"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .collect()
+}
+
+/// `true` se un'installazione in `install_dir` è per tutto il PC.
+///
+/// Vale per le cartelle dentro `Programmi`, e solo su Windows: è lì che
+/// l'installazione ha bisogno dei permessi di amministratore, e quindi di
+/// collegamenti e registrazione visibili a ogni utente (§D-090).
+pub fn is_machine_wide(install_dir: &std::path::Path) -> bool {
+    cfg!(windows) && is_under_any(install_dir, &program_files_roots())
+}
+
+/// `true` se `path` sta dentro una delle radici, senza badare alle maiuscole
+/// (Windows non ci bada) né ai separatori finali.
+fn is_under_any(path: &std::path::Path, roots: &[PathBuf]) -> bool {
+    let normalize = |value: &std::path::Path| {
+        value
+            .to_string_lossy()
+            .replace('/', "\\")
+            .trim_end_matches('\\')
+            .to_lowercase()
+    };
+    let candidate = normalize(path);
+    roots.iter().any(|root| {
+        let root = normalize(root);
+        !root.is_empty() && (candidate == root || candidate.starts_with(&format!("{root}\\")))
+    })
+}
+
+/// Cartella in cui va il disinstallatore.
+///
+/// Dentro la cartella d'installazione, come sempre; in un'installazione per
+/// tutto il PC dentro la sottocartella protetta (vedi [`PROTECTED_DIR_NAME`]).
+pub fn uninstaller_dir(install_dir: &std::path::Path) -> PathBuf {
+    if is_machine_wide(install_dir) {
+        install_dir.join(PROTECTED_DIR_NAME)
+    } else {
+        install_dir.to_path_buf()
+    }
+}
+
 /// Alternative proposte nella UI accanto al percorso predefinito.
 pub fn suggested_install_dirs() -> Vec<PathBuf> {
     let mut suggestions = vec![default_install_dir()];
 
+    // L'alternativa "solo per me", dove non servono permessi e che è quella
+    // delle installazioni fatte fino alla 2.1.
     #[cfg(windows)]
-    if let Some(programs) = std::env::var_os("ProgramFiles").map(PathBuf::from) {
-        // Richiede i permessi di amministratore: la UI lo segnala e l'utente
-        // decide. L'installer non chiede l'elevazione da sé.
-        suggestions.push(programs.join(WINDOWS_DIR_NAME));
+    if let Some(local) = dirs::data_local_dir() {
+        suggestions.push(local.join(WINDOWS_DIR_NAME));
     }
 
     #[cfg(target_os = "macos")]
@@ -214,6 +289,65 @@ mod tests {
         assert!(owns_install_dir(std::path::Path::new(
             "/Users/tizio/Applications/VanzaKart Launcher"
         )));
+    }
+
+    #[test]
+    fn a_folder_inside_program_files_is_recognised_whatever_its_case() {
+        use std::path::Path;
+
+        let roots = [
+            PathBuf::from(r"C:\Program Files"),
+            PathBuf::from(r"C:\Program Files (x86)"),
+        ];
+        assert!(is_under_any(
+            Path::new(r"C:\Program Files\VanzaKart Launcher"),
+            &roots
+        ));
+        assert!(is_under_any(
+            Path::new(r"c:\program files\VanzaKart Launcher\"),
+            &roots
+        ));
+        assert!(is_under_any(
+            Path::new(r"C:\Program Files (x86)\VanzaKart"),
+            &roots
+        ));
+        // Un nome che comincia allo stesso modo non è dentro Programmi.
+        assert!(!is_under_any(
+            Path::new(r"C:\Program Files Extra\VanzaKart"),
+            &roots
+        ));
+        assert!(!is_under_any(
+            Path::new(r"C:\Users\a\AppData\Local\VanzaKart Launcher"),
+            &roots
+        ));
+        assert!(!is_under_any(Path::new(r"C:\Program Files"), &[]));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_installs_into_program_files_for_everyone() {
+        let default = default_install_dir();
+        assert!(is_machine_wide(&default), "{default:?}");
+        assert!(default.ends_with(WINDOWS_DIR_NAME));
+        assert_eq!(uninstaller_dir(&default), default.join(PROTECTED_DIR_NAME));
+
+        // La cartella per utente resta proposta, ed è un'installazione "solo
+        // per me", con il disinstallatore accanto al launcher come prima.
+        let local = dirs::data_local_dir().unwrap().join(WINDOWS_DIR_NAME);
+        assert!(suggested_install_dirs().contains(&local));
+        assert!(!is_machine_wide(&local));
+        assert_eq!(uninstaller_dir(&local), local);
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn elsewhere_nothing_is_machine_wide() {
+        assert!(!is_machine_wide(&default_install_dir()));
+        assert!(!is_machine_wide(std::path::Path::new("/Applications")));
+        assert_eq!(
+            uninstaller_dir(&default_install_dir()),
+            default_install_dir()
+        );
     }
 
     #[test]

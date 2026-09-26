@@ -4,7 +4,7 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use winreg::enums::{HKEY_CURRENT_USER, KEY_READ};
+use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ};
 use winreg::RegKey;
 
 use super::{ShortcutRequest, UninstallRegistration, MENU_FOLDER_NAME, SHORTCUT_DESCRIPTION};
@@ -28,8 +28,17 @@ const UNINSTALL_SHORTCUT_FILE_NAME: &str = "Uninstall VanzaKart Launcher.lnk";
 pub fn create_shortcuts(request: &ShortcutRequest) -> Vec<Artifact> {
     let mut artifacts = Vec::new();
 
+    // Per tutto il PC: il desktop pubblico e il menu Start comune, che ogni
+    // utente vede. Altrimenti quelli di chi installa — che, su un account
+    // standard, è l'amministratore che ha digitato la password (§D-090).
+    let (desktop_dir, programs_dir) = if request.machine_wide {
+        (public_desktop(), common_start_menu_programs())
+    } else {
+        (dirs::desktop_dir(), start_menu_programs())
+    };
+
     if request.desktop {
-        if let Some(desktop) = dirs::desktop_dir() {
+        if let Some(desktop) = desktop_dir {
             let link = desktop.join(SHORTCUT_FILE_NAME);
             if write_shortcut(&link, request.executable, request.working_dir, "").is_ok() {
                 artifacts.push(Artifact::file(ArtifactKind::DesktopShortcut, &link));
@@ -38,7 +47,7 @@ pub fn create_shortcuts(request: &ShortcutRequest) -> Vec<Artifact> {
     }
 
     if request.start_menu {
-        if let Some(programs) = start_menu_programs() {
+        if let Some(programs) = programs_dir {
             let folder = programs.join(MENU_FOLDER_NAME);
             let link = folder.join(SHORTCUT_FILE_NAME);
             if write_shortcut(&link, request.executable, request.working_dir, "").is_ok() {
@@ -58,7 +67,9 @@ pub fn create_shortcuts(request: &ShortcutRequest) -> Vec<Artifact> {
         }
     }
 
-    if request.quick_launch {
+    // L'avvio veloce è per utente per natura: in un'installazione per tutto
+    // il PC finirebbe solo nel profilo di chi installa.
+    if request.quick_launch && !request.machine_wide {
         if let Some(app_data) = dirs::config_dir() {
             let link = app_data
                 .join("Microsoft")
@@ -89,14 +100,26 @@ pub fn remove_artifact(artifact: &Artifact) -> bool {
     }
 }
 
+/// Radice del registro per un'installazione, con il prefisso con cui le sue
+/// chiavi finiscono nel registro dell'installazione.
+fn hive(machine_wide: bool) -> (RegKey, &'static str) {
+    if machine_wide {
+        (RegKey::predef(HKEY_LOCAL_MACHINE), "HKLM")
+    } else {
+        (RegKey::predef(HKEY_CURRENT_USER), "HKCU")
+    }
+}
+
 /// Scrive la chiave che fa comparire il launcher in "App e funzionalità".
 ///
 /// Il nome della chiave è l'identificatore del bundle, lo stesso che userebbe
 /// l'installer NSIS di Tauri: così l'aggiornamento automatico riconosce
 /// *questa* installazione invece di affiancargliene una seconda (§D-052).
+/// Per tutto il PC sta in HKLM, dove la vede ogni utente (§D-090).
 pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult<Vec<Artifact>> {
+    let (root, prefix) = hive(registration.machine_wide);
     let key_path = format!(r"{UNINSTALL_ROOT}\{}", crate::BUNDLE_IDENTIFIER);
-    let (key, _) = RegKey::predef(HKEY_CURRENT_USER)
+    let (key, _) = root
         .create_subkey(&key_path)
         .map_err(|error| InstallError::platform(format!("chiave di disinstallazione: {error}")))?;
 
@@ -141,13 +164,13 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
     // lasciarla vorrebbe dire due voci per un programma solo (§D-083).
     for previous in crate::PREVIOUS_BUNDLE_IDENTIFIERS {
         if *previous != crate::BUNDLE_IDENTIFIER {
-            delete_key_tree(&format!(r"HKCU\{UNINSTALL_ROOT}\{previous}"));
+            delete_key_tree(&format!(r"{prefix}\{UNINSTALL_ROOT}\{previous}"));
         }
     }
 
     let mut artifacts = vec![Artifact::new(
         ArtifactKind::RegistryKey,
-        format!(r"HKCU\{key_path}"),
+        format!(r"{prefix}\{key_path}"),
     )];
 
     // `App Paths`: fa funzionare "Esegui → vanzakart launcher".
@@ -157,7 +180,7 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
         .and_then(|name| name.to_str())
     {
         let app_path_key = format!(r"{APP_PATHS_ROOT}\{file_name}");
-        if let Ok((key, _)) = RegKey::predef(HKEY_CURRENT_USER).create_subkey(&app_path_key) {
+        if let Ok((key, _)) = root.create_subkey(&app_path_key) {
             let _ = key.set_value("", &registration.executable.to_string_lossy().to_string());
             let _ = key.set_value(
                 "Path",
@@ -165,7 +188,7 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
             );
             artifacts.push(Artifact::new(
                 ArtifactKind::RegistryKey,
-                format!(r"HKCU\{app_path_key}"),
+                format!(r"{prefix}\{app_path_key}"),
             ));
         }
     }
@@ -181,7 +204,11 @@ pub fn register_uninstall(registration: &UninstallRegistration) -> InstallResult
 /// come risposta il launcher vecchio. Per proporre una cartella esiste
 /// [`legacy_install_dir`], che il disinstallatore non chiama mai.
 pub fn registered_install_dir() -> Option<PathBuf> {
-    uninstall_key_names().find_map(|name| read_install_location(&name))
+    // Prima l'utente, poi il PC: un'installazione per utente fatta fino alla
+    // 2.1 resta quella che l'installer propone di aggiornare.
+    [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
+        .into_iter()
+        .find_map(|root| uninstall_key_names().find_map(|name| read_install_location(root, &name)))
 }
 
 /// I nomi sotto cui la chiave di disinstallazione può stare, dal più recente.
@@ -198,11 +225,11 @@ fn uninstall_key_names() -> impl Iterator<Item = String> {
 /// Serve solo all'installer, per proporre la cartella che l'utente sta già
 /// usando. Non è un'installazione nostra e non si rimuove.
 pub fn legacy_install_dir() -> Option<PathBuf> {
-    read_install_location(LEGACY_UNINSTALL_KEY)
+    read_install_location(HKEY_CURRENT_USER, LEGACY_UNINSTALL_KEY)
 }
 
-fn read_install_location(key_name: &str) -> Option<PathBuf> {
-    let location = RegKey::predef(HKEY_CURRENT_USER)
+fn read_install_location(root: winreg::HKEY, key_name: &str) -> Option<PathBuf> {
+    let location = RegKey::predef(root)
         .open_subkey_with_flags(format!(r"{UNINSTALL_ROOT}\{key_name}"), KEY_READ)
         .ok()?
         .get_value::<String, _>("InstallLocation")
@@ -213,13 +240,17 @@ fn read_install_location(key_name: &str) -> Option<PathBuf> {
 
 /// Versione registrata dall'installazione corrente, se c'è.
 pub fn registered_version() -> Option<String> {
-    uninstall_key_names().find_map(|name| {
-        RegKey::predef(HKEY_CURRENT_USER)
-            .open_subkey_with_flags(format!(r"{UNINSTALL_ROOT}\{name}"), KEY_READ)
-            .ok()?
-            .get_value::<String, _>("DisplayVersion")
-            .ok()
-    })
+    [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE]
+        .into_iter()
+        .find_map(|root| {
+            uninstall_key_names().find_map(|name| {
+                RegKey::predef(root)
+                    .open_subkey_with_flags(format!(r"{UNINSTALL_ROOT}\{name}"), KEY_READ)
+                    .ok()?
+                    .get_value::<String, _>("DisplayVersion")
+                    .ok()
+            })
+        })
 }
 
 /// Toglie la registrazione di **questa** installazione.
@@ -230,32 +261,147 @@ pub fn registered_version() -> Option<String> {
 /// funzionalità" lasciandolo installato.
 pub fn unregister_uninstall(executable_name: Option<&str>) -> bool {
     let mut removed = false;
-    for name in uninstall_key_names() {
-        removed |= delete_key_tree(&format!(r"HKCU\{UNINSTALL_ROOT}\{name}"));
-    }
-    if let Some(name) = executable_name {
-        removed |= delete_key_tree(&format!(r"HKCU\{APP_PATHS_ROOT}\{name}"));
+    // Entrambe le radici: la chiave in HKLM la può togliere solo un
+    // disinstallatore con i permessi di amministratore, che è quello che
+    // rimuove un'installazione per tutto il PC.
+    for prefix in ["HKCU", "HKLM"] {
+        for name in uninstall_key_names() {
+            removed |= delete_key_tree(&format!(r"{prefix}\{UNINSTALL_ROOT}\{name}"));
+        }
+        if let Some(name) = executable_name {
+            removed |= delete_key_tree(&format!(r"{prefix}\{APP_PATHS_ROOT}\{name}"));
+        }
     }
     removed
 }
 
+/// Cancella una chiave creata dall'installer.
+///
+/// Solo sotto `Uninstall` e `App Paths`, le due radici in cui l'installer
+/// scrive: il disinstallatore di un'installazione per tutto il PC gira come
+/// amministratore, e un registro manomesso non deve potergli far cancellare
+/// qualunque altra chiave del sistema (§D-091).
 fn delete_key_tree(qualified: &str) -> bool {
-    let Some(path) = qualified.strip_prefix(r"HKCU\") else {
+    let (root, path) = if let Some(path) = qualified.strip_prefix(r"HKCU\") {
+        (HKEY_CURRENT_USER, path)
+    } else if let Some(path) = qualified.strip_prefix(r"HKLM\") {
+        (HKEY_LOCAL_MACHINE, path)
+    } else {
         return false;
     };
-    RegKey::predef(HKEY_CURRENT_USER)
-        .delete_subkey_all(path)
-        .is_ok()
+
+    let lower = path.to_ascii_lowercase();
+    let ours = !lower.contains("..")
+        && [UNINSTALL_ROOT, APP_PATHS_ROOT].iter().any(|allowed| {
+            let allowed = format!(r"{}\", allowed.to_ascii_lowercase());
+            lower.starts_with(&allowed) && lower.len() > allowed.len()
+        });
+    if !ours {
+        return false;
+    }
+
+    RegKey::predef(root).delete_subkey_all(path).is_ok()
 }
 
 /// Avvia il launcher e lascia che l'installer si chiuda.
+///
+/// L'installer gira come amministratore, e un processo avviato da lui lo
+/// sarebbe a sua volta: il launcher avvierebbe Dolphin da amministratore, non
+/// accetterebbe gli archivi trascinati da Esplora risorse e creerebbe la
+/// cartella di WebView2 con permessi che gli avvii normali poi non hanno. Lo
+/// si fa quindi avviare da Esplora risorse, che gira come l'utente del
+/// desktop (§D-090).
 pub fn launch_detached(executable: &Path) -> InstallResult<()> {
+    let explorer = windows_dir().join("explorer.exe");
+    if explorer.is_file() && Command::new(&explorer).arg(executable).spawn().is_ok() {
+        return Ok(());
+    }
+
     let working_dir = executable.parent().unwrap_or(Path::new("."));
     Command::new(executable)
         .current_dir(working_dir)
         .spawn()
         .map(|_| ())
         .map_err(|error| InstallError::io(executable, error))
+}
+
+/// Cartella di Windows, per chiamare i programmi di sistema per percorso.
+///
+/// Mai per nome: un processo avviato per nome viene cercato prima nella
+/// cartella dell'eseguibile che lo chiama, e l'installer — che gira come
+/// amministratore — sta di solito in Download, dove chiunque può mettere un
+/// `cmd.exe` o un `icacls.exe` finto (§D-091).
+fn windows_dir() -> PathBuf {
+    ["SystemRoot", "windir"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .map(PathBuf::from)
+        .find(|path| path.is_absolute() && path.join("System32").is_dir())
+        .unwrap_or_else(|| PathBuf::from(r"C:\Windows"))
+}
+
+/// Un programma di `System32`, per percorso.
+fn system_tool(name: &str) -> PathBuf {
+    windows_dir().join("System32").join(name)
+}
+
+/// SID che non dipendono dalla lingua di Windows: "Users" in italiano è
+/// "Utenti", e un nome tradotto farebbe fallire `icacls`.
+const SID_SYSTEM: &str = "*S-1-5-18";
+const SID_ADMINISTRATORS: &str = "*S-1-5-32-544";
+const SID_USERS: &str = "*S-1-5-32-545";
+
+/// Permessi di un'installazione per tutto il PC (§D-091).
+///
+/// Prima si chiude la sottocartella del disinstallatore: solo SYSTEM e gli
+/// amministratori la modificano, gli utenti la leggono ed eseguono. Poi si dà
+/// agli utenti il permesso di modifica sul resto della cartella, che è ciò che
+/// permette al launcher di aggiornarsi da sé senza chiedere la password, come
+/// fa Steam. L'ordine conta: al contrario, per un istante anche la
+/// sottocartella sarebbe stata modificabile da tutti.
+pub fn secure_machine_install(install_dir: &Path, protected_dir: &Path) -> InstallResult<()> {
+    if protected_dir != install_dir && protected_dir.is_dir() {
+        run_icacls(
+            protected_dir,
+            &[
+                "/inheritance:r",
+                "/grant:r",
+                &format!("{SID_SYSTEM}:(OI)(CI)F"),
+                &format!("{SID_ADMINISTRATORS}:(OI)(CI)F"),
+                &format!("{SID_USERS}:(OI)(CI)RX"),
+                "/T",
+                "/C",
+                "/Q",
+            ],
+        )?;
+    }
+
+    run_icacls(
+        install_dir,
+        &["/grant", &format!("{SID_USERS}:(OI)(CI)M"), "/C", "/Q"],
+    )
+}
+
+fn run_icacls(target: &Path, arguments: &[&str]) -> InstallResult<()> {
+    use std::os::windows::process::CommandExt;
+
+    let status = Command::new(system_tool("icacls.exe"))
+        .arg(target)
+        .args(arguments)
+        .creation_flags(CREATE_NO_WINDOW)
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map_err(|error| InstallError::io(target, error))?;
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(InstallError::platform(format!(
+            "permissions not applied to {} ({status})",
+            target.display()
+        )))
+    }
 }
 
 /// Cancella i percorsi dopo l'uscita del processo.
@@ -309,7 +455,7 @@ pub fn schedule_removal(paths: &[PathBuf]) -> InstallResult<bool> {
     std::fs::write(&script_path, script).map_err(|error| InstallError::io(&script_path, error))?;
 
     use std::os::windows::process::CommandExt;
-    Command::new("cmd.exe")
+    Command::new(system_tool("cmd.exe"))
         .arg("/c")
         .arg(&script_path)
         .creation_flags(CREATE_NO_WINDOW)
@@ -327,6 +473,27 @@ fn start_menu_programs() -> Option<PathBuf> {
             .join("Start Menu")
             .join("Programs")
     })
+}
+
+/// Il menu Start di tutti gli utenti.
+fn common_start_menu_programs() -> Option<PathBuf> {
+    std::env::var_os("ProgramData")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .map(|data| {
+            data.join("Microsoft")
+                .join("Windows")
+                .join("Start Menu")
+                .join("Programs")
+        })
+}
+
+/// Il desktop pubblico, che compare sul desktop di ogni utente.
+fn public_desktop() -> Option<PathBuf> {
+    std::env::var_os("PUBLIC")
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .map(|public| public.join("Desktop"))
 }
 
 /// Crea un `.lnk`.
@@ -387,7 +554,7 @@ fn run_script_host(
          lnk.Save\r\n"
     );
     run_temp_script("vbs", &script, |path| {
-        let mut command = Command::new("wscript.exe");
+        let mut command = Command::new(system_tool("wscript.exe"));
         command.arg("//B").arg("//Nologo").arg(path);
         command
     })
@@ -410,7 +577,11 @@ fn run_powershell(
          $lnk.Save()\r\n"
     );
     run_temp_script("ps1", &script, |path| {
-        let mut command = Command::new("powershell.exe");
+        let mut command = Command::new(
+            system_tool("WindowsPowerShell")
+                .join("v1.0")
+                .join("powershell.exe"),
+        );
         command
             .arg("-NoProfile")
             .arg("-NonInteractive")
@@ -517,6 +688,74 @@ mod tests {
     #[test]
     fn removing_a_key_that_is_not_ours_is_refused() {
         assert!(!delete_key_tree(r"HKLM\Software\Qualcosa"));
+        assert!(!delete_key_tree(
+            r"HKCU\Software\Microsoft\Windows\CurrentVersion\Run"
+        ));
+        assert!(!delete_key_tree(r"HKLM\SYSTEM\CurrentControlSet"));
+        // La radice stessa non è una chiave nostra: è di tutti i programmi.
+        assert!(!delete_key_tree(&format!(r"HKLM\{UNINSTALL_ROOT}")));
+        assert!(!delete_key_tree(&format!(r"HKCU\{UNINSTALL_ROOT}\..\Run")));
+        assert!(!delete_key_tree(r"HKCR\qualcosa"));
+    }
+
+    #[test]
+    fn system_tools_are_called_by_path_not_by_name() {
+        for tool in ["icacls.exe", "cmd.exe", "wscript.exe"] {
+            let path = system_tool(tool);
+            assert!(path.is_absolute(), "{path:?}");
+            assert!(path.is_file(), "{path:?}");
+        }
+        assert!(windows_dir().join("explorer.exe").is_file());
+    }
+
+    #[test]
+    fn machine_wide_shortcuts_go_where_every_user_sees_them() {
+        let desktop = public_desktop().expect("desktop pubblico");
+        assert!(desktop.ends_with("Desktop"));
+        assert_ne!(Some(desktop), dirs::desktop_dir());
+        let programs = common_start_menu_programs().expect("menu Start comune");
+        assert_ne!(Some(programs), start_menu_programs());
+    }
+
+    /// Ciò che conta davvero dei permessi: nella sottocartella protetta un
+    /// utente normale non scrive, nel resto sì. Si prova su una cartella
+    /// temporanea, di cui chi esegue i test è proprietario e su cui quindi
+    /// può cambiare i permessi senza essere amministratore.
+    #[test]
+    fn the_uninstaller_folder_is_closed_and_the_rest_is_open() {
+        let temp = tempfile::tempdir().expect("temp");
+        let install = temp.path().join("VanzaKart Launcher");
+        let protected = install.join(crate::paths::PROTECTED_DIR_NAME);
+        std::fs::create_dir_all(&protected).expect("cartelle");
+        std::fs::write(protected.join("VanzaKart Uninstaller.exe"), b"MZ").expect("scritto");
+
+        secure_machine_install(&install, &protected).expect("permessi applicati");
+
+        // Da amministratore — un terminale elevato — si scrive ovunque: il
+        // test non avrebbe niente da dimostrare.
+        let elevated = Command::new(system_tool("whoami.exe"))
+            .arg("/groups")
+            .output()
+            .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).contains("S-1-16-12288"));
+
+        let open = std::fs::write(install.join("launcher-update.tmp"), b"ok");
+        let closed = std::fs::write(protected.join("planted.dll"), b"MZ");
+        let replaced = std::fs::write(protected.join("VanzaKart Uninstaller.exe"), b"XX");
+
+        // Si rimettono i permessi ereditati, per poter cancellare la cartella.
+        let _ = Command::new(system_tool("icacls.exe"))
+            .arg(&install)
+            .args(["/reset", "/T", "/C", "/Q"])
+            .status();
+
+        assert!(
+            open.is_ok(),
+            "il launcher deve potersi aggiornare: {open:?}"
+        );
+        if !elevated {
+            assert!(closed.is_err(), "una DLL accanto al disinstallatore");
+            assert!(replaced.is_err(), "il disinstallatore sostituito");
+        }
     }
 
     #[test]

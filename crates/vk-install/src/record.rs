@@ -94,6 +94,10 @@ pub struct InstallRecord {
     /// cancellata per intero. Su macOS, dove si installa in una cartella
     /// Applicazioni condivisa, è `false` e si rimuovono i singoli bundle.
     pub owns_install_dir: bool,
+    /// `true` per un'installazione per tutto il PC (Windows, in Programmi):
+    /// collegamenti comuni, registrazione in HKLM, disinstallatore protetto
+    /// (§D-090, §D-091). Assente nei registri fino alla 2.1: vale `false`.
+    pub machine_wide: bool,
     pub executable: PathBuf,
     /// Vuoto quando il disinstallatore non è stato copiato.
     pub uninstaller: PathBuf,
@@ -115,10 +119,24 @@ impl InstallRecord {
             version: version.into(),
             target: target.into(),
             installed_at: now_iso8601(),
+            machine_wide: paths::is_machine_wide(&install_dir),
             install_dir,
             owns_install_dir,
             ..Default::default()
         }
+    }
+
+    /// La copia del registro accanto al disinstallatore, quando lui sta in
+    /// una cartella diversa da quella del launcher.
+    ///
+    /// In un'installazione per tutto il PC è la copia che conta: sta nella
+    /// sottocartella che solo un amministratore può modificare, ed è quella
+    /// che il disinstallatore — che gira come amministratore — legge per
+    /// prima (§D-091).
+    pub fn protected_path(&self) -> Option<PathBuf> {
+        let directory = self.uninstaller.parent()?;
+        (!self.uninstaller.as_os_str().is_empty() && directory != self.install_dir)
+            .then(|| directory.join(paths::RECORD_FILE_NAME))
     }
 
     /// Il registro scritto dentro la cartella d'installazione.
@@ -194,6 +212,16 @@ impl InstallRecord {
             written.push(local);
         }
 
+        // Il launcher, che si aggiorna senza permessi di amministratore, non
+        // può riscrivere questa copia: resta quella dell'installazione, e al
+        // disinstallatore serve solo sapere cosa è stato creato fuori dalla
+        // cartella, che un aggiornamento non cambia.
+        if let Some(protected) = self.protected_path() {
+            if protected.parent().is_some_and(Path::is_dir) && self.write_to(&protected).is_ok() {
+                written.push(protected);
+            }
+        }
+
         Ok(written)
     }
 
@@ -217,6 +245,9 @@ impl InstallRecord {
             }
         }
         crate::fsops::remove_path_best_effort(&self.local_path());
+        if let Some(protected) = self.protected_path() {
+            crate::fsops::remove_path_best_effort(&protected);
+        }
     }
 }
 

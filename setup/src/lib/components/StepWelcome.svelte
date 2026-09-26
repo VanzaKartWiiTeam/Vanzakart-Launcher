@@ -116,7 +116,9 @@
     </section>
   {/if}
 
-  <p class="vk-faint footnote">{t('welcome.footnote')}</p>
+  <p class="vk-faint footnote">
+    {boot.platform === 'Windows' ? t('welcome.footnote.windows') : t('welcome.footnote')}
+  </p>
 </div>
 
 <style>

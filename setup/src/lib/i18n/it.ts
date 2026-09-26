@@ -62,6 +62,8 @@ export const it = {
     'Resta dov’è: il launcher nuovo si installa in una cartella sua e al primo avvio importa le impostazioni di quello vecchio, senza toccarne i file. Quando non ti serve più, disinstallalo con il suo disinstallatore.',
   'welcome.footnote':
     "L'installazione non richiede privilegi di amministratore e non tocca i dati di gioco già presenti.",
+  'welcome.footnote.windows':
+    'Il launcher si installa in Programmi, per tutti gli utenti del PC: per questo Windows ha chiesto i permessi di amministratore. I dati di gioco già presenti non vengono toccati, e il launcher si aggiornerà da solo senza chiederli di nuovo.',
 
   // ── Cartella e scorciatoie ──────────────────────────────────────────────
   'folder.eyebrow': 'Passo 2',
@@ -99,6 +101,9 @@ export const it = {
   'checks.writable': 'Cartella scrivibile',
   'checks.writable.yes': 'sì',
   'checks.writable.no': 'no, servono altri permessi',
+  'checks.scope': 'Installazione per',
+  'checks.scope.everyone': 'tutti gli utenti del PC',
+  'checks.scope.me': 'solo il tuo utente',
   'checks.running': 'Launcher in esecuzione',
   'checks.running.yes': 'sì, va chiuso',
   'checks.running.no': 'no',
@@ -112,7 +117,7 @@ export const it = {
   'checks.launcherOpen':
     'VanzaKart Launcher è aperto. Chiudilo e ripeti le verifiche: i suoi file non si possono sostituire mentre è in esecuzione.',
   'checks.notWritable':
-    'Nella cartella scelta non si può scrivere. Scegline una dentro la tua cartella utente.',
+    "Nella cartella scelta non si può scrivere. Scegline un'altra, per esempio una di quelle proposte al passo precedente.",
   'checks.readyBefore': 'Tutto pronto: premi',
   'checks.readyAfter': 'per procedere.',
 
