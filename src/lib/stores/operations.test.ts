@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import type { ProgressEvent } from '$lib/api/types';
+import type { ProgressEvent, ProgressPhase } from '$lib/api/types';
 import { i18n } from '$lib/stores/i18n.svelte';
 import { isCancellable, isOperationKind, operations, phaseLabel } from './operations.svelte';
 
 function event(
   operation: string,
-  phase: string,
+  phase: ProgressPhase,
   extra: Partial<ProgressEvent> = {}
 ): ProgressEvent {
   return {
