@@ -4,13 +4,14 @@ members = [
     "crates/vk-core",
     "crates/vk-dolphin",
     "crates/vk-install",
+    "crates/vk-mii-render",
     "crates/vk-save",
     "src-tauri",
     "setup/src-tauri",
 ]
 
 [workspace.package]
-version = "2.2.0"
+version = "2.2.1"
 edition = "2021"
 rust-version = "1.82"
 license = "MIT"
@@ -21,6 +22,7 @@ repository = "https://github.com/cripsum/vanzakart-launcher"
 vk-core = { path = "crates/vk-core" }
 vk-dolphin = { path = "crates/vk-dolphin" }
 vk-install = { path = "crates/vk-install" }
+vk-mii-render = { path = "crates/vk-mii-render" }
 vk-save = { path = "crates/vk-save" }
 
 serde = { version = "1", features = ["derive"] }
@@ -63,3 +65,27 @@ strip = true
 [profile.dev]
 # Il debug info completo su Windows rallenta molto il link del bundle Tauri.
 debug = 1
+
+# Il rasterizzatore dei Mii fa milioni di operazioni per immagine: senza
+# ottimizzazioni un render passa da pochi millisecondi a mezzo secondo, e
+# l'editor torna lento anche in sviluppo. In release si preferisce la velocità
+# alla dimensione, solo per questo crate.
+[profile.dev.package.vk-mii-render]
+opt-level = 3
+
+# Ogni anteprima diventa un PNG: la compressione non ottimizzata raddoppiava
+# il tempo di un render in sviluppo.
+[profile.dev.package.png]
+opt-level = 3
+
+[profile.dev.package.fdeflate]
+opt-level = 3
+
+[profile.dev.package.miniz_oxide]
+opt-level = 3
+
+[profile.dev.package.crc32fast]
+opt-level = 3
+
+[profile.release.package.vk-mii-render]
+opt-level = 3

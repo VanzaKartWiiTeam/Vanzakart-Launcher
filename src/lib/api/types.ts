@@ -445,6 +445,8 @@ export interface MusicPackOutcome {
 export interface MiiRendererStatus {
   /** `FFLResHigh.dat` presente: senza, Dolphin disegna sagome vuote. */
   runtimeInstalled: boolean;
+  /** Le facce le disegna il launcher, senza rete (§D-092). */
+  nativeReady: boolean;
   runtimeSizeBytes: number;
   cachedAvatars: number;
   /** Host che verrebbero contattati, per dirlo prima di contattarli. */
@@ -545,6 +547,18 @@ export interface MiiEditorState {
 export type MiiNumericField = {
   [K in keyof MiiEditorState]: MiiEditorState[K] extends number ? K : never;
 }[keyof MiiEditorState];
+
+/**
+ * Intervallo di un campo numerico dell'editor, come lo accetta il Canale Mii.
+ *
+ * Viene dal backend (`vk_save::mii::LIMITS`): è l'unico posto in cui i limiti
+ * esistono, e l'editor non propone mai un valore che il gioco rifiuterebbe.
+ */
+export interface MiiFieldLimit {
+  field: MiiNumericField;
+  min: number;
+  max: number;
+}
 
 /** Chiave booleana di `MiiEditorState`, per gli interruttori dell'editor. */
 export type MiiBooleanField = {

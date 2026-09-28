@@ -186,9 +186,14 @@ pub async fn load(state: &Arc<AppState>, id: &str) -> AppResult<MiiView> {
     view_of(&load_block(state, id).await?)
 }
 
-/// Stato dell'editor di un Mii.
+/// Stato dell'editor di un Mii, già dentro i limiti del Canale Mii.
+///
+/// Un Mii importato da un editor di terze parti può portare valori che i bit
+/// consentono e il gioco no — un neo più in basso del mento, una rotazione del
+/// sopracciglio che non esiste. L'editor li riceve già corretti: nessun
+/// cursore parte fuori scala, e salvare scrive un Mii valido.
 pub async fn editor_state(state: &Arc<AppState>, id: &str) -> AppResult<MiiEditorState> {
-    Ok(mii::read_editor_state(&load_block(state, id).await?)?)
+    Ok(mii::read_editor_state(&load_block(state, id).await?)?.normalized())
 }
 
 // ---------------------------------------------------------------------------
@@ -525,7 +530,9 @@ pub async fn export(state: &Arc<AppState>, id: &str, destination: &Path) -> AppR
 /// Stato casuale, come il pulsante "Random" dell'editor legacy.
 ///
 /// Gli intervalli sono quelli di `CreateRandomMiiState`: più stretti dei
-/// massimi assoluti, perché un valore estremo produce un Mii deforme.
+/// massimi assoluti, perché un valore estremo produce un Mii deforme. Il
+/// risultato passa comunque da `normalized`, così nessun intervallo può
+/// uscire dai limiti del Canale Mii.
 pub fn random_state(name: &str) -> MiiEditorState {
     let bytes = crate::platform::random_bytes::<48>();
     let mut cursor = 0usize;
@@ -588,10 +595,11 @@ pub fn random_state(name: &str) -> MiiEditorState {
         mole_enabled: next(0, 3) == 0,
         mole_size: next(2, 9),
         mole_vertical: next(4, 20),
-        mole_horizontal: next(4, 20),
+        mole_horizontal: next(4, 17),
 
         ..default_state(name, 0, false)
     }
+    .normalized()
 }
 
 // ---------------------------------------------------------------------------
@@ -879,6 +887,14 @@ mod tests {
         let first = random_state("Vanza");
         let second = random_state("Vanza");
         assert_ne!(first, second);
+    }
+
+    #[test]
+    fn random_states_stay_within_the_limits() {
+        for _ in 0..200 {
+            let state = random_state("Vanza");
+            assert_eq!(state, state.normalized());
+        }
     }
 
     #[test]

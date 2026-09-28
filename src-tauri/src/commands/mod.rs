@@ -941,6 +941,13 @@ pub async fn mii_favorite_colors() -> AppResult<Vec<&'static str>> {
     Ok(vk_save::mii::FAVORITE_COLORS.to_vec())
 }
 
+/// Gli intervalli di ogni campo dell'editor: la UI costruisce cursori e
+/// griglie da qui, così non può proporre un valore che il gioco rifiuta.
+#[tauri::command]
+pub async fn mii_editor_limits() -> AppResult<Vec<vk_save::mii::FieldLimit>> {
+    Ok(vk_save::mii::LIMITS.to_vec())
+}
+
 // ---------------------------------------------------------------------------
 // Render dei Mii
 // ---------------------------------------------------------------------------
@@ -970,19 +977,24 @@ pub async fn mii_renderer_remove(
 }
 
 /// Render di una "studio data" già nota: il Mii di una licenza, di un amico o
-/// di un profilo. `null` quando il servizio non risponde.
+/// di un profilo. `null` quando nessun renderer riesce a disegnarlo.
+///
+/// `size` è il lato in pixel che la UI mostra: il renderer nativo disegna
+/// esattamente quello, invece di un 512 da rimpicciolire.
 #[tauri::command]
 pub async fn mii_render_studio(
     state: Shared<'_>,
     studio_data: String,
     kind: Option<String>,
     rotation: Option<i32>,
+    size: Option<u32>,
 ) -> AppResult<Option<String>> {
     services::mii_render::render_studio(
         &state.inner().clone(),
         &studio_data,
         kind.as_deref().unwrap_or("face"),
         rotation.unwrap_or(0),
+        size.unwrap_or(512),
     )
     .await
 }
@@ -997,14 +1009,40 @@ pub async fn mii_render_state(
     editor: vk_save::mii::MiiEditorState,
     kind: Option<String>,
     rotation: Option<i32>,
+    size: Option<u32>,
 ) -> AppResult<Option<String>> {
     services::mii_render::render_editor_state(
         &state.inner().clone(),
         &editor,
         kind.as_deref().unwrap_or("face"),
         rotation.unwrap_or(0),
+        size.unwrap_or(512),
     )
     .await
+}
+
+/// Anteprima dal vivo dell'editor, come byte PNG grezzi.
+///
+/// Solo con il renderer nativo: senza, la risposta è vuota e l'editor usa
+/// `mii_render_state`. I byte passano sull'IPC senza base64 né JSON (§D-092).
+#[tauri::command]
+pub async fn mii_render_preview(
+    state: Shared<'_>,
+    editor: vk_save::mii::MiiEditorState,
+    kind: Option<String>,
+    rotation: Option<i32>,
+    size: Option<u32>,
+) -> AppResult<tauri::ipc::Response> {
+    let png = services::mii_render::render_preview_png(
+        &state.inner().clone(),
+        &editor,
+        kind.as_deref().unwrap_or("face"),
+        rotation.unwrap_or(0),
+        size.unwrap_or(512),
+    )
+    .await
+    .unwrap_or_default();
+    Ok(tauri::ipc::Response::new(png))
 }
 
 #[tauri::command]

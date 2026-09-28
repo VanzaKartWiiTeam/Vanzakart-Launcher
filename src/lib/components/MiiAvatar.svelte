@@ -2,15 +2,15 @@
   /**
    * La faccia di un Mii, renderizzata davvero.
    *
-   * Porta il comportamento del launcher legacy: il render arriva dal servizio
-   * immagini di Mii Studio a partire dalla "studio data" del Mii, e finché non
-   * c'è — o se non arriva — resta la silhouette con l'iniziale sul colore
-   * preferito, che è lo stesso fallback del WPF.
+   * Il render parte dalla "studio data" del Mii: lo disegna il launcher con il
+   * runtime installato, altrimenti il servizio immagini di Mii Studio come nel
+   * legacy (§D-092). Finché non c'è — o se non arriva — resta la silhouette
+   * con l'iniziale sul colore preferito, che è lo stesso fallback del WPF.
    *
    * Lo stesso componente serve le licenze, gli amici, i profili del launcher e
    * il selettore del Mii di una licenza: la faccia è sempre la stessa cosa.
    */
-  import { renderStudio } from '$lib/mii/render';
+  import { renderSize, renderStudio } from '$lib/mii/render';
   import { t } from '$lib/stores/i18n.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import type { MiiRenderKind } from '$lib/api';
@@ -51,13 +51,14 @@
     const data = studioData;
     const shot = kind;
     const turn = rotation;
+    const pixels = renderSize(size);
 
     let alive = true;
     image = null;
 
     if (!data.trim()) return;
 
-    void renderStudio(data, shot, turn).then((rendered) => {
+    void renderStudio(data, shot, turn, pixels).then((rendered) => {
       if (alive) image = rendered;
     });
 

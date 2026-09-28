@@ -197,6 +197,8 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::mii_renderer_remove,
             commands::mii_render_studio,
             commands::mii_render_state,
+            commands::mii_render_preview,
+            commands::mii_editor_limits,
             commands::mii_avatars_clear,
             commands::mii_import,
             commands::mii_export,

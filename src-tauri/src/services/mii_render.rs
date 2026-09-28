@@ -1,26 +1,25 @@
-//! Render degli avatar Mii e runtime di rendering del gioco.
+//! Render degli avatar Mii e runtime di rendering.
 //!
-//! Porta `Launcher/Services/{MiiAvatarRenderService,MiiRuntimeSetupService}.cs`.
-//! Sono due cose distinte che il launcher legacy teneva vicine:
+//! Porta `Launcher/Services/{MiiAvatarRenderService,MiiRuntimeSetupService}.cs`,
+//! con una differenza sostanziale rispetto al legacy (§D-092):
 //!
 //! - il **runtime** è `FFLResHigh.dat`, estratto da un archivio Miitomo
-//!   conservato su web.archive.org. Serve a **Dolphin**, non al launcher:
-//!   senza, il gioco non disegna i Mii sincronizzati;
-//! - l'**avatar** è l'immagine mostrata dal launcher accanto a un profilo. La
-//!   produce il servizio immagini di Mii Studio, a cui si manda la stringa
-//!   "studio data" del Mii.
+//!   conservato su web.archive.org. Serve a Dolphin, che senza non disegna i
+//!   Mii sincronizzati, **e al launcher**: con il runtime installato le facce
+//!   le disegna `vk-mii-render`, in locale, in pochi millisecondi;
+//! - senza runtime l'avatar arriva dal servizio immagini di Mii Studio, a cui
+//!   si manda la "studio data" del Mii, come nel legacy.
 //!
-//! Il runtime pesa decine di megabyte e resta **opt-in** (§D-011). Gli avatar
-//! invece si renderizzano da soli, come nel launcher legacy: sono la faccia del
-//! Mii, e un editor che non la mostra non è un editor. Quando il render non
-//! riesce resta la silhouette con l'iniziale, che è già il fallback del legacy
-//! (§D-031).
+//! Il runtime resta **opt-in** (§D-011): si scarica solo quando l'utente lo
+//! chiede, dalla pagina Mii & Licenze o dall'editor. Quando nessun render
+//! riesce resta la silhouette con l'iniziale, il fallback del legacy (§D-031).
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use serde::Serialize;
 use vk_core::progress::{CancelToken, Phase, ProgressSink, ProgressUpdate};
+use vk_mii_render::{MiiRenderer, RenderRequest, View};
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -36,8 +35,13 @@ const MIN_RESOURCE_BYTES: u64 = 1024 * 1024;
 const STUDIO_ENDPOINT: &str = "https://studio.mii.nintendo.com/miis/image.png";
 const STUDIO_FALLBACK: &str = "https://mii-unsecure.ariankordi.net/miis/image.png";
 
-/// Larghezza richiesta al renderer, la stessa del legacy.
+/// Larghezza richiesta a Mii Studio, la stessa del legacy.
 const RENDER_WIDTH: u32 = 512;
+
+/// Lato dei render nativi: la UI chiede la dimensione che mostra, dentro
+/// questi estremi. Oltre i 1024 px un avatar non guadagna nulla.
+const NATIVE_MIN_SIZE: u32 = 64;
+const NATIVE_MAX_SIZE: u32 = 1024;
 
 /// Tentativi di render, come `MiiAvatarRenderService.MaxAttempts`.
 const MAX_ATTEMPTS: usize = 3;
@@ -62,6 +66,8 @@ const MIN_PNG_BYTES: usize = 512;
 pub struct MiiRendererStatus {
     /// `FFLResHigh.dat` presente e di dimensione plausibile.
     pub runtime_installed: bool,
+    /// Le facce le disegna il launcher, senza rete (§D-092).
+    pub native_ready: bool,
     pub runtime_size_bytes: u64,
     pub cached_avatars: usize,
     /// Host che verrebbero contattati, per dirlo prima di contattarli.
@@ -92,9 +98,67 @@ fn host_of(url: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Il renderer nativo, come lo tiene lo stato dell'applicazione.
+#[derive(Debug, Default)]
+pub enum NativeRenderer {
+    /// Non ancora caricato, o dimenticato dopo un cambio del runtime.
+    #[default]
+    Unloaded,
+    Ready(Arc<MiiRenderer>),
+    /// Il runtime c'è ma non si lascia leggere: non si riprova a ogni faccia.
+    Failed,
+}
+
+/// Il renderer nativo, se il runtime è installato e leggibile.
+///
+/// Si carica alla prima richiesta: sono pochi megabyte letti una volta, e
+/// da lì ogni faccia costa qualche millisecondo di CPU.
+pub async fn native(state: &Arc<AppState>) -> Option<Arc<MiiRenderer>> {
+    let mut slot = state.mii_renderer.lock().await;
+    match &*slot {
+        NativeRenderer::Ready(renderer) => return Some(renderer.clone()),
+        NativeRenderer::Failed => return None,
+        NativeRenderer::Unloaded => {}
+    }
+
+    // Senza runtime non si segna nulla: può arrivare fra un momento.
+    if !runtime_installed(state) {
+        return None;
+    }
+
+    let path = resource_path(state);
+    let loaded = tokio::task::spawn_blocking(move || {
+        let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+        MiiRenderer::new(bytes).map_err(|error| error.to_string())
+    })
+    .await
+    .map_err(|error| error.to_string())
+    .and_then(|result| result);
+
+    match loaded {
+        Ok(renderer) => {
+            tracing::info!("renderer Mii nativo pronto");
+            let renderer = Arc::new(renderer);
+            *slot = NativeRenderer::Ready(renderer.clone());
+            Some(renderer)
+        }
+        Err(error) => {
+            tracing::warn!(%error, "runtime Mii non leggibile: resta il render online");
+            *slot = NativeRenderer::Failed;
+            None
+        }
+    }
+}
+
+/// Dimentica il renderer caricato: il prossimo render rilegge il runtime.
+async fn forget_native(state: &Arc<AppState>) {
+    *state.mii_renderer.lock().await = NativeRenderer::Unloaded;
+}
+
 /// Stato corrente, senza toccare la rete.
 pub async fn status(state: &Arc<AppState>) -> MiiRendererStatus {
     let installed = runtime_installed(state);
+    let native_ready = native(state).await.is_some();
     let size = std::fs::metadata(resource_path(state)).map_or(0, |meta| meta.len());
     let archive_url = state
         .endpoints
@@ -113,12 +177,15 @@ pub async fn status(state: &Arc<AppState>) -> MiiRendererStatus {
         .unwrap_or(0);
 
     MiiRendererStatus {
-        message: if installed {
+        message: if native_ready {
+            "The runtime is installed: faces are drawn locally and by the game.".into()
+        } else if installed {
             "The runtime is installed: synced Miis are drawn by the game.".into()
         } else {
             "Without the runtime, Dolphin shows synced Miis as empty silhouettes.".into()
         },
         runtime_installed: installed,
+        native_ready,
         runtime_size_bytes: size,
         cached_avatars: cached,
         runtime_host: host_of(&archive_url),
@@ -143,6 +210,7 @@ pub async fn install_runtime(
 
     let result = install_runtime_inner(state, &progress, &cancel).await;
     drop(guard);
+    forget_native(state).await;
 
     if let Err(error) = &result {
         progress(ProgressUpdate::new(
@@ -245,6 +313,7 @@ pub async fn remove_runtime(state: &Arc<AppState>) -> AppResult<MiiRendererStatu
         tracing::info!("runtime di rendering Mii rimosso");
     }
 
+    forget_native(state).await;
     Ok(status(state).await)
 }
 
@@ -384,17 +453,86 @@ fn normalize_kind(kind: &str) -> &'static str {
     }
 }
 
+/// Lato di un render nativo, dentro gli estremi ammessi.
+fn native_size(size: u32) -> u32 {
+    size.clamp(NATIVE_MIN_SIZE, NATIVE_MAX_SIZE)
+}
+
+/// Render nativo in PNG, fuori dal runtime asincrono: è lavoro di CPU.
+async fn render_native_png(
+    renderer: Arc<MiiRenderer>,
+    studio_data: &str,
+    kind: &str,
+    rotation: i32,
+    size: u32,
+) -> Option<Vec<u8>> {
+    let request = RenderRequest {
+        size: native_size(size),
+        view: if kind == "all_body" {
+            View::AllBody
+        } else {
+            View::Face
+        },
+        character_rotation: [0.0, rotation as f32, 0.0],
+        ..RenderRequest::default()
+    };
+    let studio_data = studio_data.to_string();
+
+    let rendered = tokio::task::spawn_blocking(move || {
+        renderer
+            .render_hex(&studio_data, &request)
+            .and_then(|image| image.to_png())
+    })
+    .await;
+
+    match rendered {
+        Ok(Ok(png)) => Some(png),
+        Ok(Err(error)) => {
+            tracing::warn!(%error, "render nativo del Mii non riuscito");
+            None
+        }
+        Err(error) => {
+            tracing::warn!(%error, "render nativo del Mii interrotto");
+            None
+        }
+    }
+}
+
+/// Anteprima dell'editor come byte PNG, solo con il renderer nativo.
+///
+/// È la strada veloce dell'anteprima dal vivo: i byte viaggiano sull'IPC così
+/// come sono, senza base64 né JSON, che per un'immagine da 512 px costavano
+/// più del render stesso. `None` senza runtime: l'editor ripiega su
+/// [`render_editor_state`].
+pub async fn render_preview_png(
+    state: &Arc<AppState>,
+    editor: &vk_save::mii::MiiEditorState,
+    kind: &str,
+    rotation: i32,
+    size: u32,
+) -> Option<Vec<u8>> {
+    let renderer = native(state).await?;
+    let block = vk_save::mii::write_editor_state(editor);
+    let studio_data = vk_save::mii::studio_data(&block);
+    render_native_png(renderer, &studio_data, normalize_kind(kind), rotation, size).await
+}
+
 /// Render di una "studio data" come `data:` URI, oppure `None`.
 ///
-/// Porta `MiiAvatarRenderService.EnsureAvatarRenderAsync`: prima la cache su
-/// disco, poi tre tentativi — Nintendo, lo specchio, di nuovo Nintendo —
-/// esattamente come il legacy. Un fallimento non è un errore: la UI mostra la
-/// silhouette con l'iniziale, che è lo stesso fallback del legacy.
+/// Con il runtime installato il Mii lo disegna il launcher: nessuna rete,
+/// nessuna cache su disco, pochi millisecondi (§D-092). `size` è il lato che
+/// la UI mostra davvero.
+///
+/// Senza runtime porta `MiiAvatarRenderService.EnsureAvatarRenderAsync`: prima
+/// la cache su disco, poi tre tentativi — Nintendo, lo specchio, di nuovo
+/// Nintendo — esattamente come il legacy. Un fallimento non è un errore: la UI
+/// mostra la silhouette con l'iniziale, che è lo stesso fallback del legacy.
 pub async fn render_studio(
     state: &Arc<AppState>,
     studio_data: &str,
     kind: &str,
     rotation: i32,
+    size: u32,
 ) -> AppResult<Option<String>> {
     let studio_data = studio_data.trim();
     if studio_data.is_empty() {
@@ -402,6 +540,12 @@ pub async fn render_studio(
     }
 
     let kind = normalize_kind(kind);
+    if let Some(renderer) = native(state).await {
+        if let Some(png) = render_native_png(renderer, studio_data, kind, rotation, size).await {
+            return Ok(Some(data_uri(&png)));
+        }
+    }
+
     let key = cache_key(studio_data, kind, rotation);
     let path = cache_path(state, &key);
 
@@ -476,10 +620,11 @@ pub async fn render_editor_state(
     editor: &vk_save::mii::MiiEditorState,
     kind: &str,
     rotation: i32,
+    size: u32,
 ) -> AppResult<Option<String>> {
     let block = vk_save::mii::write_editor_state(editor);
     let studio_data = vk_save::mii::studio_data(&block);
-    render_studio(state, &studio_data, kind, rotation).await
+    render_studio(state, &studio_data, kind, rotation, size).await
 }
 
 /// PNG come `data:` URI.
@@ -646,7 +791,7 @@ mod tests {
         std::fs::create_dir_all(state.paths.mii_avatars_dir()).unwrap();
         std::fs::write(cache_path(&state, &key), fake_png(2048)).unwrap();
 
-        let avatar = render_studio(&state, &mii.studio_data, "face", 0)
+        let avatar = render_studio(&state, &mii.studio_data, "face", 0, 512)
             .await
             .unwrap()
             .expect("avatar dalla cache");
@@ -675,7 +820,7 @@ mod tests {
         std::fs::create_dir_all(state.paths.mii_avatars_dir()).unwrap();
         std::fs::write(cache_path(&state, &key), fake_png(2048)).unwrap();
 
-        assert!(render_editor_state(&state, &editor, "face", 0)
+        assert!(render_editor_state(&state, &editor, "face", 0, 512)
             .await
             .unwrap()
             .is_some());
@@ -700,7 +845,7 @@ mod tests {
         std::fs::write(&path, b"non un png").unwrap();
 
         // Lo stato dei test non contatta Mii Studio, ma il file rotto se ne va.
-        assert!(render_studio(&state, &mii.studio_data, "face", 0)
+        assert!(render_studio(&state, &mii.studio_data, "face", 0, 512)
             .await
             .unwrap()
             .is_none());
@@ -712,10 +857,65 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = state_at(dir.path()).await;
 
-        assert!(render_studio(&state, "   ", "face", 0)
+        assert!(render_studio(&state, "   ", "face", 0, 512)
             .await
             .unwrap()
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn without_the_runtime_there_is_no_native_renderer() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_at(dir.path()).await;
+
+        assert!(native(&state).await.is_none());
+        assert!(!status(&state).await.native_ready);
+    }
+
+    #[tokio::test]
+    async fn an_unreadable_runtime_falls_back_and_is_not_retried() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_at(dir.path()).await;
+
+        // Dimensione plausibile, contenuto che non è un archivio FFL.
+        std::fs::create_dir_all(runtime_dir(&state)).unwrap();
+        std::fs::write(
+            resource_path(&state),
+            vec![7u8; MIN_RESOURCE_BYTES as usize],
+        )
+        .unwrap();
+
+        assert!(native(&state).await.is_none());
+        assert!(matches!(
+            *state.mii_renderer.lock().await,
+            NativeRenderer::Failed
+        ));
+
+        // Rimuovere il runtime dimentica il fallimento: un'installazione
+        // nuova verrà riletta.
+        remove_runtime(&state).await.unwrap();
+        assert!(matches!(
+            *state.mii_renderer.lock().await,
+            NativeRenderer::Unloaded
+        ));
+    }
+
+    #[tokio::test]
+    async fn without_the_runtime_there_is_no_live_preview() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_at(dir.path()).await;
+
+        let editor = vk_save::mii::MiiEditorState::default();
+        assert!(render_preview_png(&state, &editor, "face", 0, 256)
+            .await
+            .is_none());
+    }
+
+    #[test]
+    fn native_sizes_stay_within_bounds() {
+        assert_eq!(native_size(0), NATIVE_MIN_SIZE);
+        assert_eq!(native_size(256), 256);
+        assert_eq!(native_size(100_000), NATIVE_MAX_SIZE);
     }
 
     #[tokio::test]

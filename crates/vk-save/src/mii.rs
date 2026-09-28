@@ -258,74 +258,108 @@ impl Default for MiiEditorState {
     }
 }
 
+/// Un campo numerico dell'editor e l'intervallo che il Canale Mii accetta.
+///
+/// `field` è il nome del campo come lo vede il frontend (camelCase). La UI
+/// costruisce cursori e griglie da questa tabella invece di tenerne una sua:
+/// un solo posto in cui i limiti esistono, e nessun controllo che possa
+/// proporre un valore che il backend poi correggerebbe di nascosto.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldLimit {
+    pub field: &'static str,
+    pub min: u8,
+    pub max: u8,
+}
+
+/// Genera la tabella dei limiti e il clamp che la applica, dalla stessa lista.
+macro_rules! editor_limits {
+    ($($field:ident => $name:literal : $min:literal ..= $max:literal),+ $(,)?) => {
+        /// I limiti di ogni campo numerico, nell'ordine dello stato.
+        pub const LIMITS: &[FieldLimit] = &[
+            $(FieldLimit { field: $name, min: $min, max: $max }),+
+        ];
+
+        impl MiiEditorState {
+            fn clamp_to_limits(&mut self) {
+                $(self.$field = self.$field.clamp($min, $max);)+
+            }
+        }
+    };
+}
+
+// Gli intervalli sono quelli del Canale Mii, gli stessi che i cursori del
+// launcher legacy già rispettavano. I bit del formato permettono valori
+// più alti (una rotazione del sopracciglio fino a 15, un'altezza del neo fino
+// a 31), ma il gioco non li produce mai e disegna un Mii deforme o sbagliato:
+// un valore fuori scala non viene rifiutato, viene riportato dentro.
+editor_limits! {
+    favorite_color_index => "favoriteColorIndex": 0..=11,
+    birth_month => "birthMonth": 1..=12,
+    birth_day => "birthDay": 1..=31,
+    height => "height": 0..=127,
+    weight => "weight": 0..=127,
+    face_shape => "faceShape": 0..=7,
+    skin_color => "skinColor": 0..=5,
+    facial_feature => "facialFeature": 0..=11,
+    hair_type => "hairType": 0..=71,
+    hair_color => "hairColor": 0..=7,
+    eyebrow_type => "eyebrowType": 0..=23,
+    eyebrow_rotation => "eyebrowRotation": 0..=11,
+    eyebrow_color => "eyebrowColor": 0..=7,
+    eyebrow_size => "eyebrowSize": 0..=8,
+    eyebrow_vertical => "eyebrowVertical": 3..=18,
+    eyebrow_spacing => "eyebrowSpacing": 0..=12,
+    eye_type => "eyeType": 0..=47,
+    eye_rotation => "eyeRotation": 0..=7,
+    eye_vertical => "eyeVertical": 0..=18,
+    eye_color => "eyeColor": 0..=5,
+    eye_size => "eyeSize": 0..=7,
+    eye_spacing => "eyeSpacing": 0..=12,
+    nose_type => "noseType": 0..=11,
+    nose_size => "noseSize": 0..=8,
+    nose_vertical => "noseVertical": 0..=18,
+    mouth_type => "mouthType": 0..=23,
+    mouth_color => "mouthColor": 0..=2,
+    mouth_size => "mouthSize": 0..=8,
+    mouth_vertical => "mouthVertical": 0..=18,
+    glasses_type => "glassesType": 0..=8,
+    glasses_color => "glassesColor": 0..=5,
+    glasses_size => "glassesSize": 0..=7,
+    glasses_vertical => "glassesVertical": 0..=20,
+    mustache_type => "mustacheType": 0..=3,
+    beard_type => "beardType": 0..=3,
+    facial_hair_color => "facialHairColor": 0..=7,
+    mustache_size => "mustacheSize": 0..=8,
+    mustache_vertical => "mustacheVertical": 0..=16,
+    mole_size => "moleSize": 0..=8,
+    mole_vertical => "moleVertical": 0..=30,
+    mole_horizontal => "moleHorizontal": 0..=16,
+}
+
+/// Giorni del mese, con il 29 febbraio: il Canale Mii lo accetta.
+pub fn days_in_month(month: u8) -> u8 {
+    match month {
+        2 => 29,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    }
+}
+
 impl MiiEditorState {
     /// Copia con ogni campo riportato dentro l'intervallo valido.
     ///
-    /// Gli estremi sono quelli di `NormalizeEditorState`: un valore fuori
-    /// scala non viene rifiutato, viene riportato dentro l'intervallo. Il
-    /// gioco non tollera indici che non esistono nel suo atlante di texture.
+    /// Gli estremi sono quelli di [`LIMITS`], più il giorno di nascita che non
+    /// può superare i giorni del suo mese. Il gioco non tollera indici che non
+    /// esistono nel suo atlante di texture, e un 31 febbraio non esiste.
     #[must_use]
     pub fn normalized(&self) -> Self {
-        Self {
-            name: normalize_name(&self.name, "Vanza Mii"),
-            creator_name: normalize_name(&self.creator_name, "VanzaKart"),
-            is_female: self.is_female,
-            is_favorite: self.is_favorite,
-            favorite_color_index: self.favorite_color_index.min(11),
-            birth_month: self.birth_month.clamp(1, 12),
-            birth_day: self.birth_day.clamp(1, 31),
-            height: self.height.min(127),
-            weight: self.weight.min(127),
-            mii_id: self.mii_id,
-            system_id: self.system_id,
-
-            face_shape: self.face_shape.min(7),
-            skin_color: self.skin_color.min(5),
-            facial_feature: self.facial_feature.min(11),
-
-            hair_type: self.hair_type.min(71),
-            hair_color: self.hair_color.min(7),
-            hair_flipped: self.hair_flipped,
-
-            eyebrow_type: self.eyebrow_type.min(23),
-            eyebrow_rotation: self.eyebrow_rotation.min(15),
-            eyebrow_color: self.eyebrow_color.min(7),
-            eyebrow_size: self.eyebrow_size.min(15),
-            eyebrow_vertical: self.eyebrow_vertical.min(31),
-            eyebrow_spacing: self.eyebrow_spacing.min(15),
-
-            eye_type: self.eye_type.min(47),
-            eye_rotation: self.eye_rotation.min(7),
-            eye_vertical: self.eye_vertical.min(31),
-            eye_color: self.eye_color.min(5),
-            eye_size: self.eye_size.min(7),
-            eye_spacing: self.eye_spacing.min(15),
-
-            nose_type: self.nose_type.min(11),
-            nose_size: self.nose_size.min(15),
-            nose_vertical: self.nose_vertical.min(31),
-
-            mouth_type: self.mouth_type.min(23),
-            mouth_color: self.mouth_color.min(2),
-            mouth_size: self.mouth_size.min(15),
-            mouth_vertical: self.mouth_vertical.min(31),
-
-            glasses_type: self.glasses_type.min(8),
-            glasses_color: self.glasses_color.min(5),
-            glasses_size: self.glasses_size.min(7),
-            glasses_vertical: self.glasses_vertical.min(31),
-
-            mustache_type: self.mustache_type.min(3),
-            beard_type: self.beard_type.min(3),
-            facial_hair_color: self.facial_hair_color.min(7),
-            mustache_size: self.mustache_size.min(15),
-            mustache_vertical: self.mustache_vertical.min(31),
-
-            mole_enabled: self.mole_enabled,
-            mole_size: self.mole_size.min(15),
-            mole_vertical: self.mole_vertical.min(31),
-            mole_horizontal: self.mole_horizontal.min(31),
-        }
+        let mut out = self.clone();
+        out.name = normalize_name(&self.name, "Vanza Mii");
+        out.creator_name = normalize_name(&self.creator_name, "VanzaKart");
+        out.clamp_to_limits();
+        out.birth_day = out.birth_day.min(days_in_month(out.birth_month));
+        out
     }
 
     /// `true` se il Mii non ha ancora un'identità propria.
@@ -1087,6 +1121,9 @@ mod tests {
     /// Stato con ogni campo diverso dal default, per scovare i bit-field
     /// scambiati: se due campi condividessero gli stessi bit, il round-trip
     /// li restituirebbe uguali.
+    ///
+    /// Tutti i valori stanno dentro [`LIMITS`]: fuori, la scrittura li
+    /// correggerebbe e il round-trip fallirebbe per un motivo diverso.
     fn distinctive_state() -> MiiEditorState {
         MiiEditorState {
             name: "Vanza".into(),
@@ -1110,43 +1147,43 @@ mod tests {
             hair_flipped: true,
 
             eyebrow_type: 21,
-            eyebrow_rotation: 13,
+            eyebrow_rotation: 10,
             eyebrow_color: 5,
-            eyebrow_size: 14,
-            eyebrow_vertical: 29,
+            eyebrow_size: 7,
+            eyebrow_vertical: 17,
             eyebrow_spacing: 12,
 
             eye_type: 41,
             eye_rotation: 6,
-            eye_vertical: 25,
+            eye_vertical: 17,
             eye_color: 4,
             eye_size: 6,
             eye_spacing: 11,
 
             nose_type: 10,
-            nose_size: 13,
-            nose_vertical: 23,
+            nose_size: 7,
+            nose_vertical: 17,
 
             mouth_type: 19,
             mouth_color: 2,
-            mouth_size: 12,
-            mouth_vertical: 27,
+            mouth_size: 7,
+            mouth_vertical: 17,
 
             glasses_type: 7,
             glasses_color: 3,
             glasses_size: 6,
-            glasses_vertical: 24,
+            glasses_vertical: 19,
 
             mustache_type: 2,
             beard_type: 3,
             facial_hair_color: 6,
-            mustache_size: 11,
-            mustache_vertical: 22,
+            mustache_size: 7,
+            mustache_vertical: 15,
 
             mole_enabled: true,
-            mole_size: 13,
+            mole_size: 7,
             mole_vertical: 26,
-            mole_horizontal: 21,
+            mole_horizontal: 15,
         }
     }
 
@@ -1234,6 +1271,85 @@ mod tests {
         assert_isolated!(weight, 90);
         assert_isolated!(mii_id, 0x8000_0001);
         assert_isolated!(system_id, [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn the_limits_cover_every_numeric_field_of_the_state() {
+        // Ogni numero dello stato, tranne l'identità, ha un limite: un campo
+        // senza limite sarebbe un cursore che la UI non sa costruire.
+        let json = serde_json::to_value(MiiEditorState::default()).unwrap();
+        let mut numeric: Vec<&str> = json
+            .as_object()
+            .unwrap()
+            .iter()
+            .filter(|(key, value)| value.is_number() && key.as_str() != "miiId")
+            .map(|(key, _)| key.as_str())
+            .collect();
+        let mut limited: Vec<&str> = LIMITS.iter().map(|limit| limit.field).collect();
+
+        numeric.sort_unstable();
+        limited.sort_unstable();
+        assert_eq!(limited, numeric);
+    }
+
+    #[test]
+    fn normalizing_clamps_every_field_to_its_limit() {
+        let with_all = |value: u8| {
+            let mut json = serde_json::to_value(MiiEditorState::default()).unwrap();
+            for limit in LIMITS {
+                json[limit.field] = serde_json::json!(value);
+            }
+            // Dicembre ha 31 giorni: il giorno arriva al suo massimo.
+            if value == u8::MAX {
+                json["birthMonth"] = serde_json::json!(12);
+            }
+            serde_json::from_value::<MiiEditorState>(json).unwrap()
+        };
+
+        let low = serde_json::to_value(with_all(0).normalized()).unwrap();
+        let high = serde_json::to_value(with_all(u8::MAX).normalized()).unwrap();
+        for limit in LIMITS {
+            assert_eq!(low[limit.field], u64::from(limit.min), "{}", limit.field);
+            assert_eq!(high[limit.field], u64::from(limit.max), "{}", limit.field);
+        }
+    }
+
+    #[test]
+    fn the_birth_day_cannot_exceed_its_month() {
+        let february = MiiEditorState {
+            birth_month: 2,
+            birth_day: 31,
+            ..MiiEditorState::default()
+        };
+        assert_eq!(february.normalized().birth_day, 29);
+
+        let april = MiiEditorState {
+            birth_month: 4,
+            birth_day: 31,
+            ..MiiEditorState::default()
+        };
+        assert_eq!(april.normalized().birth_day, 30);
+        assert_eq!(days_in_month(12), 31);
+    }
+
+    #[test]
+    fn values_the_format_allows_but_the_game_does_not_are_clamped() {
+        // Tutti questi stanno nei bit, ma fuori dal Canale Mii.
+        let state = MiiEditorState {
+            eyebrow_rotation: 15,
+            eyebrow_vertical: 1,
+            eye_vertical: 31,
+            mole_horizontal: 31,
+            glasses_vertical: 31,
+            ..MiiEditorState::default()
+        };
+        let read = read_editor_state(&write_editor_state(&state)).unwrap();
+
+        assert_eq!(read.eyebrow_rotation, 11);
+        assert_eq!(read.eyebrow_vertical, 3);
+        assert_eq!(read.eye_vertical, 18);
+        assert_eq!(read.mole_horizontal, 16);
+        assert_eq!(read.glasses_vertical, 20);
     }
 
     #[test]

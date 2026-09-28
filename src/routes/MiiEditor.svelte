@@ -3,33 +3,50 @@
    * Editor Mii.
    *
    * Porta `Launcher/MiiEditorWindow.xaml(.cs)`, come modale a tutta pagina
-   * invece che come finestra separata (`docs/decisions.md` §U-05): una webview
-   * sola, nessun secondo runtime. Ciò che si modifica è il Mii dentro
-   * `RFL_DB.dat`: salvare scrive nel database di Dolphin (§D-037).
+   * invece che come finestra separata (`docs/decisions.md` §U-05). Ciò che si
+   * modifica è il Mii dentro `RFL_DB.dat`: salvare scrive nel database di
+   * Dolphin (§D-037).
    *
-   * Tutto il resto è il legacy:
+   * L'editor è nativo (§D-092):
    *
-   * - l'anteprima a sinistra è un **render vero**, chiesto al servizio
-   *   immagini di Mii Studio con la "studio data" del Mii che si sta
-   *   costruendo, e si aggiorna 260 ms dopo l'ultima modifica come
-   *   `QueuePreviewRender`;
-   * - le scelte di ogni categoria sono **miniature renderizzate**: il Mii
-   *   corrente con quel solo tratto cambiato, sei per pagina come
-   *   `OptionsPerPage`;
-   * - i cursori di rifinitura stanno dietro al pulsante "Regola", che è il
-   *   popup "Adjust" del WPF.
+   * - l'anteprima la disegna il **renderer nativo** del launcher: ogni
+   *   modifica si vede subito, senza rete, e il Mii si gira trascinandolo.
+   *   Senza runtime installato resta il render di Mii Studio, più lento, e
+   *   l'editor propone di installarlo;
+   * - le scelte di ogni tratto sono **icone**, tutte in una griglia, invece
+   *   di miniature renderizzate sei per pagina;
+   * - ogni cursore prende i limiti dal backend, gli stessi che il gioco
+   *   accetta: nessun controllo può produrre un Mii che il gioco rifiuta.
    */
   import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 
   import * as api from '$lib/api';
-  import { CATEGORIES, NAME_SYMBOLS, OPTIONS_PER_PAGE } from '$lib/mii/categories';
-  import type { OptionGroup } from '$lib/mii/categories';
-  import { appearanceKey, renderState } from '$lib/mii/render';
+  import {
+    CATEGORIES,
+    FACIAL_FEATURES,
+    NAME_SYMBOLS,
+    clampState,
+    rangeOf,
+    sliderPosition,
+    sliderValue,
+    toLimits
+  } from '$lib/mii/categories';
+  import type { Control, Limits } from '$lib/mii/categories';
+  import { PALETTES, iconColors, loadIcons } from '$lib/mii/icons';
+  import type { IconSet, PaletteName, PartIconKind } from '$lib/mii/icons';
+  import { appearanceKey, forget as forgetRenders, renderSize, renderState } from '$lib/mii/render';
   import Icon from '$lib/components/Icon.svelte';
+  import MiiPartIcon from '$lib/components/MiiPartIcon.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import { app } from '$lib/stores/app.svelte';
+  import { operations } from '$lib/stores/operations.svelte';
   import { t } from '$lib/stores/i18n.svelte';
-  import type { MiiEditorState, MiiNumericField } from '$lib/api/types';
+  import type {
+    MiiBooleanField,
+    MiiEditorState,
+    MiiNumericField,
+    MiiRendererStatus
+  } from '$lib/api/types';
   import type { MiiRenderKind } from '$lib/api';
 
   interface Props {
@@ -42,21 +59,16 @@
 
   let editor = $state<MiiEditorState | null>(null);
   let original = $state('');
-  let colors = $state<string[]>([]);
+  let favorites = $state<string[]>([]);
+  let limits = $state<Limits>({});
+  let icons = $state<IconSet | null>(null);
+  let renderer = $state<MiiRendererStatus | null>(null);
+
   let category = $state(0);
-  let page = $state(0);
-  let adjusting = $state(false);
   let loading = $state(true);
   let busy = $state(false);
+  let installing = $state(false);
   let error = $state('');
-
-  /** Inquadratura dell'anteprima: ritratto o figura intera, come nel WPF. */
-  let shot = $state<MiiRenderKind>('face');
-
-  let preview = $state<string | null>(null);
-  let previewStatus = $state(t('editor.queued'));
-  /** Miniature delle opzioni, per chiave `campo:valore`. */
-  let thumbnails = $state<Record<string, string>>({});
 
   let nameInput = $state<HTMLInputElement | null>(null);
   let symbolsOpen = $state(false);
@@ -64,9 +76,7 @@
   const current = $derived(CATEGORIES[category] ?? CATEGORIES[0]);
   const dirty = $derived(editor !== null && JSON.stringify(editor) !== original);
   const title = $derived(miiId ? t('editor.edit') : t('editor.new'));
-
-  /** Il legacy impagina ogni categoria tranne la barba, che mostra tutto. */
-  const paginated = $derived(current.groups.length === 1 && current.groups[0]?.kind !== 'color');
+  const native = $derived(renderer?.nativeReady === true);
 
   $effect(() => {
     void load();
@@ -76,54 +86,193 @@
     loading = true;
     error = '';
     try {
-      const [state, palette] = await Promise.all([
+      const [state, palette, table, status] = await Promise.all([
         miiId ? api.getMiiEditorState(miiId) : api.defaultMiiState('Vanza Mii', 4, false),
-        api.getMiiFavoriteColors()
+        api.getMiiFavoriteColors(),
+        api.getMiiEditorLimits(),
+        api.getMiiRendererStatus()
       ]);
-      editor = state;
-      original = JSON.stringify(state);
-      colors = palette;
+      limits = toLimits(table);
+      favorites = palette;
+      renderer = status;
+      // Il backend manda già uno stato valido; ripassarlo qui costa nulla e
+      // protegge da uno stato nuovo costruito con valori fuori scala.
+      editor = clampState(state, limits);
+      original = JSON.stringify(editor);
     } catch (err) {
       error = api.errorMessage(err);
     } finally {
       loading = false;
     }
+
+    // Le icone arrivano dopo, senza bloccare l'editor: fino ad allora ogni
+    // scelta mostra il suo numero.
+    loadIcons()
+      .then((set) => (icons = set))
+      .catch(() => (icons = null));
   }
+
+  // -------------------------------------------------------------------------
+  // Modifica
+  // -------------------------------------------------------------------------
+
+  /** Cambia un campo e riporta lo stato dentro i limiti. */
+  function setNumber(field: MiiNumericField, value: number) {
+    if (!editor || editor[field] === value) return;
+    editor = clampState({ ...editor, [field]: value }, limits);
+  }
+
+  function setFlag(field: MiiBooleanField, value: boolean) {
+    if (!editor || editor[field] === value) return;
+    editor = { ...editor, [field]: value };
+  }
+
+  function step(control: Extract<Control, { kind: 'slider' }>, delta: number) {
+    if (!editor) return;
+    const range = rangeOf(control.field, editor, limits);
+    const position = sliderPosition(editor[control.field], range, control.invert);
+    setNumber(control.field, sliderValue(position + delta, range, control.invert));
+  }
+
+  /** Le scelte di una griglia: ogni valore fra i limiti del campo. */
+  function valuesOf(field: MiiNumericField, state: MiiEditorState): number[] {
+    const { min, max } = rangeOf(field, state, limits);
+    return Array.from({ length: Math.max(0, max - min + 1) }, (_, index) => min + index);
+  }
+
+  function paletteOf(name: PaletteName): readonly string[] {
+    return name === 'favorite' ? favorites : PALETTES[name];
+  }
+
+  const ICON_KINDS: PartIconKind[] = [
+    'face',
+    'hair',
+    'eye',
+    'eyebrow',
+    'nose',
+    'mouth',
+    'mustache',
+    'beard',
+    'glasses'
+  ];
+
+  /** Colori di ruolo di ogni tipo di icona, per il Mii corrente. */
+  const iconPalette = $derived.by(() => {
+    const state = editor;
+    const palette = {} as Record<PartIconKind, string[]>;
+    if (!state) return palette;
+    for (const kind of ICON_KINDS) palette[kind] = iconColors(kind, state, favorites);
+    return palette;
+  });
 
   // -------------------------------------------------------------------------
   // Anteprima
   // -------------------------------------------------------------------------
 
+  /** Inquadratura: ritratto o figura intera, come nel WPF. */
+  let shot = $state<MiiRenderKind>('face');
+  /** Rotazione del Mii in gradi, attorno all'asse verticale. */
+  let yaw = $state(0);
+  let dragging = $state(false);
+
+  let preview = $state<string | null>(null);
+  let previewStatus = $state('');
+
+  interface PreviewJob {
+    state: MiiEditorState;
+    kind: MiiRenderKind;
+    rotation: number;
+    size: number;
+  }
+
   /**
-   * Render dell'anteprima, 260 ms dopo l'ultima modifica.
+   * Render nativo: uno alla volta, e solo l'ultimo chiesto.
    *
-   * L'attesa è quella di `QueuePreviewRender`: trascinare un cursore cambia lo
-   * stato decine di volte al secondo, e ogni cambio è una richiesta di render.
+   * Trascinare un cursore o il Mii chiede un render per ogni movimento; con
+   * il renderer nativo ognuno costa pochi millisecondi, ma metterli tutti in
+   * fila farebbe rincorrere al Mii il mouse. Mentre uno è in corso, le
+   * richieste nuove si sostituiscono a vicenda: quando finisce parte
+   * l'ultima.
    */
-  let lastPreviewKey = '';
+  let pending: PreviewJob | null = null;
+  let pumping = false;
+  /** L'URL `blob:` dell'anteprima mostrata, da liberare quando cambia. */
+  let previewUrl: string | null = null;
+
+  function showBlob(image: Blob) {
+    const url = URL.createObjectURL(image);
+    if (previewUrl) URL.revokeObjectURL(previewUrl);
+    previewUrl = url;
+    preview = url;
+  }
+
+  $effect(() => {
+    return () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    };
+  });
+
+  async function pump() {
+    if (pumping) return;
+    pumping = true;
+    try {
+      while (pending) {
+        const job = pending;
+        pending = null;
+        const image = await api
+          .renderMiiPreview(job.state, job.kind, job.rotation, job.size)
+          .catch(() => null);
+        if (image) {
+          showBlob(image);
+          previewStatus = '';
+        } else if (!pending) {
+          previewStatus = t('editor.noRenderer');
+        }
+      }
+    } finally {
+      pumping = false;
+    }
+  }
+
+  /** Lato del riquadro dell'anteprima, in pixel CSS: vedi `.stage`. */
+  const STAGE_PIXELS = { face: 220, all_body: 260 } as const;
+
+  let lastJobKey = '';
 
   $effect(() => {
     const state = editor;
     const kind = shot;
+    const rotation = Math.round(yaw);
+    const moving = dragging;
+    const useNative = native;
     if (!state) return;
 
     const snapshot = $state.snapshot(state) as MiiEditorState;
+    // Si renderizzano i pixel che il riquadro mostra davvero. Durante il
+    // trascinamento ne basta la metà: arriva prima, e quella piena parte
+    // appena il Mii si ferma.
+    const full = renderSize(STAGE_PIXELS[kind]);
+    const size = moving ? Math.max(128, full / 2) : full;
 
-    // Scrivere il nome non cambia la faccia: la richiesta parte lo stesso e
-    // la coda la serve dalla cache, ma dire "in coda" farebbe lampeggiare uno
-    // stato che non descrive nulla.
-    const key = `${kind}:${appearanceKey(state)}`;
-    if (key !== lastPreviewKey) {
-      lastPreviewKey = key;
-      previewStatus = t('editor.queued');
+    // Scrivere il nome non cambia la faccia: nessun render.
+    const key = `${useNative}:${kind}:${rotation}:${size}:${appearanceKey(snapshot)}`;
+    if (key === lastJobKey) return;
+    lastJobKey = key;
+
+    if (useNative) {
+      pending = { state: snapshot, kind, rotation, size };
+      void pump();
+      return;
     }
 
+    // Senza renderer nativo ogni render è una richiesta a Mii Studio: si
+    // aspettano 260 ms dall'ultima modifica, come `QueuePreviewRender`.
+    previewStatus = t('editor.queued');
     let alive = true;
     const timer = setTimeout(() => {
       if (!alive) return;
       if (!preview) previewStatus = t('editor.rendering');
-
-      void renderState(snapshot, kind).then((image) => {
+      void renderState(snapshot, kind, rotation, size).then((image) => {
         if (!alive) return;
         preview = image;
         previewStatus = image ? t('editor.ready') : t('editor.noRenderer');
@@ -136,155 +285,91 @@
     };
   });
 
+  // Rotazione con il trascinamento del mouse.
+  const YAW_SENSITIVITY = 0.8;
+  let dragStartX = 0;
+  let dragStartYaw = 0;
+
+  function onPointerDown(event: PointerEvent) {
+    if (!native || event.button !== 0) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    dragging = true;
+    dragStartX = event.clientX;
+    dragStartYaw = yaw;
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    if (!dragging) return;
+    yaw = wrapDegrees(dragStartYaw + (event.clientX - dragStartX) * YAW_SENSITIVITY);
+  }
+
+  function onPointerUp() {
+    dragging = false;
+  }
+
+  function onStageKey(event: KeyboardEvent) {
+    if (!native) return;
+    if (event.key === 'ArrowLeft') yaw = wrapDegrees(yaw - 15);
+    else if (event.key === 'ArrowRight') yaw = wrapDegrees(yaw + 15);
+    else if (event.key === 'Home') yaw = 0;
+    else return;
+    event.preventDefault();
+  }
+
+  function wrapDegrees(value: number): number {
+    return ((((value + 180) % 360) + 360) % 360) - 180;
+  }
+
+  async function installNative() {
+    installing = true;
+    try {
+      renderer = await operations.run('mii-renderer', () => api.installMiiRenderer());
+      if (renderer.nativeReady) {
+        // Le facce "non riuscite" della cache di sessione ora riescono.
+        forgetRenders();
+        lastJobKey = '';
+        app.toast(t('editor.nativeReady'), '', 'success');
+      }
+    } catch (err) {
+      app.toast(t('editor.installFailed'), api.errorMessage(err), 'warning');
+    } finally {
+      installing = false;
+    }
+  }
+
   // -------------------------------------------------------------------------
-  // Griglia delle scelte
+  // Tratti del viso: miniature renderizzate
   // -------------------------------------------------------------------------
 
-  interface GridOption {
-    key: string;
-    label: string;
-    title: string;
-    selected: boolean;
-    /** Tinta piatta invece del render, per la tavolozza. */
-    color?: string;
-    /** Stato da renderizzare nella miniatura. */
-    state?: MiiEditorState;
-    apply: () => void;
-  }
-
-  function withNumber(
-    state: MiiEditorState,
-    field: MiiNumericField,
-    value: number
-  ): MiiEditorState {
-    return { ...state, [field]: value };
-  }
-
-  function buildOptions(group: OptionGroup, state: MiiEditorState): GridOption[] {
-    if (group.kind === 'color') {
-      return colors.map((color, index) => ({
-        key: `favoriteColorIndex:${index}`,
-        label: `${index + 1}`,
-        title: `${t(group.label)} ${index + 1}`,
-        selected: state.favoriteColorIndex === index,
-        color,
-        apply: () => {
-          if (editor) editor.favoriteColorIndex = index;
-        }
-      }));
-    }
-
-    if (group.kind === 'switch') {
-      return [false, true].map((value) => ({
-        key: `${group.field}:${value}`,
-        label: value ? t(group.on) : t(group.off),
-        title: value ? t(group.on) : t(group.off),
-        selected: state[group.field] === value,
-        state: { ...state, [group.field]: value },
-        apply: () => {
-          if (editor) editor[group.field] = value;
-        }
-      }));
-    }
-
-    const options: GridOption[] = [];
-    for (let value = group.min; value <= group.max; value += 1) {
-      options.push({
-        key: `${group.field}:${value}`,
-        label: `${value + 1}`,
-        title: `${t(group.label)} ${value + 1}`,
-        selected: state[group.field] === value,
-        state: withNumber(state, group.field, value),
-        apply: () => {
-          if (editor) editor[group.field] = value;
-        }
-      });
-    }
-    return options;
-  }
-
-  const grid = $derived.by(() => {
-    const state = editor;
-    if (!state) return [] as { label: string; options: GridOption[] }[];
-
-    return current.groups.map((group) => ({
-      label: t(group.label),
-      options: buildOptions(group, state)
-    }));
-  });
-
-  const pageCount = $derived(
-    paginated ? Math.max(1, Math.ceil((grid[0]?.options.length ?? 0) / OPTIONS_PER_PAGE)) : 1
-  );
-
-  const visible = $derived.by(() => {
-    if (!paginated) return grid;
-
-    const only = grid[0];
-    if (!only) return [];
-
-    const from = Math.min(page, pageCount - 1) * OPTIONS_PER_PAGE;
-    return [{ label: only.label, options: only.options.slice(from, from + OPTIONS_PER_PAGE) }];
-  });
+  /** Miniature dei tratti del viso, per valore. */
+  let features = $state<Record<number, string>>({});
+  let featuresSignature = '';
 
   /**
-   * Chiavi già richieste. Non è stato reattivo di proposito: serve solo a non
-   * chiedere due volte la stessa miniatura, e renderlo reattivo farebbe
-   * ripartire l'effetto a ogni immagine che arriva.
-   */
-  let requested: Record<string, true> = {};
-  let lastAppearance = '';
-
-  /**
-   * Chiede il render di ogni miniatura visibile, e le butta quando invecchiano.
-   *
-   * Una miniatura mostra il Mii corrente con **un** tratto cambiato: appena
-   * cambia qualunque altro tratto non vale più, e tenerla mostrerebbe una
-   * faccia che non esiste. Il tratto che la griglia sta variando è l'unico che
-   * non le invalida — è proprio quello che distingue una miniatura dall'altra.
+   * Un'icona non sa mostrare trucco e rughe: questi restano miniature vere,
+   * il Mii corrente con quel solo tratto cambiato. Valgono finché non cambia
+   * qualcos'altro della faccia.
    */
   $effect(() => {
     const state = editor;
-    const groups = visible;
-    if (!state) return;
+    const open = current.controls.some((control) => control.kind === 'features');
+    if (!state || !open) return;
 
-    const signature = thumbnailSignature(state);
-    if (signature !== lastAppearance) {
-      lastAppearance = signature;
-      requested = {};
-      thumbnails = {};
-    }
+    const snapshot = $state.snapshot(state) as MiiEditorState;
+    const signature = appearanceKey({ ...snapshot, facialFeature: 0 });
+    if (signature === featuresSignature) return;
+    featuresSignature = signature;
+    features = {};
 
-    for (const group of groups) {
-      for (const option of group.options) {
-        if (!option.state || requested[option.key]) continue;
-
-        requested[option.key] = true;
-        const snapshot = $state.snapshot(option.state) as MiiEditorState;
-        const key = option.key;
-        void renderState(snapshot, 'face').then((image) => {
-          if (image) thumbnails = { ...thumbnails, [key]: image };
-        });
-      }
+    for (const value of valuesOf('facialFeature', snapshot)) {
+      void renderState({ ...snapshot, facialFeature: value }, 'face', 0, 128).then((image) => {
+        if (image && featuresSignature === signature) features = { ...features, [value]: image };
+      });
     }
   });
 
-  /** Firma dell'aspetto senza i campi che la griglia aperta sta variando. */
-  function thumbnailSignature(state: MiiEditorState): string {
-    const varying = new Set<string>(
-      current.groups.flatMap((group) => (group.kind === 'color' ? [] : [group.field as string]))
-    );
-
-    return Object.entries(state)
-      .filter(([field]) => !varying.has(field))
-      .map(([field, value]) => `${field}=${String(value)}`)
-      .join('|');
-  }
-
   function selectCategory(index: number) {
     category = (index + CATEGORIES.length) % CATEGORIES.length;
-    page = 0;
-    adjusting = false;
   }
 
   // -------------------------------------------------------------------------
@@ -315,7 +400,7 @@
     try {
       const random = await api.randomMiiState(editor.name);
       // L'identità non si tocca: un Mii che esiste già mantiene il suo id.
-      editor = { ...random, miiId: editor.miiId, systemId: editor.systemId };
+      editor = clampState({ ...random, miiId: editor.miiId, systemId: editor.systemId }, limits);
     } catch (err) {
       app.toast(t('editor.randomFailed'), api.errorMessage(err), 'warning');
     } finally {
@@ -413,11 +498,32 @@
       <div class="body">
         <aside class="side">
           <div class="preview vk-card">
-            <div class="stage" class:body-shot={shot === 'all_body'}>
+            <!-- L'anteprima è un cursore: le frecce e il trascinamento girano il Mii. -->
+            <div
+              class="stage"
+              class:body-shot={shot === 'all_body'}
+              class:rotatable={native}
+              class:dragging
+              role="slider"
+              aria-label={t('editor.previewOf', { name: editor.name })}
+              aria-valuemin={-180}
+              aria-valuemax={180}
+              aria-valuenow={Math.round(yaw)}
+              aria-valuetext={`${Math.round(yaw)}°`}
+              aria-disabled={!native}
+              title={native ? t('editor.rotateHint') : undefined}
+              tabindex="0"
+              onpointerdown={onPointerDown}
+              onpointermove={onPointerMove}
+              onpointerup={onPointerUp}
+              onpointercancel={onPointerUp}
+              ondblclick={() => (yaw = 0)}
+              onkeydown={onStageKey}
+            >
               {#if preview}
-                <img src={preview} alt={t('editor.previewOf', { name: editor.name })} />
+                <img src={preview} alt="" draggable="false" />
               {:else}
-                <img class="silhouette" src={miiSilhouette} alt="" />
+                <img class="silhouette" src={miiSilhouette} alt="" draggable="false" />
               {/if}
             </div>
 
@@ -438,6 +544,11 @@
               >
                 {t('editor.shotBody')}
               </button>
+              {#if yaw !== 0}
+                <button class="vk-btn shot" onclick={() => (yaw = 0)}>
+                  {t('editor.resetView')}
+                </button>
+              {/if}
             </div>
 
             <p class="preview-name">{editor.name || 'Mii'}</p>
@@ -449,8 +560,29 @@
                 day: editor.birthDay
               })}
             </p>
-            <p class="vk-faint preview-status">{previewStatus}</p>
+            {#if native}
+              <p class="vk-faint preview-status">{previewStatus || t('editor.native')}</p>
+            {:else}
+              <p class="vk-faint preview-status">{previewStatus}</p>
+            {/if}
           </div>
+
+          {#if renderer && !native}
+            <div class="native-offer">
+              <p class="native-title">{t('editor.online')}</p>
+              <p class="vk-faint native-body">
+                {t('editor.onlineBody', { host: renderer.runtimeHost || 'web.archive.org' })}
+              </p>
+              <button
+                class="vk-btn vk-btn--primary"
+                onclick={installNative}
+                disabled={installing || busy}
+              >
+                <Icon name="download" size={14} />
+                {installing ? t('editor.installing') : t('editor.installNative')}
+              </button>
+            </div>
+          {/if}
 
           <div class="field">
             <span class="vk-eyebrow">{t('editor.name')}</span>
@@ -516,8 +648,17 @@
                 class="rail-item"
                 class:active={category === index}
                 title={t(item.hint)}
+                aria-pressed={category === index}
                 onclick={() => selectCategory(index)}
               >
+                {#if item.icon && icons}
+                  {@const glyph = icons[item.icon.kind][editor[item.icon.field]]}
+                  {#if glyph}
+                    <span class="rail-icon">
+                      <MiiPartIcon icon={glyph} colors={iconPalette[item.icon.kind] ?? []} />
+                    </span>
+                  {/if}
+                {/if}
                 {t(item.label)}
               </button>
             {/each}
@@ -525,109 +666,149 @@
 
           <div class="panel vk-card">
             <div class="panel-head">
-              <div>
-                <p class="panel-title">{t(current.label)}</p>
-                <p class="vk-subtitle">{t(current.hint)}</p>
-              </div>
-
-              <div class="panel-tools">
-                {#if paginated && pageCount > 1}
-                  <div class="pager">
-                    <button
-                      class="vk-btn pager-btn"
-                      aria-label={t('editor.prevPage')}
-                      onclick={() => (page = Math.max(0, page - 1))}
-                      disabled={page <= 0}
-                    >
-                      ‹
-                    </button>
-                    <span class="vk-mono page-label"
-                      >{Math.min(page, pageCount - 1) + 1}/{pageCount}</span
-                    >
-                    <button
-                      class="vk-btn pager-btn"
-                      aria-label={t('editor.nextPage')}
-                      onclick={() => (page = Math.min(pageCount - 1, page + 1))}
-                      disabled={page >= pageCount - 1}
-                    >
-                      ›
-                    </button>
-                  </div>
-                {/if}
-
-                {#if current.sliders.length > 0 || current.toggles.length > 0}
-                  <button
-                    class="vk-btn"
-                    aria-expanded={adjusting}
-                    onclick={() => (adjusting = !adjusting)}
-                  >
-                    {t('editor.adjust')}
-                  </button>
-                {/if}
-              </div>
+              <p class="panel-title">{t(current.label)}</p>
+              <p class="vk-subtitle">{t(current.hint)}</p>
             </div>
 
-            {#each visible as group (group.label)}
-              {#if current.groups.length > 1}
-                <p class="group-title vk-eyebrow">{group.label}</p>
-              {/if}
-
-              <div class="options">
-                {#each group.options as option (option.key)}
-                  <button
-                    class="option"
-                    class:selected={option.selected}
-                    title={option.title}
-                    aria-pressed={option.selected}
-                    onclick={option.apply}
-                  >
-                    {#if option.color}
-                      <span class="swatch" style="--swatch: {option.color}"></span>
-                    {:else if thumbnails[option.key]}
-                      <img src={thumbnails[option.key]} alt="" />
-                    {:else}
-                      <span class="thumb-placeholder">
-                        <img class="silhouette" src={miiSilhouette} alt="" />
-                      </span>
-                    {/if}
-                    <span class="option-label">{option.label}</span>
-                  </button>
-                {/each}
-              </div>
-            {/each}
-
-            {#if adjusting}
-              <div class="adjust">
-                {#if current.toggles.length > 0}
-                  <div class="toggles">
-                    {#each current.toggles as toggle (toggle.field)}
-                      <label class="toggle">
-                        <input type="checkbox" bind:checked={editor[toggle.field]} />
-                        <span>{t(toggle.label)}</span>
-                      </label>
+            {#each current.controls as control (control.field)}
+              {#if control.kind === 'parts'}
+                <section class="group">
+                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                  <div class="parts" role="radiogroup" aria-label={t(control.label)}>
+                    {#each valuesOf(control.field, editor) as value (value)}
+                      {@const glyph = icons?.[control.icon][value]}
+                      <button
+                        class="part"
+                        class:selected={editor[control.field] === value}
+                        role="radio"
+                        aria-checked={editor[control.field] === value}
+                        title={`${t(control.label)} ${value + 1}`}
+                        onclick={() => setNumber(control.field, value)}
+                      >
+                        {#if glyph}
+                          <span class="glyph">
+                            <MiiPartIcon icon={glyph} colors={iconPalette[control.icon] ?? []} />
+                          </span>
+                        {:else}
+                          <span class="part-number">{value + 1}</span>
+                        {/if}
+                      </button>
                     {/each}
                   </div>
-                {/if}
-
-                <div class="sliders">
-                  {#each current.sliders as slider (slider.field)}
-                    <label class="slider">
-                      <span class="slider-head">
-                        <span>{t(slider.label)}</span>
-                        <strong>{editor[slider.field]}</strong>
-                      </span>
-                      <input
-                        type="range"
-                        min={slider.min}
-                        max={slider.max}
-                        step="1"
-                        bind:value={editor[slider.field]}
-                      />
-                    </label>
-                  {/each}
+                </section>
+              {:else if control.kind === 'swatches'}
+                {@const palette = paletteOf(control.palette)}
+                <section class="group">
+                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                  <div class="swatches" role="radiogroup" aria-label={t(control.label)}>
+                    {#each valuesOf(control.field, editor) as value (value)}
+                      <button
+                        class="swatch"
+                        class:selected={editor[control.field] === value}
+                        role="radio"
+                        aria-checked={editor[control.field] === value}
+                        aria-label={`${t(control.label)} ${value + 1}`}
+                        title={`${t(control.label)} ${value + 1}`}
+                        style="--swatch: {palette[value] ?? '#000'}"
+                        onclick={() => setNumber(control.field, value)}
+                      ></button>
+                    {/each}
+                  </div>
+                </section>
+              {:else if control.kind === 'features'}
+                <section class="group">
+                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                  <div class="features" role="radiogroup" aria-label={t(control.label)}>
+                    {#each valuesOf(control.field, editor) as value (value)}
+                      <button
+                        class="feature"
+                        class:selected={editor.facialFeature === value}
+                        role="radio"
+                        aria-checked={editor.facialFeature === value}
+                        onclick={() => setNumber('facialFeature', value)}
+                      >
+                        {#if features[value]}
+                          <img src={features[value]} alt="" />
+                        {:else}
+                          <span class="feature-placeholder">
+                            <img class="silhouette" src={miiSilhouette} alt="" />
+                          </span>
+                        {/if}
+                        <span class="feature-label">
+                          {t(FACIAL_FEATURES[value] ?? 'miicat.features')}
+                        </span>
+                      </button>
+                    {/each}
+                  </div>
+                </section>
+              {:else if control.kind === 'switch'}
+                <section class="group">
+                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                  <div class="segmented" role="radiogroup" aria-label={t(control.label)}>
+                    {#each [false, true] as value (value)}
+                      <button
+                        class="vk-btn segment"
+                        class:active={editor[control.field] === value}
+                        role="radio"
+                        aria-checked={editor[control.field] === value}
+                        onclick={() => setFlag(control.field, value)}
+                      >
+                        {value ? t(control.on) : t(control.off)}
+                      </button>
+                    {/each}
+                  </div>
+                </section>
+              {:else if control.kind === 'toggle'}
+                <label class="toggle">
+                  <input
+                    type="checkbox"
+                    checked={editor[control.field]}
+                    onchange={(event) => setFlag(control.field, event.currentTarget.checked)}
+                  />
+                  <span>{t(control.label)}</span>
+                </label>
+              {:else if control.kind === 'slider'}
+                {@const range = rangeOf(control.field, editor, limits)}
+                {@const position = sliderPosition(editor[control.field], range, control.invert)}
+                <div class="slider">
+                  <span class="slider-head">
+                    <span>{t(control.label)}</span>
+                    <strong>{position}</strong>
+                  </span>
+                  <div class="slider-row">
+                    <button
+                      class="vk-btn step"
+                      aria-label={`${t('editor.decrease')}: ${t(control.label)}`}
+                      disabled={position <= range.min}
+                      onclick={() => step(control, -1)}
+                    >
+                      −
+                    </button>
+                    <input
+                      type="range"
+                      min={range.min}
+                      max={range.max}
+                      step="1"
+                      value={position}
+                      aria-label={t(control.label)}
+                      oninput={(event) =>
+                        setNumber(
+                          control.field,
+                          sliderValue(Number(event.currentTarget.value), range, control.invert)
+                        )}
+                    />
+                    <button
+                      class="vk-btn step"
+                      aria-label={`${t('editor.increase')}: ${t(control.label)}`}
+                      disabled={position >= range.max}
+                      onclick={() => step(control, 1)}
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              </div>
-            {/if}
+              {/if}
+            {/each}
           </div>
         </div>
       </div>
@@ -720,12 +901,28 @@
   .stage {
     display: grid;
     place-items: center;
-    width: 190px;
-    height: 190px;
+    width: 220px;
+    height: 220px;
+    border-radius: 14px;
+    outline: none;
+    touch-action: none;
+    user-select: none;
+  }
+
+  .stage.rotatable {
+    cursor: grab;
+  }
+
+  .stage.dragging {
+    cursor: grabbing;
+  }
+
+  .stage:focus-visible {
+    box-shadow: 0 0 0 2px var(--vk-cyan);
   }
 
   .stage.body-shot {
-    height: 240px;
+    height: 260px;
   }
 
   .stage img {
@@ -733,6 +930,7 @@
     max-height: 100%;
     object-fit: contain;
     filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.35));
+    pointer-events: none;
   }
 
   .silhouette {
@@ -741,6 +939,8 @@
 
   .shots {
     display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
     gap: 6px;
   }
 
@@ -749,7 +949,8 @@
     font-size: var(--vk-fs-micro);
   }
 
-  .shot.active {
+  .shot.active,
+  .segment.active {
     border-color: transparent;
     background:
       linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
@@ -775,6 +976,27 @@
     margin: 0;
     font-size: var(--vk-fs-eyebrow);
     text-align: center;
+  }
+
+  .native-offer {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px;
+    border: 1px solid color-mix(in srgb, var(--vk-cyan) 45%, transparent);
+    border-radius: var(--vk-radius-badge);
+    background: color-mix(in srgb, var(--vk-cyan) 8%, transparent);
+  }
+
+  .native-title {
+    margin: 0;
+    font-size: var(--vk-fs-small);
+    font-weight: 900;
+  }
+
+  .native-body {
+    margin: 0;
+    font-size: var(--vk-fs-eyebrow);
   }
 
   .field {
@@ -857,7 +1079,10 @@
   }
 
   .rail-item {
-    padding: 8px 14px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
     background: #111a2c;
@@ -868,6 +1093,15 @@
 
   .rail-item:hover {
     border-color: #3a4c74;
+  }
+
+  .rail-icon {
+    display: inline-block;
+    width: 22px;
+    height: 22px;
+    padding: 2px;
+    border-radius: 6px;
+    background: #dfe6f3;
   }
 
   .rail-item.active {
@@ -891,129 +1125,161 @@
     overflow-y: auto;
   }
 
-  .panel-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-
   .panel-title {
     margin: 0;
     font-size: 22px;
     font-weight: 900;
   }
 
-  .panel-tools {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .pager {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-  }
-
-  .pager-btn {
-    padding: 4px 12px;
-    font-size: 15px;
-    line-height: 1;
-  }
-
-  .page-label {
-    font-size: var(--vk-fs-micro);
-    color: var(--vk-text-secondary);
-  }
-
-  .group-title {
-    margin: 16px 0 6px;
-  }
-
-  .options {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(126px, 1fr));
-    gap: 12px;
+  .group {
     margin-top: 16px;
   }
 
-  .option {
+  .group-title {
+    margin: 0 0 8px;
+  }
+
+  /* Le icone stanno su un fondo chiaro, come nel Canale Mii: un sopracciglio
+     nero su una tessera scura non si vedrebbe. */
+  .parts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+    gap: 8px;
+  }
+
+  .part {
+    position: relative;
+    display: grid;
+    place-items: center;
+    aspect-ratio: 1;
+    padding: 9px;
+    border: 2px solid transparent;
+    border-radius: 12px;
+    background: #dfe6f3;
+    color: #24252d;
+    cursor: pointer;
+    transition:
+      transform var(--vk-dur-fast) var(--vk-ease),
+      border-color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .part:hover {
+    transform: translateY(-1px);
+    border-color: #8fb6ff;
+  }
+
+  .part.selected {
+    border-color: var(--vk-cyan);
+    background: #f4f8ff;
+    box-shadow:
+      0 0 0 2px rgb(0 242 255 / 0.25),
+      0 0 16px rgb(0 242 255 / 0.3);
+  }
+
+  /* L'icona sta dentro la tessera invece di dimensionarla: un'acconciatura
+     più alta che larga non deve allungare la sua riga. */
+  .glyph {
+    position: absolute;
+    inset: 9px;
+  }
+
+  .part-number {
+    font-size: var(--vk-fs-micro);
+    font-weight: 900;
+  }
+
+  .swatches {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .swatch {
+    width: 34px;
+    height: 34px;
+    border: 2px solid rgb(255 255 255 / 0.18);
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
+    cursor: pointer;
+    transition: transform var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .swatch:hover {
+    transform: scale(1.08);
+  }
+
+  .swatch.selected {
+    border-color: var(--vk-text);
+    box-shadow:
+      0 0 0 3px var(--vk-cyan),
+      inset 0 0 0 1px rgb(0 0 0 / 0.35);
+  }
+
+  .features {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(96px, 1fr));
+    gap: 10px;
+  }
+
+  .feature {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    padding: 8px;
+    gap: 4px;
+    padding: 6px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
     background: #111a2c;
     color: inherit;
     cursor: pointer;
-    transition: border-color var(--vk-dur-fast) var(--vk-ease);
   }
 
-  .option:hover {
+  .feature:hover {
     border-color: #3a4c74;
   }
 
-  .option.selected {
-    border-color: transparent;
-    background:
-      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
-      var(--vk-rainbow) border-box;
-    background-size:
-      auto,
-      220% 100%;
-    animation: vk-rainbow-edge 8s ease-in-out infinite;
-    box-shadow:
-      0 0 14px rgb(255 0 102 / 0.22),
-      0 0 14px rgb(0 242 255 / 0.18);
-    color: var(--vk-text);
+  .feature.selected {
+    border-color: var(--vk-cyan);
+    box-shadow: 0 0 14px rgb(0 242 255 / 0.25);
   }
 
-  .option img,
-  .option .thumb-placeholder,
-  .option .swatch {
+  .feature img,
+  .feature-placeholder {
     display: grid;
     place-items: center;
     width: 100%;
     aspect-ratio: 1;
-    border-radius: 10px;
     object-fit: contain;
   }
 
-  .option .thumb-placeholder img {
+  .feature-placeholder img {
     width: 60%;
     height: 60%;
   }
 
-  .option .swatch {
-    background: var(--swatch);
-    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.35);
-  }
-
-  .option-label {
+  .feature-label {
     font-size: var(--vk-fs-eyebrow);
     font-weight: 800;
+    text-align: center;
   }
 
-  .adjust {
-    margin-top: 20px;
-    padding-top: 16px;
-    border-top: 1px solid var(--vk-stroke);
+  .segmented {
+    display: inline-flex;
+    gap: 6px;
   }
 
-  .toggles {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 16px;
+  .segment {
+    padding: 6px 16px;
+    font-size: var(--vk-fs-micro);
   }
 
   .toggle {
     display: inline-flex;
     align-items: center;
     gap: 8px;
+    margin-top: 16px;
+    margin-right: 18px;
     font-size: var(--vk-fs-small);
     font-weight: 700;
   }
@@ -1024,17 +1290,12 @@
     accent-color: var(--vk-cyan);
   }
 
-  .sliders {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-    gap: 14px 22px;
-    margin-top: 16px;
-  }
-
   .slider {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    margin-top: 14px;
+    max-width: 520px;
   }
 
   .slider-head {
@@ -1047,6 +1308,22 @@
   .slider-head strong {
     color: var(--vk-cyan-soft);
     font-weight: 900;
+  }
+
+  .slider-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .step {
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font-size: 16px;
+    font-weight: 900;
+    line-height: 1;
   }
 
   .slider input {

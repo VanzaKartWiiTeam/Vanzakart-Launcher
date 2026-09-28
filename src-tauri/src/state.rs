@@ -85,6 +85,9 @@ pub struct AppState {
             std::sync::Arc<crate::services::ghosts::RemoteCatalog>,
         )>,
     >,
+    /// Renderer nativo dei Mii, caricato alla prima faccia da disegnare e
+    /// dimenticato quando il runtime viene installato o rimosso (§D-092).
+    pub mii_renderer: Mutex<crate::services::mii_render::NativeRenderer>,
 }
 
 /// Sessione di gioco in corso.
@@ -169,6 +172,7 @@ impl AppState {
             streak_index: RwLock::new(None),
             ghost_writes: Mutex::new(()),
             ghost_catalog: RwLock::new(None),
+            mii_renderer: Mutex::default(),
         }))
     }
 

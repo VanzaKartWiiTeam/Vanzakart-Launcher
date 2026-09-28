@@ -1,17 +1,16 @@
 [package]
-name = "vk-save"
+name = "vk-mii-render"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
-description = "Parsing di rksys.dat, RFL_DB.dat e blocchi Mii Wii."
+description = "Render nativo dei Mii da FFLResHigh.dat, senza rete."
 
 [dependencies]
-serde.workspace = true
 thiserror.workspace = true
-tracing.workspace = true
-md-5 = "0.10"
+flate2.workspace = true
+png = "0.17"
 
 [dev-dependencies]
+vk-save.workspace = true
 serde_json.workspace = true
-tempfile.workspace = true

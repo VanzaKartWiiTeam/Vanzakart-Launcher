@@ -292,6 +292,9 @@
     rendererBusy = action;
     try {
       renderer = await run();
+      // Con il runtime installato o rimosso cambia chi disegna le facce: le
+      // immagini della sessione vanno rifatte, comprese quelle non riuscite.
+      forgetRenders();
     } catch (error) {
       app.toast(t('home.operationFailed'), api.errorMessage(error), 'warning');
     } finally {
@@ -658,10 +661,14 @@
       <div>
         <p class="renderer-title">{t('lic.facesHere')}</p>
         <p class="vk-faint renderer-note">
-          {t('lic.facesNote', {
-            host: renderer?.renderHost ?? 'Mii Studio',
-            count: renderer?.cachedAvatars ?? 0
-          })}
+          {#if renderer?.nativeReady}
+            {t('lic.facesNative')}
+          {:else}
+            {t('lic.facesNote', {
+              host: renderer?.renderHost ?? 'Mii Studio',
+              count: renderer?.cachedAvatars ?? 0
+            })}
+          {/if}
         </p>
       </div>
 

@@ -5,22 +5,37 @@
  * delle opzioni, gli avatar di licenze, amici e profili — passa da qui.
  * Due ragioni, entrambe del launcher legacy:
  *
- * - **un tetto ai render simultanei**, come il `FeaturePreviewRenderGate` da 3
- *   permessi del WPF: una pagina di miniature è una raffica di richieste allo
- *   stesso servizio, e mandarle tutte insieme le fa fallire tutte insieme;
+ * - **un tetto ai render simultanei**, come il `FeaturePreviewRenderGate` del
+ *   WPF: con il renderer nativo ogni render occupa un core, senza il servizio
+ *   di Mii Studio una raffica di richieste le fa fallire tutte insieme;
  * - **una richiesta sola per immagine**, come `InFlightRenders`: la stessa
  *   faccia compare in più punti della stessa pagina, e chiederla una volta per
  *   punto sarebbe spreco puro.
  *
- * Il backend tiene la sua cache su disco; questa è la cache di sessione, che
- * evita perfino il giro sull'IPC.
+ * Questa è la cache di sessione, che evita perfino il giro sull'IPC. Il
+ * backend non ne tiene una per i render nativi: rifarli costa meno che
+ * leggerli dal disco (§D-092).
  */
 import * as api from '$lib/api';
 import type { MiiEditorState } from '$lib/api/types';
 import type { MiiRenderKind } from '$lib/api';
 
-/** Render simultanei ammessi, come nel legacy. */
-const MAX_CONCURRENT = 3;
+/** Render simultanei ammessi. */
+const MAX_CONCURRENT = 4;
+
+/**
+ * Lati in cui si renderizza. Un avatar da 44 px non ha bisogno di 512 px di
+ * Mii, e un lato preciso per ogni avatar farebbe esplodere la cache.
+ */
+const SIZES = [128, 256, 384, 512] as const;
+const LARGEST = 512;
+
+/** Il lato da chiedere per mostrare un'immagine larga `cssPixels`. */
+export function renderSize(cssPixels: number): number {
+  const ratio = typeof window === 'undefined' ? 1 : window.devicePixelRatio || 1;
+  const needed = cssPixels * ratio;
+  return SIZES.find((size) => size >= needed) ?? LARGEST;
+}
 
 /** `null` significa "provato e non riuscito": non si ritenta a ogni render. */
 const cache = new Map<string, string | null>();
@@ -72,12 +87,13 @@ function enqueue(key: string, run: () => Promise<string | null>): Promise<string
 export function renderStudio(
   studioData: string,
   kind: MiiRenderKind = 'face',
-  rotation = 0
+  rotation = 0,
+  size = 512
 ): Promise<string | null> {
   if (!studioData.trim()) return Promise.resolve(null);
 
-  return enqueue(`s:${kind}:${rotation}:${studioData}`, () =>
-    api.renderMiiStudio(studioData, kind, rotation)
+  return enqueue(`s:${kind}:${rotation}:${size}:${studioData}`, () =>
+    api.renderMiiStudio(studioData, kind, rotation, size)
   );
 }
 
@@ -91,10 +107,11 @@ export function renderStudio(
 export function renderState(
   state: MiiEditorState,
   kind: MiiRenderKind = 'face',
-  rotation = 0
+  rotation = 0,
+  size = 512
 ): Promise<string | null> {
-  return enqueue(`e:${kind}:${rotation}:${appearanceKey(state)}`, () =>
-    api.renderMiiState(state, kind, rotation)
+  return enqueue(`e:${kind}:${rotation}:${size}:${appearanceKey(state)}`, () =>
+    api.renderMiiState(state, kind, rotation, size)
   );
 }
 
@@ -120,7 +137,10 @@ export function appearanceKey(state: MiiEditorState): string {
     .join('|');
 }
 
-/** Svuota la cache di sessione, dopo aver svuotato quella su disco. */
+/**
+ * Svuota la cache di sessione: dopo aver svuotato quella su disco, o dopo
+ * aver installato il runtime, quando le facce "non riuscite" ora riescono.
+ */
 export function forget(): void {
   cache.clear();
 }

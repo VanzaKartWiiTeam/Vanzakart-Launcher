@@ -37,6 +37,7 @@ import type {
   LicenseView,
   MarioKartAction,
   MiiEditorState,
+  MiiFieldLimit,
   MiiView,
   LauncherUpdateOffer,
   LauncherUpdateOutcome,
@@ -303,6 +304,9 @@ export const defaultMiiState = (name: string, favoriteColorIndex: number, isFema
 
 export const getMiiFavoriteColors = () => call<string[]>('mii_favorite_colors');
 
+/** Intervalli ammessi per ogni campo numerico dell'editor. */
+export const getMiiEditorLimits = () => call<MiiFieldLimit[]>('mii_editor_limits');
+
 // --- Render dei Mii -------------------------------------------------------
 
 export const getMiiRendererStatus = () => call<MiiRendererStatus>('mii_renderer_status');
@@ -314,17 +318,42 @@ export type MiiRenderKind = 'face' | 'all_body';
 
 /**
  * Render di una `studioData` già nota — licenza, amico o profilo — come
- * `data:` URI. `null` quando il servizio non risponde: la UI ha la silhouette.
+ * `data:` URI. `null` quando nessun renderer riesce: la UI ha la silhouette.
+ *
+ * `size` è il lato in pixel dell'immagine: con il renderer nativo si paga
+ * solo quello che si mostra.
  */
-export const renderMiiStudio = (studioData: string, kind: MiiRenderKind = 'face', rotation = 0) =>
-  call<string | null>('mii_render_studio', { studioData, kind, rotation });
+export const renderMiiStudio = (
+  studioData: string,
+  kind: MiiRenderKind = 'face',
+  rotation = 0,
+  size = 512
+) => call<string | null>('mii_render_studio', { studioData, kind, rotation, size });
 
 /** Render di uno stato dell'editor, senza salvarlo da nessuna parte. */
 export const renderMiiState = (
   editor: MiiEditorState,
   kind: MiiRenderKind = 'face',
-  rotation = 0
-) => call<string | null>('mii_render_state', { editor, kind, rotation });
+  rotation = 0,
+  size = 512
+) => call<string | null>('mii_render_state', { editor, kind, rotation, size });
+
+/**
+ * Anteprima dal vivo dell'editor come PNG grezzo, solo con il renderer
+ * nativo. `null` senza runtime: allora si usa `renderMiiState`.
+ *
+ * I byte arrivano come `ArrayBuffer`, senza passare da base64 e JSON: per
+ * un'anteprima da 512 px il trasporto costava più del render.
+ */
+export async function renderMiiPreview(
+  editor: MiiEditorState,
+  kind: MiiRenderKind = 'face',
+  rotation = 0,
+  size = 512
+): Promise<Blob | null> {
+  const bytes = await call<ArrayBuffer>('mii_render_preview', { editor, kind, rotation, size });
+  return bytes.byteLength > 0 ? new Blob([bytes], { type: 'image/png' }) : null;
+}
 
 export const clearMiiAvatars = () => call<number>('mii_avatars_clear');
 
