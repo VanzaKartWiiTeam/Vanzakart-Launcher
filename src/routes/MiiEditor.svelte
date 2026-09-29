@@ -7,17 +7,24 @@
    * modifica è il Mii dentro `RFL_DB.dat`: salvare scrive nel database di
    * Dolphin (§D-037).
    *
-   * L'editor è nativo (§D-092):
+   * Tre colonne, come il Canale Mii: le categorie a sinistra, il Mii al
+   * centro, i controlli della categoria a destra. L'editor è nativo (§D-092,
+   * §D-095):
    *
-   * - l'anteprima la disegna il **renderer nativo** del launcher: ogni
-   *   modifica si vede subito, senza rete, e il Mii si gira trascinandolo.
-   *   Senza runtime installato resta il render di Mii Studio, più lento, e
-   *   l'editor propone di installarlo;
-   * - le scelte di ogni tratto sono **icone**, tutte in una griglia, invece
-   *   di miniature renderizzate sei per pagina;
+   * - l'anteprima la disegna il **renderer nativo** del launcher, senza rete:
+   *   si gira trascinandola, si inclina, si avvicina con la rotellina, e a Mii
+   *   fermo arriva un'immagine supercampionata dai contorni lisci. Passando
+   *   il mouse su un tratto lo si vede già addosso al Mii, prima di sceglierlo;
+   * - le scelte di ogni tratto sono **icone**, tutte in una griglia;
+   * - ogni modifica finita si annulla e si ripete (Ctrl+Z, Ctrl+Y), e
+   *   chiudere con modifiche non salvate chiede cosa farne;
    * - ogni cursore prende i limiti dal backend, gli stessi che il gioco
    *   accetta: nessun controllo può produrre un Mii che il gioco rifiuta.
+   *
+   * Senza runtime resta il render di Mii Studio, più lento, e l'editor
+   * propone di installare quello nativo.
    */
+  import { tick } from 'svelte';
   import { save as saveDialog } from '@tauri-apps/plugin-dialog';
 
   import * as api from '$lib/api';
@@ -26,28 +33,32 @@
     FACIAL_FEATURES,
     NAME_SYMBOLS,
     clampState,
+    daysInMonth,
     rangeOf,
     sliderPosition,
     sliderValue,
     toLimits
   } from '$lib/mii/categories';
-  import type { Control, Limits } from '$lib/mii/categories';
+  import type { Category, Control, Limits } from '$lib/mii/categories';
+  import { EditHistory } from '$lib/mii/history';
   import { PALETTES, iconColors, loadIcons } from '$lib/mii/icons';
   import type { IconSet, PaletteName, PartIconKind } from '$lib/mii/icons';
   import { appearanceKey, forget as forgetRenders, renderSize, renderState } from '$lib/mii/render';
   import Icon from '$lib/components/Icon.svelte';
+  import MenuButton, { type MenuItem } from '$lib/components/MenuButton.svelte';
   import MiiPartIcon from '$lib/components/MiiPartIcon.svelte';
+  import Switch from '$lib/components/Switch.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import { app } from '$lib/stores/app.svelte';
   import { operations } from '$lib/stores/operations.svelte';
-  import { t } from '$lib/stores/i18n.svelte';
+  import { i18n, t, type TranslationKey } from '$lib/stores/i18n.svelte';
   import type {
     MiiBooleanField,
     MiiEditorState,
     MiiNumericField,
     MiiRendererStatus
   } from '$lib/api/types';
-  import type { MiiRenderKind } from '$lib/api';
+  import type { MiiExpression, MiiRenderKind } from '$lib/api';
 
   interface Props {
     /** Id del Mii da modificare, `null` per crearne uno nuovo. */
@@ -72,11 +83,13 @@
 
   let nameInput = $state<HTMLInputElement | null>(null);
   let symbolsOpen = $state(false);
+  /** Si sta chiudendo con modifiche non salvate: si chiede cosa farne. */
+  let confirmClose = $state(false);
 
   const current = $derived(CATEGORIES[category] ?? CATEGORIES[0]);
   const dirty = $derived(editor !== null && JSON.stringify(editor) !== original);
-  const title = $derived(miiId ? t('editor.edit') : t('editor.new'));
   const native = $derived(renderer?.nativeReady === true);
+  const accent = $derived(editor ? (favorites[editor.favoriteColorIndex] ?? '#00f2ff') : '#00f2ff');
 
   $effect(() => {
     void load();
@@ -99,6 +112,8 @@
       // protegge da uno stato nuovo costruito con valori fuori scala.
       editor = clampState(state, limits);
       original = JSON.stringify(editor);
+      history = new EditHistory(editor);
+      syncHistory();
     } catch (err) {
       error = api.errorMessage(err);
     } finally {
@@ -113,18 +128,55 @@
   }
 
   // -------------------------------------------------------------------------
+  // Annulla e ripeti
+  // -------------------------------------------------------------------------
+
+  let history: EditHistory<MiiEditorState> | null = null;
+  let canUndo = $state(false);
+  let canRedo = $state(false);
+
+  function syncHistory() {
+    canUndo = history?.canUndo ?? false;
+    canRedo = history?.canRedo ?? false;
+  }
+
+  /** Registra una modifica finita: un clic, il rilascio di un cursore. */
+  function commit() {
+    if (!history || !editor) return;
+    history.commit($state.snapshot(editor) as MiiEditorState);
+    syncHistory();
+  }
+
+  function undo() {
+    const state = history?.undo();
+    if (state) editor = state;
+    syncHistory();
+  }
+
+  function redo() {
+    const state = history?.redo();
+    if (state) editor = state;
+    syncHistory();
+  }
+
+  // -------------------------------------------------------------------------
   // Modifica
   // -------------------------------------------------------------------------
 
-  /** Cambia un campo e riporta lo stato dentro i limiti. */
-  function setNumber(field: MiiNumericField, value: number) {
+  /**
+   * Cambia un campo e riporta lo stato dentro i limiti. `record` è falso
+   * mentre un cursore scorre: la modifica si registra al rilascio.
+   */
+  function setNumber(field: MiiNumericField, value: number, record = true) {
     if (!editor || editor[field] === value) return;
     editor = clampState({ ...editor, [field]: value }, limits);
+    if (record) commit();
   }
 
   function setFlag(field: MiiBooleanField, value: boolean) {
     if (!editor || editor[field] === value) return;
     editor = { ...editor, [field]: value };
+    commit();
   }
 
   function step(control: Extract<Control, { kind: 'slider' }>, delta: number) {
@@ -132,6 +184,13 @@
     const range = rangeOf(control.field, editor, limits);
     const position = sliderPosition(editor[control.field], range, control.invert);
     setNumber(control.field, sliderValue(position + delta, range, control.invert));
+  }
+
+  /** Doppio clic su un cursore: torna al valore con cui il Mii si è aperto. */
+  function resetField(field: MiiNumericField) {
+    if (!original) return;
+    const initial = (JSON.parse(original) as MiiEditorState)[field];
+    setNumber(field, initial);
   }
 
   /** Le scelte di una griglia: ogni valore fra i limiti del campo. */
@@ -165,17 +224,83 @@
     return palette;
   });
 
+  /**
+   * Frecce dentro una griglia di scelte: sinistra e destra di uno, su e giù
+   * di una riga. La griglia sa quante colonne ha; le si chiede a lei.
+   */
+  async function onChoiceKey(
+    event: KeyboardEvent,
+    field: MiiNumericField,
+    values: number[]
+  ): Promise<void> {
+    if (!editor) return;
+    const group = event.currentTarget as HTMLElement;
+    const columns =
+      getComputedStyle(group).gridTemplateColumns.split(' ').filter(Boolean).length || 1;
+    const moves: Record<string, number> = {
+      ArrowLeft: -1,
+      ArrowRight: 1,
+      ArrowUp: -columns,
+      ArrowDown: columns
+    };
+    const move = moves[event.key];
+    if (move === undefined) return;
+    event.preventDefault();
+
+    const index = values.indexOf(editor[field]);
+    const next = values[Math.min(values.length - 1, Math.max(0, index + move))];
+    if (next === undefined) return;
+    setNumber(field, next);
+    await tick();
+    group.querySelector<HTMLElement>('[aria-checked="true"]')?.focus();
+  }
+
   // -------------------------------------------------------------------------
   // Anteprima
   // -------------------------------------------------------------------------
 
   /** Inquadratura: ritratto o figura intera, come nel WPF. */
   let shot = $state<MiiRenderKind>('face');
-  /** Rotazione del Mii in gradi, attorno all'asse verticale. */
+  /** Rotazione attorno all'asse verticale e inclinazione, in gradi. */
   let yaw = $state(0);
+  let pitch = $state(0);
+  /** Ingrandimento: 1 è l'inquadratura normale. */
+  let zoom = $state(1);
+  let expression = $state<MiiExpression>('normal');
   let dragging = $state(false);
+  /** L'anteprima gira da sola: inerzia dopo un lancio, o ritorno di fronte. */
+  let animating = $state(false);
+  /** Tenendo premuto "Originale" si vede il Mii com'era all'apertura. */
+  let comparing = $state(false);
+  /** Il tratto sotto il mouse: si vede addosso al Mii prima di sceglierlo. */
+  let hover = $state<{ field: MiiNumericField; value: number } | null>(null);
 
-  let preview = $state<string | null>(null);
+  const EXPRESSIONS: { value: MiiExpression; label: TranslationKey }[] = [
+    { value: 'normal', label: 'editor.expr.normal' },
+    { value: 'smile', label: 'editor.expr.smile' },
+    { value: 'anger', label: 'editor.expr.anger' },
+    { value: 'sorrow', label: 'editor.expr.sorrow' },
+    { value: 'surprise', label: 'editor.expr.surprise' },
+    { value: 'blink', label: 'editor.expr.blink' },
+    { value: 'open_mouth', label: 'editor.expr.openMouth' }
+  ];
+
+  const MAX_PITCH = 25;
+  const MIN_ZOOM = 0.7;
+  const MAX_ZOOM = 1.8;
+
+  /** Il Mii che l'anteprima mostra adesso. */
+  const shown = $derived.by((): MiiEditorState | null => {
+    if (!editor) return null;
+    if (comparing && original) return JSON.parse(original) as MiiEditorState;
+    if (hover && native) return clampState({ ...editor, [hover.field]: hover.value }, limits);
+    return editor;
+  });
+
+  let canvas = $state<HTMLCanvasElement | null>(null);
+  /** Render di Mii Studio, quando il renderer nativo non c'è. */
+  let fallback = $state<string | null>(null);
+  let drawn = $state(false);
   let previewStatus = $state('');
 
   interface PreviewJob {
@@ -183,6 +308,7 @@
     kind: MiiRenderKind;
     rotation: number;
     size: number;
+    view: api.MiiPreviewView;
   }
 
   /**
@@ -196,21 +322,24 @@
    */
   let pending: PreviewJob | null = null;
   let pumping = false;
-  /** L'URL `blob:` dell'anteprima mostrata, da liberare quando cambia. */
-  let previewUrl: string | null = null;
 
-  function showBlob(image: Blob) {
-    const url = URL.createObjectURL(image);
-    if (previewUrl) URL.revokeObjectURL(previewUrl);
-    previewUrl = url;
-    preview = url;
+  /**
+   * Il PNG va su un canvas con `createImageBitmap`: la decodifica avviene
+   * prima di toccare ciò che si vede, e il fotogramma nuovo sostituisce il
+   * vecchio senza lampi (§D-095).
+   */
+  async function draw(image: Blob) {
+    const bitmap = await createImageBitmap(image);
+    const target = canvas;
+    const context = target?.getContext('2d');
+    if (target && context) {
+      context.clearRect(0, 0, target.width, target.height);
+      context.imageSmoothingQuality = 'high';
+      context.drawImage(bitmap, 0, 0, target.width, target.height);
+      drawn = true;
+    }
+    bitmap.close();
   }
-
-  $effect(() => {
-    return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
-    };
-  });
 
   async function pump() {
     if (pumping) return;
@@ -220,10 +349,10 @@
         const job = pending;
         pending = null;
         const image = await api
-          .renderMiiPreview(job.state, job.kind, job.rotation, job.size)
+          .renderMiiPreview(job.state, job.kind, job.rotation, job.size, job.view)
           .catch(() => null);
         if (image) {
-          showBlob(image);
+          await draw(image);
           previewStatus = '';
         } else if (!pending) {
           previewStatus = t('editor.noRenderer');
@@ -235,32 +364,44 @@
   }
 
   /** Lato del riquadro dell'anteprima, in pixel CSS: vedi `.stage`. */
-  const STAGE_PIXELS = { face: 220, all_body: 260 } as const;
+  const STAGE_PIXELS = 340;
+  const canvasPixels = $derived(renderSize(STAGE_PIXELS));
 
   let lastJobKey = '';
 
   $effect(() => {
-    const state = editor;
+    const state = shown;
     const kind = shot;
     const rotation = Math.round(yaw);
-    const moving = dragging;
+    const tilt = Math.round(pitch);
+    const magnify = Math.round(zoom * 100) / 100;
+    const face = expression;
+    const moving = dragging || animating;
+    const hovering = hover !== null;
     const useNative = native;
     if (!state) return;
 
     const snapshot = $state.snapshot(state) as MiiEditorState;
-    // Si renderizzano i pixel che il riquadro mostra davvero. Durante il
-    // trascinamento ne basta la metà: arriva prima, e quella piena parte
-    // appena il Mii si ferma.
-    const full = renderSize(STAGE_PIXELS[kind]);
+    // Mentre il Mii si muove basta un render da metà lato, senza
+    // supercampionamento: arriva in pochi millisecondi. Fermo, quello pieno
+    // e liscio. Passando sulle scelte, lato pieno ma senza supercampionare.
+    const full = canvasPixels;
     const size = moving ? Math.max(128, full / 2) : full;
+    const quality = moving || hovering ? 'draft' : 'final';
 
     // Scrivere il nome non cambia la faccia: nessun render.
-    const key = `${useNative}:${kind}:${rotation}:${size}:${appearanceKey(snapshot)}`;
+    const key = `${useNative}:${kind}:${rotation}:${tilt}:${magnify}:${face}:${size}:${quality}:${appearanceKey(snapshot)}`;
     if (key === lastJobKey) return;
     lastJobKey = key;
 
     if (useNative) {
-      pending = { state: snapshot, kind, rotation, size };
+      pending = {
+        state: snapshot,
+        kind,
+        rotation,
+        size,
+        view: { pitch: tilt, zoom: magnify, expression: face, quality }
+      };
       void pump();
       return;
     }
@@ -271,11 +412,11 @@
     let alive = true;
     const timer = setTimeout(() => {
       if (!alive) return;
-      if (!preview) previewStatus = t('editor.rendering');
+      if (!fallback) previewStatus = t('editor.rendering');
       void renderState(snapshot, kind, rotation, size).then((image) => {
         if (!alive) return;
-        preview = image;
-        previewStatus = image ? t('editor.ready') : t('editor.noRenderer');
+        fallback = image;
+        previewStatus = image ? '' : t('editor.noRenderer');
       });
     }, 260);
 
@@ -285,33 +426,125 @@
     };
   });
 
-  // Rotazione con il trascinamento del mouse.
+  // --- Trascinamento, inerzia, zoom ----------------------------------------
+
   const YAW_SENSITIVITY = 0.8;
-  let dragStartX = 0;
-  let dragStartYaw = 0;
+  const PITCH_SENSITIVITY = 0.35;
+  let dragStart = { x: 0, y: 0, yaw: 0, pitch: 0 };
+  /** Ultimi campioni del trascinamento, per la velocità del lancio. */
+  let samples: { x: number; time: number }[] = [];
+  let frame = 0;
+
+  const reducedMotion =
+    typeof window !== 'undefined' &&
+    window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+  function stopAnimation() {
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+    animating = false;
+  }
 
   function onPointerDown(event: PointerEvent) {
     if (!native || event.button !== 0) return;
+    stopAnimation();
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     dragging = true;
-    dragStartX = event.clientX;
-    dragStartYaw = yaw;
+    dragStart = { x: event.clientX, y: event.clientY, yaw, pitch };
+    samples = [{ x: event.clientX, time: event.timeStamp }];
   }
 
   function onPointerMove(event: PointerEvent) {
     if (!dragging) return;
-    yaw = wrapDegrees(dragStartYaw + (event.clientX - dragStartX) * YAW_SENSITIVITY);
+    yaw = wrapDegrees(dragStart.yaw + (event.clientX - dragStart.x) * YAW_SENSITIVITY);
+    pitch = clamp(
+      dragStart.pitch + (event.clientY - dragStart.y) * PITCH_SENSITIVITY,
+      -MAX_PITCH,
+      MAX_PITCH
+    );
+    samples = [
+      ...samples.filter((sample) => event.timeStamp - sample.time < 90),
+      {
+        x: event.clientX,
+        time: event.timeStamp
+      }
+    ];
   }
 
-  function onPointerUp() {
+  /** Al rilascio il Mii continua a girare e rallenta, se è stato lanciato. */
+  function onPointerUp(event: PointerEvent) {
+    if (!dragging) return;
     dragging = false;
+
+    const first = samples[0];
+    const elapsed = first ? event.timeStamp - first.time : 0;
+    if (reducedMotion || !first || elapsed <= 0) return;
+    let velocity = ((event.clientX - first.x) / elapsed) * YAW_SENSITIVITY; // gradi al ms
+    if (Math.abs(velocity) < 0.25) return;
+
+    animating = true;
+    let last = performance.now();
+    const spin = (now: number) => {
+      const delta = now - last;
+      last = now;
+      yaw = wrapDegrees(yaw + velocity * delta);
+      velocity *= Math.pow(0.94, delta / 16);
+      if (Math.abs(velocity) < 0.02) {
+        stopAnimation();
+        return;
+      }
+      frame = requestAnimationFrame(spin);
+    };
+    frame = requestAnimationFrame(spin);
+  }
+
+  /** Rimette il Mii di fronte, con un breve movimento. */
+  function faceFront() {
+    stopAnimation();
+    if (reducedMotion) {
+      yaw = 0;
+      pitch = 0;
+      zoom = 1;
+      return;
+    }
+    const from = { yaw, pitch, zoom };
+    const start = performance.now();
+    animating = true;
+    const ease = (now: number) => {
+      const progress = Math.min(1, (now - start) / 260);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      yaw = from.yaw * (1 - eased);
+      pitch = from.pitch * (1 - eased);
+      zoom = from.zoom + (1 - from.zoom) * eased;
+      if (progress < 1) frame = requestAnimationFrame(ease);
+      else stopAnimation();
+    };
+    frame = requestAnimationFrame(ease);
+  }
+
+  /**
+   * La rotellina avvicina e allontana. Si ascolta a mano per poter fermare lo
+   * scorrimento della pagina: un ascoltatore passivo non potrebbe.
+   */
+  function wheelZoom(node: HTMLElement) {
+    const onWheel = (event: WheelEvent) => {
+      if (!native) return;
+      event.preventDefault();
+      zoom = clamp(zoom * (1 - event.deltaY * 0.0012), MIN_ZOOM, MAX_ZOOM);
+    };
+    node.addEventListener('wheel', onWheel, { passive: false });
+    return { destroy: () => node.removeEventListener('wheel', onWheel) };
   }
 
   function onStageKey(event: KeyboardEvent) {
     if (!native) return;
     if (event.key === 'ArrowLeft') yaw = wrapDegrees(yaw - 15);
     else if (event.key === 'ArrowRight') yaw = wrapDegrees(yaw + 15);
-    else if (event.key === 'Home') yaw = 0;
+    else if (event.key === 'ArrowUp') pitch = clamp(pitch - 5, -MAX_PITCH, MAX_PITCH);
+    else if (event.key === 'ArrowDown') pitch = clamp(pitch + 5, -MAX_PITCH, MAX_PITCH);
+    else if (event.key === '+' || event.key === '=') zoom = clamp(zoom + 0.1, MIN_ZOOM, MAX_ZOOM);
+    else if (event.key === '-') zoom = clamp(zoom - 0.1, MIN_ZOOM, MAX_ZOOM);
+    else if (event.key === 'Home') faceFront();
     else return;
     event.preventDefault();
   }
@@ -319,6 +552,12 @@
   function wrapDegrees(value: number): number {
     return ((((value + 180) % 360) + 360) % 360) - 180;
   }
+
+  function clamp(value: number, min: number, max: number): number {
+    return Math.min(max, Math.max(min, value));
+  }
+
+  $effect(() => () => stopAnimation());
 
   async function installNative() {
     installing = true;
@@ -328,7 +567,7 @@
         // Le facce "non riuscite" della cache di sessione ora riescono.
         forgetRenders();
         lastJobKey = '';
-        app.toast(t('editor.nativeReady'), '', 'success');
+        app.toast(t('editor.installed'), t('editor.nativeReady'), 'success');
       }
     } catch (err) {
       app.toast(t('editor.installFailed'), api.errorMessage(err), 'warning');
@@ -370,10 +609,29 @@
 
   function selectCategory(index: number) {
     category = (index + CATEGORIES.length) % CATEGORIES.length;
+    hover = null;
+  }
+
+  /** Frecce su e giù nella barra delle categorie. */
+  async function onRailKey(event: KeyboardEvent) {
+    const move = event.key === 'ArrowDown' ? 1 : event.key === 'ArrowUp' ? -1 : 0;
+    if (!move) return;
+    event.preventDefault();
+    selectCategory(category + move);
+    await tick();
+    (event.currentTarget as HTMLElement)
+      .querySelector<HTMLElement>('[aria-selected="true"]')
+      ?.focus();
+  }
+
+  /** Il segno di una categoria nella barra: l'icona del tratto scelto. */
+  function railIcon(item: Category) {
+    if (!item.icon || !icons || !editor) return null;
+    return icons[item.icon.kind][editor[item.icon.field]] ?? null;
   }
 
   // -------------------------------------------------------------------------
-  // Nome
+  // Nome e data
   // -------------------------------------------------------------------------
 
   /** Inserisce un simbolo nel nome, come `InsertNameSymbol`. */
@@ -386,9 +644,23 @@
     const next = editor.name.slice(0, start) + symbol + editor.name.slice(end);
 
     editor.name = [...next].slice(0, 10).join('');
+    commit();
     symbolsOpen = false;
     input?.focus();
   }
+
+  const nameLength = $derived(editor ? [...editor.name].length : 0);
+
+  /** I giorni del mese scelto: febbraio non arriva al 31. */
+  const days = $derived(
+    Array.from({ length: editor ? daysInMonth(editor.birthMonth) : 31 }, (_, index) => index + 1)
+  );
+
+  const months = $derived(
+    Array.from({ length: 12 }, (_, index) =>
+      new Intl.DateTimeFormat(i18n.tag, { month: 'long' }).format(new Date(2024, index, 1))
+    )
+  );
 
   // -------------------------------------------------------------------------
   // Azioni
@@ -401,6 +673,7 @@
       const random = await api.randomMiiState(editor.name);
       // L'identità non si tocca: un Mii che esiste già mantiene il suo id.
       editor = clampState({ ...random, miiId: editor.miiId, systemId: editor.systemId }, limits);
+      commit();
     } catch (err) {
       app.toast(t('editor.randomFailed'), api.errorMessage(err), 'warning');
     } finally {
@@ -409,13 +682,16 @@
   }
 
   function reset() {
-    if (original) editor = JSON.parse(original) as MiiEditorState;
+    if (!original) return;
+    editor = JSON.parse(original) as MiiEditorState;
+    commit();
   }
 
   async function persist() {
     if (!editor) return;
     if (!editor.name.trim()) {
       error = t('editor.needName');
+      confirmClose = false;
       return;
     }
 
@@ -429,6 +705,7 @@
       onclose(true);
     } catch (err) {
       error = api.errorMessage(err);
+      confirmClose = false;
     } finally {
       busy = false;
     }
@@ -458,18 +735,62 @@
     }
   }
 
+  const moreActions = $derived<MenuItem[]>([
+    { label: t('editor.random'), icon: 'swap', disabled: busy, onselect: () => void randomize() },
+    {
+      label: t('editor.resetAll'),
+      icon: 'refresh',
+      disabled: busy || !dirty,
+      onselect: reset
+    },
+    ...(miiId
+      ? [
+          {
+            label: t('editor.exportFile'),
+            icon: 'save' as const,
+            disabled: busy,
+            onselect: () => void exportMii()
+          }
+        ]
+      : [])
+  ]);
+
+  /** Chiudere con modifiche non salvate chiede prima cosa farne. */
   function close() {
     if (busy) return;
+    if (dirty) {
+      confirmClose = true;
+      return;
+    }
     onclose(false);
   }
 
+  function discard() {
+    confirmClose = false;
+    onclose(false);
+  }
+
+  function isTextField(target: EventTarget | null): boolean {
+    return target instanceof HTMLInputElement && target.type === 'text';
+  }
+
   function onKeydown(event: KeyboardEvent) {
-    if (event.key !== 'Escape') return;
-    if (symbolsOpen) {
-      symbolsOpen = false;
+    if (event.key === 'Escape') {
+      if (symbolsOpen) symbolsOpen = false;
+      else if (confirmClose) confirmClose = false;
+      else close();
       return;
     }
-    close();
+
+    // Ctrl+Z e Ctrl+Y dell'editor; in un campo di testo resta quello del
+    // campo, che annulla le lettere.
+    if (!(event.ctrlKey || event.metaKey) || isTextField(event.target)) return;
+    const key = event.key.toLowerCase();
+    if (key === 'z' && !event.shiftKey) undo();
+    else if (key === 'y' || (key === 'z' && event.shiftKey)) redo();
+    else if (key === 's') void persist();
+    else return;
+    event.preventDefault();
   }
 </script>
 
@@ -478,16 +799,50 @@
 <div class="overlay">
   <button class="backdrop" aria-label={t('editor.close')} onclick={close} disabled={busy}></button>
 
-  <div class="sheet vk-rainbow-top" role="dialog" aria-modal="true" aria-label={title}>
+  <div
+    class="sheet vk-rainbow-top"
+    role="dialog"
+    aria-modal="true"
+    aria-label={miiId ? t('editor.edit') : t('editor.new')}
+  >
     <header class="head">
-      <div>
-        <h2 class="head-title">Mii Studio</h2>
-        <p class="vk-subtitle">{t('editor.subtitle', { title })}</p>
+      <div class="head-id">
+        <p class="vk-eyebrow">{miiId ? t('editor.edit') : t('editor.new')}</p>
+        <h2 class="head-title">{editor?.name.trim() || 'Mii'}</h2>
       </div>
-      <button class="vk-btn" onclick={close} disabled={busy}>
-        <Icon name="close" size={14} />
-        {t('common.close')}
-      </button>
+
+      <div class="head-actions">
+        <button
+          class="vk-btn icon-btn"
+          onclick={undo}
+          disabled={!canUndo || busy}
+          title={t('editor.undo')}
+          aria-label={t('editor.undo')}
+        >
+          <Icon name="undo" size={16} />
+        </button>
+        <button
+          class="vk-btn icon-btn"
+          onclick={redo}
+          disabled={!canRedo || busy}
+          title={t('editor.redo')}
+          aria-label={t('editor.redo')}
+        >
+          <Icon name="redo" size={16} />
+        </button>
+        <MenuButton items={moreActions} label={t('common.more')} />
+        <span class="divider" aria-hidden="true"></span>
+        <button class="vk-btn" onclick={close} disabled={busy}>{t('common.cancel')}</button>
+        <button
+          class="vk-btn vk-btn--primary save"
+          onclick={persist}
+          disabled={busy || !dirty || !editor}
+          title={t('editor.saveHint')}
+        >
+          <Icon name="save" size={15} />
+          {busy ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
     </header>
 
     {#if loading}
@@ -495,77 +850,158 @@
     {:else if !editor}
       <div class="vk-error">{error || t('editor.unreadable')}</div>
     {:else}
+      {#if error}
+        <p class="vk-error inline">{error}</p>
+      {/if}
+
       <div class="body">
-        <aside class="side">
-          <div class="preview vk-card">
-            <!-- L'anteprima è un cursore: le frecce e il trascinamento girano il Mii. -->
-            <div
-              class="stage"
-              class:body-shot={shot === 'all_body'}
-              class:rotatable={native}
-              class:dragging
-              role="slider"
-              aria-label={t('editor.previewOf', { name: editor.name })}
-              aria-valuemin={-180}
-              aria-valuemax={180}
-              aria-valuenow={Math.round(yaw)}
-              aria-valuetext={`${Math.round(yaw)}°`}
-              aria-disabled={!native}
-              title={native ? t('editor.rotateHint') : undefined}
-              tabindex="0"
-              onpointerdown={onPointerDown}
-              onpointermove={onPointerMove}
-              onpointerup={onPointerUp}
-              onpointercancel={onPointerUp}
-              ondblclick={() => (yaw = 0)}
-              onkeydown={onStageKey}
+        <!-- ── Categorie ────────────────────────────────────────────── -->
+        <div
+          class="rail"
+          role="tablist"
+          aria-orientation="vertical"
+          aria-label={t('editor.categories')}
+          tabindex="-1"
+          onkeydown={onRailKey}
+        >
+          {#each CATEGORIES as item, index (item.key)}
+            {@const glyph = railIcon(item)}
+            <button
+              class="rail-item"
+              class:active={category === index}
+              role="tab"
+              aria-selected={category === index}
+              tabindex={category === index ? 0 : -1}
+              title={t(item.hint)}
+              onclick={() => selectCategory(index)}
             >
-              {#if preview}
-                <img src={preview} alt="" draggable="false" />
-              {:else}
+              <span class="rail-tile">
+                {#if glyph}
+                  <MiiPartIcon icon={glyph} colors={iconPalette[item.icon!.kind] ?? []} />
+                {:else if item.key === 'colors'}
+                  <span class="rail-color" style="--swatch: {accent}"></span>
+                {:else if item.key === 'mole'}
+                  <span class="rail-mole"></span>
+                {:else}
+                  <img src={miiSilhouette} alt="" draggable="false" />
+                {/if}
+              </span>
+              <span class="rail-label">{t(item.label)}</span>
+            </button>
+          {/each}
+        </div>
+
+        <!-- ── Il Mii ───────────────────────────────────────────────── -->
+        <section class="stage-col">
+          <!-- L'anteprima è un cursore: frecce e trascinamento girano il Mii. -->
+          <div
+            class="stage"
+            class:rotatable={native}
+            class:dragging
+            class:comparing
+            style="--accent: {accent}"
+            role="slider"
+            aria-label={t('editor.previewOf', { name: editor.name })}
+            aria-valuemin={-180}
+            aria-valuemax={180}
+            aria-valuenow={Math.round(yaw)}
+            aria-valuetext={`${Math.round(yaw)}°`}
+            aria-disabled={!native}
+            title={native ? t('editor.stageHint') : undefined}
+            tabindex="0"
+            use:wheelZoom
+            onpointerdown={onPointerDown}
+            onpointermove={onPointerMove}
+            onpointerup={onPointerUp}
+            onpointercancel={onPointerUp}
+            ondblclick={faceFront}
+            onkeydown={onStageKey}
+          >
+            <span class="floor" aria-hidden="true"></span>
+            {#if native}
+              <canvas
+                bind:this={canvas}
+                width={canvasPixels}
+                height={canvasPixels}
+                class:hidden={!drawn}
+              ></canvas>
+              {#if !drawn}
                 <img class="silhouette" src={miiSilhouette} alt="" draggable="false" />
               {/if}
-            </div>
+            {:else if fallback}
+              <img src={fallback} alt="" draggable="false" />
+            {:else}
+              <img class="silhouette" src={miiSilhouette} alt="" draggable="false" />
+            {/if}
 
-            <div class="shots">
+            {#if comparing}
+              <span class="stage-badge">{t('editor.original')}</span>
+            {/if}
+          </div>
+
+          <div class="stage-bar">
+            <div class="segmented" role="radiogroup" aria-label={t('editor.shot')}>
               <button
-                class="vk-btn shot"
+                role="radio"
+                aria-checked={shot === 'face'}
                 class:active={shot === 'face'}
-                aria-pressed={shot === 'face'}
                 onclick={() => (shot = 'face')}
               >
                 {t('editor.shotFace')}
               </button>
               <button
-                class="vk-btn shot"
+                role="radio"
+                aria-checked={shot === 'all_body'}
                 class:active={shot === 'all_body'}
-                aria-pressed={shot === 'all_body'}
                 onclick={() => (shot = 'all_body')}
               >
                 {t('editor.shotBody')}
               </button>
-              {#if yaw !== 0}
-                <button class="vk-btn shot" onclick={() => (yaw = 0)}>
-                  {t('editor.resetView')}
-                </button>
-              {/if}
             </div>
 
-            <p class="preview-name">{editor.name || 'Mii'}</p>
-            <p class="vk-faint preview-meta">
-              {t('editor.meta', {
-                sex: editor.isFemale ? t('miicat.female') : t('miicat.male'),
-                color: editor.favoriteColorIndex + 1,
-                month: editor.birthMonth,
-                day: editor.birthDay
-              })}
-            </p>
             {#if native}
-              <p class="vk-faint preview-status">{previewStatus || t('editor.native')}</p>
-            {:else}
-              <p class="vk-faint preview-status">{previewStatus}</p>
+              <select
+                class="vk-input expression"
+                bind:value={expression}
+                aria-label={t('editor.expression')}
+                title={t('editor.expressionHint')}
+              >
+                {#each EXPRESSIONS as item (item.value)}
+                  <option value={item.value}>{t(item.label)}</option>
+                {/each}
+              </select>
+              <button
+                class="vk-btn icon-btn"
+                onclick={faceFront}
+                disabled={yaw === 0 && pitch === 0 && zoom === 1}
+                title={t('editor.resetView')}
+                aria-label={t('editor.resetView')}
+              >
+                <Icon name="refresh" size={14} />
+              </button>
             {/if}
+            <button
+              class="vk-btn icon-btn"
+              class:active={comparing}
+              disabled={!dirty}
+              title={t('editor.compare')}
+              aria-label={t('editor.compare')}
+              aria-pressed={comparing}
+              onpointerdown={() => (comparing = true)}
+              onpointerup={() => (comparing = false)}
+              onpointerleave={() => (comparing = false)}
+              onkeydown={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') comparing = true;
+              }}
+              onkeyup={() => (comparing = false)}
+            >
+              <Icon name="swap" size={14} />
+            </button>
           </div>
+
+          {#if previewStatus}
+            <p class="vk-faint status">{previewStatus}</p>
+          {/if}
 
           {#if renderer && !native}
             <div class="native-offer">
@@ -584,231 +1020,276 @@
             </div>
           {/if}
 
-          <div class="field">
-            <span class="vk-eyebrow">{t('editor.name')}</span>
-            <div class="name-row">
+          <div class="identity">
+            <div class="field">
+              <span class="field-head">
+                <span class="vk-eyebrow">{t('editor.name')}</span>
+                <span class="counter" class:full={nameLength >= 10}>{nameLength}/10</span>
+              </span>
+              <div class="name-row">
+                <input
+                  class="vk-input"
+                  maxlength="10"
+                  bind:value={editor.name}
+                  bind:this={nameInput}
+                  onchange={commit}
+                />
+                <button
+                  class="vk-btn symbol-btn"
+                  title={t('editor.insertSymbol')}
+                  aria-label={t('editor.insertSymbol')}
+                  aria-expanded={symbolsOpen}
+                  onclick={() => (symbolsOpen = !symbolsOpen)}
+                >
+                  ★
+                </button>
+              </div>
+              {#if symbolsOpen}
+                <div class="symbols">
+                  {#each NAME_SYMBOLS as symbol (symbol)}
+                    <button class="symbol" onclick={() => insertSymbol(symbol)}>{symbol}</button>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+
+            <label class="field">
+              <span class="vk-eyebrow">{t('editor.creator')}</span>
               <input
                 class="vk-input"
                 maxlength="10"
-                bind:value={editor.name}
-                bind:this={nameInput}
+                bind:value={editor.creatorName}
+                onchange={commit}
               />
-              <button
-                class="vk-btn symbol-btn"
-                title={t('editor.insertSymbol')}
-                aria-expanded={symbolsOpen}
-                onclick={() => (symbolsOpen = !symbolsOpen)}
-              >
-                ★
-              </button>
-            </div>
-            {#if symbolsOpen}
-              <div class="symbols">
-                {#each NAME_SYMBOLS as symbol (symbol)}
-                  <button class="symbol" onclick={() => insertSymbol(symbol)}>{symbol}</button>
-                {/each}
+            </label>
+          </div>
+        </section>
+
+        <!-- ── Controlli della categoria ─────────────────────────────── -->
+        <div class="panel vk-card" role="tabpanel" aria-label={t(current.label)}>
+          <header class="panel-head">
+            <h3 class="panel-title">{t(current.label)}</h3>
+            <p class="vk-faint panel-hint">{t(current.hint)}</p>
+          </header>
+
+          {#each current.controls as control (control.field)}
+            {#if control.kind === 'parts'}
+              {@const values = valuesOf(control.field, editor)}
+              <section class="group">
+                <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                <div
+                  class="parts"
+                  role="radiogroup"
+                  aria-label={t(control.label)}
+                  tabindex="-1"
+                  onkeydown={(event) => onChoiceKey(event, control.field, values)}
+                >
+                  {#each values as value (value)}
+                    {@const glyph = icons?.[control.icon][value]}
+                    {@const selected = editor[control.field] === value}
+                    <button
+                      class="part"
+                      class:selected
+                      role="radio"
+                      aria-checked={selected}
+                      tabindex={selected ? 0 : -1}
+                      title={`${t(control.label)} ${value + 1}`}
+                      onclick={() => setNumber(control.field, value)}
+                      onpointerenter={() => (hover = { field: control.field, value })}
+                      onpointerleave={() => (hover = null)}
+                    >
+                      {#if glyph}
+                        <span class="glyph">
+                          <MiiPartIcon icon={glyph} colors={iconPalette[control.icon] ?? []} />
+                        </span>
+                      {:else}
+                        <span class="part-number">{value + 1}</span>
+                      {/if}
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {:else if control.kind === 'swatches'}
+              {@const palette = paletteOf(control.palette)}
+              {@const values = valuesOf(control.field, editor)}
+              <section class="group">
+                <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                <div
+                  class="swatches"
+                  role="radiogroup"
+                  aria-label={t(control.label)}
+                  tabindex="-1"
+                  onkeydown={(event) => onChoiceKey(event, control.field, values)}
+                >
+                  {#each values as value (value)}
+                    {@const selected = editor[control.field] === value}
+                    <button
+                      class="swatch"
+                      class:selected
+                      role="radio"
+                      aria-checked={selected}
+                      tabindex={selected ? 0 : -1}
+                      aria-label={`${t(control.label)} ${value + 1}`}
+                      title={`${t(control.label)} ${value + 1}`}
+                      style="--swatch: {palette[value] ?? '#000'}"
+                      onclick={() => setNumber(control.field, value)}
+                      onpointerenter={() => (hover = { field: control.field, value })}
+                      onpointerleave={() => (hover = null)}
+                    ></button>
+                  {/each}
+                </div>
+              </section>
+            {:else if control.kind === 'features'}
+              <section class="group">
+                <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                <div class="features" role="radiogroup" aria-label={t(control.label)}>
+                  {#each valuesOf(control.field, editor) as value (value)}
+                    <button
+                      class="feature"
+                      class:selected={editor.facialFeature === value}
+                      role="radio"
+                      aria-checked={editor.facialFeature === value}
+                      onclick={() => setNumber('facialFeature', value)}
+                    >
+                      {#if features[value]}
+                        <img src={features[value]} alt="" />
+                      {:else}
+                        <span class="feature-placeholder">
+                          <img class="silhouette" src={miiSilhouette} alt="" />
+                        </span>
+                      {/if}
+                      <span class="feature-label">
+                        {t(FACIAL_FEATURES[value] ?? 'miicat.features')}
+                      </span>
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {:else if control.kind === 'switch'}
+              <section class="group">
+                <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                <div class="segmented wide" role="radiogroup" aria-label={t(control.label)}>
+                  {#each [false, true] as value (value)}
+                    <button
+                      class:active={editor[control.field] === value}
+                      role="radio"
+                      aria-checked={editor[control.field] === value}
+                      onclick={() => setFlag(control.field, value)}
+                    >
+                      {value ? t(control.on) : t(control.off)}
+                    </button>
+                  {/each}
+                </div>
+              </section>
+            {:else if control.kind === 'toggle'}
+              <div class="toggle">
+                <span>{t(control.label)}</span>
+                <Switch
+                  checked={editor[control.field]}
+                  label={t(control.label)}
+                  onchange={(next) => setFlag(control.field, next)}
+                />
+              </div>
+            {:else if control.kind === 'date'}
+              <section class="group">
+                <p class="group-title vk-eyebrow">{t(control.label)}</p>
+                <div class="date">
+                  <select
+                    class="vk-input"
+                    aria-label={t('miicat.birthMonth')}
+                    value={editor.birthMonth}
+                    onchange={(event) => setNumber('birthMonth', Number(event.currentTarget.value))}
+                  >
+                    {#each months as month, index (index)}
+                      <option value={index + 1}>{month}</option>
+                    {/each}
+                  </select>
+                  <select
+                    class="vk-input day"
+                    aria-label={t('miicat.birthDay')}
+                    value={editor.birthDay}
+                    onchange={(event) => setNumber('birthDay', Number(event.currentTarget.value))}
+                  >
+                    {#each days as day (day)}
+                      <option value={day}>{day}</option>
+                    {/each}
+                  </select>
+                </div>
+              </section>
+            {:else if control.kind === 'slider'}
+              {@const range = rangeOf(control.field, editor, limits)}
+              {@const position = sliderPosition(editor[control.field], range, control.invert)}
+              <div class="slider">
+                <span class="slider-head">
+                  <span>{t(control.label)}</span>
+                  <strong>{position}</strong>
+                </span>
+                <div class="slider-row">
+                  <button
+                    class="vk-btn step"
+                    aria-label={`${t('editor.decrease')}: ${t(control.label)}`}
+                    disabled={position <= range.min}
+                    onclick={() => step(control, -1)}
+                  >
+                    −
+                  </button>
+                  <input
+                    type="range"
+                    min={range.min}
+                    max={range.max}
+                    step="1"
+                    value={position}
+                    aria-label={t(control.label)}
+                    title={t('editor.sliderHint')}
+                    style="--fill: {((position - range.min) / Math.max(1, range.max - range.min)) *
+                      100}%"
+                    oninput={(event) =>
+                      setNumber(
+                        control.field,
+                        sliderValue(Number(event.currentTarget.value), range, control.invert),
+                        false
+                      )}
+                    onchange={commit}
+                    ondblclick={() => resetField(control.field)}
+                  />
+                  <button
+                    class="vk-btn step"
+                    aria-label={`${t('editor.increase')}: ${t(control.label)}`}
+                    disabled={position >= range.max}
+                    onclick={() => step(control, 1)}
+                  >
+                    +
+                  </button>
+                </div>
               </div>
             {/if}
-          </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
-          <label class="field">
-            <span class="vk-eyebrow">{t('editor.creator')}</span>
-            <input class="vk-input" maxlength="10" bind:value={editor.creatorName} />
-          </label>
-
-          {#if error}
-            <p class="vk-error inline">{error}</p>
-          {/if}
-
-          <div class="actions">
-            <button class="vk-btn vk-btn--primary" onclick={persist} disabled={busy || !dirty}>
+    {#if confirmClose}
+      <div class="confirm-layer">
+        <div
+          class="confirm"
+          role="alertdialog"
+          aria-modal="true"
+          aria-label={t('editor.discardTitle')}
+        >
+          <h3>{t('editor.discardTitle')}</h3>
+          <p class="vk-faint">
+            {t('editor.discardBody', { name: editor?.name.trim() || 'Mii' })}
+          </p>
+          <div class="confirm-actions">
+            <button class="vk-btn vk-btn--danger" onclick={discard}>{t('editor.discard')}</button>
+            <span class="vk-spacer"></span>
+            <button class="vk-btn" onclick={() => (confirmClose = false)}>
+              {t('editor.keepEditing')}
+            </button>
+            <button class="vk-btn vk-btn--primary" onclick={persist} disabled={busy}>
+              <Icon name="save" size={14} />
               {t('common.save')}
             </button>
-            <button class="vk-btn" onclick={close} disabled={busy}>{t('common.cancel')}</button>
-            <button class="vk-btn" onclick={randomize} disabled={busy}>{t('editor.random')}</button>
-            <button class="vk-btn" onclick={reset} disabled={busy || !dirty}>
-              {t('settings.reset')}
-            </button>
-            {#if miiId}
-              <button class="vk-btn export" onclick={exportMii} disabled={busy}>
-                {t('editor.exportFile')}
-              </button>
-            {/if}
-          </div>
-
-          <p class="vk-faint saved-hint">
-            {dirty ? t('editor.unsaved') : t('editor.noChanges')}
-          </p>
-        </aside>
-
-        <div class="editor">
-          <nav class="rail" aria-label={t('editor.categories')}>
-            {#each CATEGORIES as item, index (item.key)}
-              <button
-                class="rail-item"
-                class:active={category === index}
-                title={t(item.hint)}
-                aria-pressed={category === index}
-                onclick={() => selectCategory(index)}
-              >
-                {#if item.icon && icons}
-                  {@const glyph = icons[item.icon.kind][editor[item.icon.field]]}
-                  {#if glyph}
-                    <span class="rail-icon">
-                      <MiiPartIcon icon={glyph} colors={iconPalette[item.icon.kind] ?? []} />
-                    </span>
-                  {/if}
-                {/if}
-                {t(item.label)}
-              </button>
-            {/each}
-          </nav>
-
-          <div class="panel vk-card">
-            <div class="panel-head">
-              <p class="panel-title">{t(current.label)}</p>
-              <p class="vk-subtitle">{t(current.hint)}</p>
-            </div>
-
-            {#each current.controls as control (control.field)}
-              {#if control.kind === 'parts'}
-                <section class="group">
-                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
-                  <div class="parts" role="radiogroup" aria-label={t(control.label)}>
-                    {#each valuesOf(control.field, editor) as value (value)}
-                      {@const glyph = icons?.[control.icon][value]}
-                      <button
-                        class="part"
-                        class:selected={editor[control.field] === value}
-                        role="radio"
-                        aria-checked={editor[control.field] === value}
-                        title={`${t(control.label)} ${value + 1}`}
-                        onclick={() => setNumber(control.field, value)}
-                      >
-                        {#if glyph}
-                          <span class="glyph">
-                            <MiiPartIcon icon={glyph} colors={iconPalette[control.icon] ?? []} />
-                          </span>
-                        {:else}
-                          <span class="part-number">{value + 1}</span>
-                        {/if}
-                      </button>
-                    {/each}
-                  </div>
-                </section>
-              {:else if control.kind === 'swatches'}
-                {@const palette = paletteOf(control.palette)}
-                <section class="group">
-                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
-                  <div class="swatches" role="radiogroup" aria-label={t(control.label)}>
-                    {#each valuesOf(control.field, editor) as value (value)}
-                      <button
-                        class="swatch"
-                        class:selected={editor[control.field] === value}
-                        role="radio"
-                        aria-checked={editor[control.field] === value}
-                        aria-label={`${t(control.label)} ${value + 1}`}
-                        title={`${t(control.label)} ${value + 1}`}
-                        style="--swatch: {palette[value] ?? '#000'}"
-                        onclick={() => setNumber(control.field, value)}
-                      ></button>
-                    {/each}
-                  </div>
-                </section>
-              {:else if control.kind === 'features'}
-                <section class="group">
-                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
-                  <div class="features" role="radiogroup" aria-label={t(control.label)}>
-                    {#each valuesOf(control.field, editor) as value (value)}
-                      <button
-                        class="feature"
-                        class:selected={editor.facialFeature === value}
-                        role="radio"
-                        aria-checked={editor.facialFeature === value}
-                        onclick={() => setNumber('facialFeature', value)}
-                      >
-                        {#if features[value]}
-                          <img src={features[value]} alt="" />
-                        {:else}
-                          <span class="feature-placeholder">
-                            <img class="silhouette" src={miiSilhouette} alt="" />
-                          </span>
-                        {/if}
-                        <span class="feature-label">
-                          {t(FACIAL_FEATURES[value] ?? 'miicat.features')}
-                        </span>
-                      </button>
-                    {/each}
-                  </div>
-                </section>
-              {:else if control.kind === 'switch'}
-                <section class="group">
-                  <p class="group-title vk-eyebrow">{t(control.label)}</p>
-                  <div class="segmented" role="radiogroup" aria-label={t(control.label)}>
-                    {#each [false, true] as value (value)}
-                      <button
-                        class="vk-btn segment"
-                        class:active={editor[control.field] === value}
-                        role="radio"
-                        aria-checked={editor[control.field] === value}
-                        onclick={() => setFlag(control.field, value)}
-                      >
-                        {value ? t(control.on) : t(control.off)}
-                      </button>
-                    {/each}
-                  </div>
-                </section>
-              {:else if control.kind === 'toggle'}
-                <label class="toggle">
-                  <input
-                    type="checkbox"
-                    checked={editor[control.field]}
-                    onchange={(event) => setFlag(control.field, event.currentTarget.checked)}
-                  />
-                  <span>{t(control.label)}</span>
-                </label>
-              {:else if control.kind === 'slider'}
-                {@const range = rangeOf(control.field, editor, limits)}
-                {@const position = sliderPosition(editor[control.field], range, control.invert)}
-                <div class="slider">
-                  <span class="slider-head">
-                    <span>{t(control.label)}</span>
-                    <strong>{position}</strong>
-                  </span>
-                  <div class="slider-row">
-                    <button
-                      class="vk-btn step"
-                      aria-label={`${t('editor.decrease')}: ${t(control.label)}`}
-                      disabled={position <= range.min}
-                      onclick={() => step(control, -1)}
-                    >
-                      −
-                    </button>
-                    <input
-                      type="range"
-                      min={range.min}
-                      max={range.max}
-                      step="1"
-                      value={position}
-                      aria-label={t(control.label)}
-                      oninput={(event) =>
-                        setNumber(
-                          control.field,
-                          sliderValue(Number(event.currentTarget.value), range, control.invert)
-                        )}
-                    />
-                    <button
-                      class="vk-btn step"
-                      aria-label={`${t('editor.increase')}: ${t(control.label)}`}
-                      disabled={position >= range.max}
-                      onclick={() => step(control, 1)}
-                    >
-                      +
-                    </button>
-                  </div>
-                </div>
-              {/if}
-            {/each}
           </div>
         </div>
       </div>
@@ -840,9 +1321,9 @@
     position: relative;
     display: flex;
     flex-direction: column;
-    width: min(1180px, 100%);
+    width: min(1260px, 100%);
     height: min(880px, 100%);
-    padding: 20px 22px 22px;
+    padding: 18px 20px 20px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-card);
     background: var(--vk-panel);
@@ -850,63 +1331,195 @@
     overflow: hidden;
   }
 
+  /* ---- Testata ---- */
+
   .head {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 16px;
     padding-bottom: 14px;
   }
 
-  .head-title {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 900;
+  .head-id {
+    min-width: 0;
   }
 
-  .head .vk-subtitle {
-    margin-top: 2px;
-    font-size: var(--vk-fs-micro);
+  .head-id .vk-eyebrow {
+    margin: 0;
+  }
+
+  .head-title {
+    margin: 2px 0 0;
+    font-size: 22px;
+    font-weight: 900;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .head-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: none;
+  }
+
+  .divider {
+    width: 1px;
+    height: 24px;
+    margin: 0 4px;
+    background: var(--vk-stroke);
+  }
+
+  .icon-btn {
+    padding: 8px 10px;
+  }
+
+  .icon-btn.active {
+    border-color: var(--vk-cyan);
+    color: var(--vk-cyan-soft);
+  }
+
+  .save {
+    min-width: 120px;
   }
 
   .loading {
     height: 100%;
   }
 
+  .inline {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    font-size: var(--vk-fs-micro);
+  }
+
   .body {
     display: grid;
-    grid-template-columns: 300px 1fr;
-    gap: 18px;
+    grid-template-columns: 92px 360px minmax(0, 1fr);
+    gap: 16px;
     min-height: 0;
     flex: 1;
   }
 
-  .side {
+  /* ---- Categorie ---- */
+
+  .rail {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 2px;
     min-height: 0;
     overflow-y: auto;
-    padding-right: 4px;
+    padding-right: 2px;
   }
 
-  .preview {
+  .rail-item {
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 6px;
-    background: var(--vk-card-gradient);
+    gap: 3px;
+    padding: 5px 4px;
+    border: 1px solid transparent;
+    border-radius: var(--vk-radius-badge);
+    background: transparent;
+    color: var(--vk-text-secondary);
+    cursor: pointer;
+    transition:
+      background var(--vk-dur-fast) var(--vk-ease),
+      border-color var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .rail-item:hover {
+    background: rgb(255 255 255 / 0.04);
+    color: var(--vk-text);
+  }
+
+  .rail-item.active {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
+    color: var(--vk-text);
+  }
+
+  /* Le icone stanno su un fondo chiaro, come nel Canale Mii: un sopracciglio
+     nero su una tessera scura non si vedrebbe. */
+  .rail-tile {
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 4px;
+    border-radius: 10px;
+    background: #dfe6f3;
+  }
+
+  .rail-tile :global(svg),
+  .rail-tile img {
+    width: 100%;
+    height: 100%;
+  }
+
+  .rail-tile img {
+    object-fit: contain;
+    opacity: 0.55;
+  }
+
+  .rail-color {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--swatch);
+    box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.25);
+  }
+
+  .rail-mole {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #3b2a24;
+  }
+
+  .rail-label {
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    text-align: center;
+    line-height: 1.15;
+  }
+
+  /* ---- Il Mii ---- */
+
+  .stage-col {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
   }
 
   .stage {
+    position: relative;
     display: grid;
     place-items: center;
-    width: 220px;
-    height: 220px;
-    border-radius: 14px;
+    width: 340px;
+    height: 340px;
+    margin: 0 auto;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-card);
+    /* Un palco con la luce del colore preferito del Mii. */
+    background:
+      radial-gradient(
+        circle at 50% 38%,
+        color-mix(in srgb, var(--accent) 26%, transparent),
+        transparent 62%
+      ),
+      linear-gradient(180deg, #16223a, #0c1322);
     outline: none;
     touch-action: none;
     user-select: none;
+    overflow: hidden;
+    transition: border-color var(--vk-dur-fast) var(--vk-ease);
   }
 
   .stage.rotatable {
@@ -917,62 +1530,103 @@
     cursor: grabbing;
   }
 
+  .stage.comparing {
+    border-color: var(--vk-warning);
+  }
+
   .stage:focus-visible {
     box-shadow: 0 0 0 2px var(--vk-cyan);
   }
 
-  .stage.body-shot {
-    height: 260px;
-  }
-
-  .stage img {
-    max-width: 100%;
-    max-height: 100%;
-    object-fit: contain;
-    filter: drop-shadow(0 6px 18px rgb(0 0 0 / 0.35));
+  .floor {
+    position: absolute;
+    left: 50%;
+    bottom: 22px;
+    width: 58%;
+    height: 26px;
+    border-radius: 50%;
+    background: radial-gradient(closest-side, rgb(0 0 0 / 0.5), transparent);
+    transform: translateX(-50%);
     pointer-events: none;
   }
 
-  .silhouette {
-    opacity: 0.35;
+  .stage canvas,
+  .stage img {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    pointer-events: none;
   }
 
-  .shots {
+  .stage canvas.hidden {
+    position: absolute;
+    visibility: hidden;
+  }
+
+  .silhouette {
+    opacity: 0.3;
+    transform: scale(0.6);
+  }
+
+  .stage-badge {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--vk-warning) 22%, #0c1322);
+    color: var(--vk-warning);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stage-bar {
     display: flex;
-    flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
     gap: 6px;
   }
 
-  .shot {
-    padding: 4px 12px;
+  .segmented {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: 999px;
+    background: var(--vk-input);
+  }
+
+  .segmented button {
+    padding: 5px 12px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    font: inherit;
+    font-size: var(--vk-fs-micro);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .segmented button.active {
+    background: var(--vk-active-surface);
+    color: var(--vk-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vk-cyan) 40%, transparent);
+  }
+
+  .segmented.wide button {
+    padding: 7px 22px;
+  }
+
+  .expression {
+    width: auto;
+    padding: 6px 8px;
     font-size: var(--vk-fs-micro);
   }
 
-  .shot.active,
-  .segment.active {
-    border-color: transparent;
-    background:
-      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
-      var(--vk-rainbow) border-box;
-    background-size:
-      auto,
-      220% 100%;
-    animation: vk-rainbow-edge 8s ease-in-out infinite;
-    box-shadow:
-      0 0 14px rgb(255 0 102 / 0.22),
-      0 0 14px rgb(0 242 255 / 0.18);
-    color: var(--vk-text);
-  }
-
-  .preview-name {
-    margin: 4px 0 0;
-    font-size: 20px;
-    font-weight: 900;
-  }
-
-  .preview-meta,
-  .preview-status {
+  .status {
     margin: 0;
     font-size: var(--vk-fs-eyebrow);
     text-align: center;
@@ -999,10 +1653,34 @@
     font-size: var(--vk-fs-eyebrow);
   }
 
+  .identity {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+
   .field {
     display: flex;
     flex-direction: column;
     gap: 5px;
+  }
+
+  .field-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+  }
+
+  .counter {
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    color: var(--vk-text-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .counter.full {
+    color: var(--vk-warning);
   }
 
   .name-row {
@@ -1022,7 +1700,7 @@
 
   .symbols {
     display: grid;
-    grid-template-columns: repeat(8, 1fr);
+    grid-template-columns: repeat(9, 1fr);
     gap: 4px;
     padding: 8px;
     border: 1px solid var(--vk-stroke);
@@ -1045,90 +1723,26 @@
     border-color: #3a4c74;
   }
 
-  .actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 8px;
-  }
-
-  .actions .export {
-    grid-column: 1 / -1;
-  }
-
-  .inline {
-    padding: 10px 12px;
-    font-size: var(--vk-fs-micro);
-  }
-
-  .saved-hint {
-    margin: 0;
-    font-size: var(--vk-fs-eyebrow);
-  }
-
-  .editor {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    min-height: 0;
-  }
-
-  .rail {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-
-  .rail-item {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border: 1px solid var(--vk-stroke);
-    border-radius: var(--vk-radius-badge);
-    background: #111a2c;
-    font-size: var(--vk-fs-micro);
-    font-weight: 800;
-    transition: border-color var(--vk-dur-fast) var(--vk-ease);
-  }
-
-  .rail-item:hover {
-    border-color: #3a4c74;
-  }
-
-  .rail-icon {
-    display: inline-block;
-    width: 22px;
-    height: 22px;
-    padding: 2px;
-    border-radius: 6px;
-    background: #dfe6f3;
-  }
-
-  .rail-item.active {
-    border-color: transparent;
-    background:
-      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
-      var(--vk-rainbow) border-box;
-    background-size:
-      auto,
-      220% 100%;
-    animation: vk-rainbow-edge 8s ease-in-out infinite;
-    box-shadow:
-      0 0 14px rgb(255 0 102 / 0.22),
-      0 0 14px rgb(0 242 255 / 0.18);
-    color: var(--vk-text);
-  }
+  /* ---- Controlli ---- */
 
   .panel {
-    flex: 1;
     min-height: 0;
     overflow-y: auto;
   }
 
+  .panel-head {
+    margin-bottom: 4px;
+  }
+
   .panel-title {
     margin: 0;
-    font-size: 22px;
+    font-size: 20px;
     font-weight: 900;
+  }
+
+  .panel-hint {
+    margin: 2px 0 0;
+    font-size: var(--vk-fs-micro);
   }
 
   .group {
@@ -1139,12 +1753,11 @@
     margin: 0 0 8px;
   }
 
-  /* Le icone stanno su un fondo chiaro, come nel Canale Mii: un sopracciglio
-     nero su una tessera scura non si vedrebbe. */
   .parts {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(62px, 1fr));
+    grid-template-columns: repeat(auto-fill, minmax(58px, 1fr));
     gap: 8px;
+    outline: none;
   }
 
   .part {
@@ -1168,6 +1781,11 @@
     border-color: #8fb6ff;
   }
 
+  .part:focus-visible {
+    outline: 2px solid var(--vk-cyan);
+    outline-offset: 2px;
+  }
+
   .part.selected {
     border-color: var(--vk-cyan);
     background: #f4f8ff;
@@ -1189,14 +1807,15 @@
   }
 
   .swatches {
-    display: flex;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, 38px);
     gap: 8px;
+    outline: none;
   }
 
   .swatch {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     border: 2px solid rgb(255 255 255 / 0.18);
     border-radius: 50%;
     background: var(--swatch);
@@ -1207,6 +1826,11 @@
 
   .swatch:hover {
     transform: scale(1.08);
+  }
+
+  .swatch:focus-visible {
+    outline: 2px solid var(--vk-cyan);
+    outline-offset: 2px;
   }
 
   .swatch.selected {
@@ -1264,38 +1888,40 @@
     text-align: center;
   }
 
-  .segmented {
-    display: inline-flex;
-    gap: 6px;
-  }
-
-  .segment {
-    padding: 6px 16px;
-    font-size: var(--vk-fs-micro);
-  }
-
   .toggle {
-    display: inline-flex;
+    display: flex;
     align-items: center;
-    gap: 8px;
+    justify-content: space-between;
+    gap: 12px;
+    max-width: 520px;
     margin-top: 16px;
-    margin-right: 18px;
+    padding: 10px 14px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-badge);
     font-size: var(--vk-fs-small);
     font-weight: 700;
   }
 
-  .toggle input {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--vk-cyan);
+  .date {
+    display: flex;
+    gap: 8px;
+    max-width: 360px;
+  }
+
+  .date select {
+    flex: 1;
+  }
+
+  .date .day {
+    flex: 0 0 90px;
   }
 
   .slider {
     display: flex;
     flex-direction: column;
     gap: 4px;
-    margin-top: 14px;
     max-width: 520px;
+    margin-top: 14px;
   }
 
   .slider-head {
@@ -1308,6 +1934,7 @@
   .slider-head strong {
     color: var(--vk-cyan-soft);
     font-weight: 900;
+    font-variant-numeric: tabular-nums;
   }
 
   .slider-row {
@@ -1326,15 +1953,77 @@
     line-height: 1;
   }
 
+  /* Il cursore si riempie di arcobaleno fino al valore scelto. */
   .slider input {
     width: 100%;
+    height: 6px;
+    border-radius: 999px;
+    background:
+      linear-gradient(90deg, var(--vk-cyan), #ff0066) 0 0 / var(--fill) 100% no-repeat,
+      var(--vk-input);
     accent-color: var(--vk-cyan);
+    appearance: none;
+    cursor: pointer;
   }
 
-  @media (max-width: 980px) {
+  .slider input::-webkit-slider-thumb {
+    width: 16px;
+    height: 16px;
+    border: 2px solid #fff;
+    border-radius: 50%;
+    background: var(--vk-cyan);
+    box-shadow: 0 0 10px rgb(0 242 255 / 0.5);
+    appearance: none;
+  }
+
+  /* ---- Chiusura con modifiche ---- */
+
+  .confirm-layer {
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    display: grid;
+    place-items: center;
+    background: rgb(4 7 14 / 0.6);
+    animation: fade var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .confirm {
+    width: min(460px, calc(100% - 40px));
+    padding: 20px 22px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-card);
+    background: var(--vk-panel);
+    box-shadow: var(--vk-shadow-modal);
+  }
+
+  .confirm h3 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 900;
+  }
+
+  .confirm p {
+    margin: 8px 0 0;
+    font-size: var(--vk-fs-small);
+  }
+
+  .confirm-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 18px;
+  }
+
+  @media (max-width: 1080px) {
     .body {
-      grid-template-columns: 1fr;
+      grid-template-columns: 80px minmax(0, 1fr);
       overflow-y: auto;
+    }
+
+    .panel {
+      grid-column: 1 / -1;
+      overflow: visible;
     }
   }
 
@@ -1344,6 +2033,18 @@
     }
     to {
       opacity: 1;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .overlay,
+    .confirm-layer {
+      animation: none;
+    }
+
+    .part:hover,
+    .swatch:hover {
+      transform: none;
     }
   }
 </style>

@@ -8,6 +8,10 @@
    * `Wii/shared2/Pulsar/<modpack>/Ghosts/<crc>/150/` — e compare in Time
    * Trial la prossima volta che si apre la pista (§D-087).
    *
+   * Il nome mostrato è quello del giocatore, cioè del Mii che ha corso: il
+   * server manda anche il profilo con cui il tempo è stato caricato, che
+   * spesso è quello di sistema e non si mostra mai (vedi `ghosts.rs`).
+   *
    * Dal frontend non passa nessun indirizzo: si mandano al backend gli id
    * della pista e del tempo, e il file lo scarica, lo controlla e lo scrive
    * lui.
@@ -38,6 +42,8 @@
   let boardError = $state('');
   /** Tempi il cui ghost si sta scaricando o togliendo. */
   let working = $state<number[]>([]);
+  /** Il tempo di cui si vedono i dettagli. */
+  let expanded = $state<number | null>(null);
 
   const BLOCKERS: Record<Exclude<GhostBlocker, ''>, TranslationKey> = {
     'no-user-folder': 'ghosts.blocker.noUserFolder',
@@ -57,17 +63,43 @@
     [...new Set((catalog?.tracks ?? []).map((track) => track.category).filter(Boolean))].sort()
   );
 
-  const tracks = $derived(
-    (catalog?.tracks ?? []).filter((track) => {
-      const needle = query.trim().toLowerCase();
+  /**
+   * Le piste che si vedono. Quelle con un record vengono prima: sono le
+   * poche con qualcosa da battere, e altrimenti si perderebbero fra le
+   * duecento che non ne hanno ancora uno.
+   */
+  const tracks = $derived.by(() => {
+    const needle = query.trim().toLowerCase();
+    const shown = (catalog?.tracks ?? []).filter((track) => {
       if (needle && !track.name.toLowerCase().includes(needle)) return false;
       if (category !== 'all' && track.category !== category) return false;
       if (onlyRecords && !track.record) return false;
       return true;
-    })
-  );
+    });
+    return [...shown].sort((a, b) => Number(b.record !== null) - Number(a.record !== null));
+  });
 
   const withRecord = $derived((catalog?.tracks ?? []).filter((track) => track.record).length);
+
+  /**
+   * La categoria della maggior parte delle piste. Scritta su duecento card
+   * non dice niente: si mostra solo quella delle altre, che è l'eccezione.
+   */
+  const commonCategory = $derived.by(() => {
+    const counts: Record<string, number> = {};
+    for (const track of catalog?.tracks ?? []) {
+      counts[track.category] = (counts[track.category] ?? 0) + 1;
+    }
+    return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] ?? '';
+  });
+  const filtering = $derived(query.trim() !== '' || category !== 'all' || onlyRecords);
+
+  /** Il tempo da cui si misura il distacco: il primo della classifica. */
+  const leaderMs = $derived.by(() => {
+    const first = board?.entries[0];
+    if (first && first.rank === 1) return first.finishTimeMs;
+    return selected?.record?.finishTimeMs ?? null;
+  });
 
   $effect(() => {
     void load(false);
@@ -93,6 +125,7 @@
     selected = track;
     boardLoading = true;
     boardError = '';
+    expanded = null;
     if (page === 1) board = null;
     try {
       board = await api.fetchGhostLeaderboard(track.id, page);
@@ -109,6 +142,7 @@
     selected = null;
     board = null;
     boardError = '';
+    expanded = null;
   }
 
   function blockerText(blocker: GhostBlocker): string {
@@ -123,33 +157,55 @@
     return null;
   }
 
-  function setInstalled(entry: GhostEntryView, installed: boolean, count: number) {
+  function playerName(name: string): string {
+    return name || t('ghosts.unknownPlayer');
+  }
+
+  /** Aggiorna una pista ovunque compaia: lista, testata e classifica. */
+  function patchTrack(trackId: number, update: (track: GhostTrackView) => GhostTrackView) {
+    if (selected?.id === trackId) selected = update(selected);
+    if (board?.track.id === trackId) board = { ...board, track: update(board.track) };
+    if (catalog) {
+      catalog = {
+        ...catalog,
+        tracks: catalog.tracks.map((track) => (track.id === trackId ? update(track) : track))
+      };
+    }
+  }
+
+  function setInstalled(trackId: number, submissionId: number, installed: boolean, count: number) {
     if (board) {
       board = {
         ...board,
         entries: board.entries.map((item) =>
-          item.submissionId === entry.submissionId ? { ...item, installed } : item
+          item.submissionId === submissionId ? { ...item, installed } : item
         )
       };
     }
-    const update = (track: GhostTrackView) =>
-      track.id === selected?.id ? { ...track, installedCount: count } : track;
-    if (selected) selected = update(selected);
-    if (catalog) catalog = { ...catalog, tracks: catalog.tracks.map(update) };
+    patchTrack(trackId, (track) => ({
+      ...track,
+      installedCount: count,
+      record:
+        track.record?.submissionId === submissionId ? { ...track.record, installed } : track.record
+    }));
   }
 
-  async function install(entry: GhostEntryView) {
-    if (!selected || working.includes(entry.submissionId)) return;
-    const track = selected;
-    working = [...working, entry.submissionId];
+  async function download(
+    track: GhostTrackView,
+    submissionId: number,
+    player: string,
+    time: string
+  ): Promise<void> {
+    if (working.includes(submissionId)) return;
+    working = [...working, submissionId];
     try {
-      const outcome = await api.installGhost(track.id, entry.submissionId);
-      setInstalled(entry, true, outcome.installedCount);
+      const outcome = await api.installGhost(track.id, submissionId);
+      setInstalled(track.id, submissionId, true, outcome.installedCount);
       app.toast(
         outcome.alreadyPresent ? t('ghosts.alreadyInstalled') : t('ghosts.installed'),
         t('ghosts.installedBody', {
-          player: entry.playerName,
-          time: entry.finishTime,
+          player: playerName(player),
+          time,
           track: outcome.trackName
         }),
         'success'
@@ -157,17 +213,22 @@
     } catch (caught) {
       app.toast(t('ghosts.installFailed'), api.errorMessage(caught), 'warning');
     } finally {
-      working = working.filter((id) => id !== entry.submissionId);
+      working = working.filter((id) => id !== submissionId);
     }
   }
 
   async function remove(entry: GhostEntryView) {
-    if (working.includes(entry.submissionId)) return;
+    if (!selected || working.includes(entry.submissionId)) return;
+    const trackId = selected.id;
     working = [...working, entry.submissionId];
     try {
       const left = await api.removeGhost(entry.submissionId);
-      setInstalled(entry, false, left);
-      app.toast(t('ghosts.removed'), t('ghosts.removedBody', { player: entry.playerName }), 'info');
+      setInstalled(trackId, entry.submissionId, false, left);
+      app.toast(
+        t('ghosts.removed'),
+        t('ghosts.removedBody', { player: playerName(entry.playerName) }),
+        'info'
+      );
     } catch (caught) {
       app.toast(t('home.operationFailed'), api.errorMessage(caught), 'warning');
     } finally {
@@ -185,6 +246,17 @@
 
   function medal(rank: number): string {
     return rank === 1 ? 'gold' : rank === 2 ? 'silver' : rank === 3 ? 'bronze' : '';
+  }
+
+  /** Distacco dal primo, come lo scrive il sito: `+0.412`, `+1:02.310`. */
+  function gap(ms: number): string {
+    const minutes = Math.floor(ms / 60_000);
+    const seconds = ((ms % 60_000) / 1000).toFixed(3);
+    return minutes > 0 ? `+${minutes}:${seconds.padStart(6, '0')}` : `+${seconds}`;
+  }
+
+  function toggle(entry: GhostEntryView) {
+    expanded = expanded === entry.submissionId ? null : entry.submissionId;
   }
 
   function onKeydown(event: KeyboardEvent) {
@@ -211,27 +283,30 @@
         <h2 class="vk-title">{track.name}</h2>
       </div>
 
-      <div class="track-side">
-        {#if track.record}
-          <div class="record">
-            <span class="vk-eyebrow">{t('ghosts.record')}</span>
-            <strong class="record-time">{track.record.finishTime}</strong>
-            <span class="vk-faint">
-              {#if track.record.country}<span class="flag">{track.record.country}</span>{/if}
-              {track.record.playerName}
-            </span>
-          </div>
-        {/if}
-        {#if track.installable}
-          <button class="vk-btn" onclick={() => openFolder(track.id)}>
-            <Icon name="folder" size={14} />
-            {t('ghosts.folder')}
-            {#if track.installedCount > 0}
-              <span class="count">{track.installedCount}</span>
-            {/if}
-          </button>
-        {/if}
-      </div>
+      {#if track.record}
+        <div class="record">
+          <span class="vk-eyebrow">{t('ghosts.record')}</span>
+          <strong class="record-time">{track.record.finishTime}</strong>
+          <span class="record-holder">
+            {#if track.record.country}<span class="flag">{track.record.country}</span>{/if}
+            {playerName(track.record.playerName)}
+          </span>
+        </div>
+      {/if}
+
+      {#if track.installable}
+        <button
+          class="vk-btn folder"
+          onclick={() => openFolder(track.id)}
+          title={t('ghosts.whereHint')}
+        >
+          <Icon name="folder" size={14} />
+          {t('ghosts.folder')}
+          {#if track.installedCount > 0}
+            <span class="count">{track.installedCount}</span>
+          {/if}
+        </button>
+      {/if}
     </section>
 
     {#if !track.installable}
@@ -247,8 +322,6 @@
           </button>
         {/if}
       </div>
-    {:else}
-      <p class="vk-faint hint">{t('ghosts.whereHint')}</p>
     {/if}
 
     {#if boardLoading && !board}
@@ -271,79 +344,122 @@
           <span>#</span>
           <span>{t('ghosts.col.player')}</span>
           <span class="num">{t('ghosts.col.time')}</span>
-          <span class="num">{t('ghosts.col.lap')}</span>
           <span>{t('ghosts.col.combo')}</span>
-          <span>{t('ghosts.col.date')}</span>
           <span class="num">{t('ghosts.col.ghost')}</span>
         </div>
 
         <ul class="rows">
           {#each board.entries as entry (entry.submissionId)}
             {@const busy = working.includes(entry.submissionId)}
-            <li class="row entry" class:mine={entry.installed}>
-              <span class="rank {medal(entry.rank)}">{entry.rank}</span>
-              <span class="player">
-                {#if entry.country}
-                  <span class="flag" title={entry.countryName || entry.country}>
-                    {entry.country}
+            {@const open = expanded === entry.submissionId}
+            <li class="entry" class:mine={entry.installed} class:open>
+              <div class="row">
+                <span class="rank {medal(entry.rank)}">{entry.rank}</span>
+
+                <!-- Il nome apre i dettagli del tempo: giri, controller, data. -->
+                <button
+                  class="player"
+                  aria-expanded={open}
+                  title={t('ghosts.details')}
+                  onclick={() => toggle(entry)}
+                >
+                  {#if entry.country}
+                    <span class="flag" title={entry.countryName || entry.country}>
+                      {entry.country}
+                    </span>
+                  {/if}
+                  <strong class="player-name">{playerName(entry.playerName)}</strong>
+                  {#if entry.profileName}
+                    <span class="profile" title={entry.profileName}>{entry.profileName}</span>
+                  {/if}
+                  <span class="caret" class:up={open} aria-hidden="true">
+                    <Icon name="chevron" size={12} />
                   </span>
-                {/if}
-                <span class="player-id">
-                  <strong class="player-name">{entry.playerName}</strong>
-                  {#if entry.miiName && entry.miiName !== entry.playerName}
-                    <span class="vk-faint mii">{entry.miiName}</span>
+                </button>
+
+                <span class="num time-cell">
+                  <strong class="time">{entry.finishTime}</strong>
+                  {#if leaderMs !== null && entry.finishTimeMs > leaderMs}
+                    <span class="gap">{gap(entry.finishTimeMs - leaderMs)}</span>
                   {/if}
                 </span>
-              </span>
-              <span
-                class="num time"
-                title={entry.lapSplits.length > 0
-                  ? t('ghosts.splits', { laps: entry.lapSplits.join(' · ') })
-                  : undefined}
-              >
-                {entry.finishTime}
-              </span>
-              <span class="num vk-faint">{entry.fastestLap || t('common.dash')}</span>
-              <span class="combo">
-                <span>{entry.character || t('common.dash')}</span>
-                <span class="vk-faint">
-                  {entry.vehicle}
+
+                <span class="combo">
+                  {entry.character || t('common.dash')}
+                  {#if entry.vehicle}<span class="vk-faint"> · {entry.vehicle}</span>{/if}
+                </span>
+
+                <span class="num action">
+                  {#if entry.installed}
+                    <span class="vk-badge vk-badge--success installed">
+                      <Icon name="check" size={12} />
+                      {t('ghosts.installedBadge')}
+                    </span>
+                    <button
+                      class="vk-btn vk-btn--danger icon-btn"
+                      title={t('ghosts.remove')}
+                      aria-label={t('ghosts.remove')}
+                      onclick={() => remove(entry)}
+                      disabled={busy}
+                    >
+                      <Icon name="trash" size={13} />
+                    </button>
+                  {:else}
+                    <button
+                      class="vk-btn vk-btn--primary small"
+                      onclick={() =>
+                        download(track, entry.submissionId, entry.playerName, entry.finishTime)}
+                      disabled={busy || !track.installable}
+                      title={track.installable
+                        ? t('ghosts.downloadHint')
+                        : blockerText(track.blocker)}
+                    >
+                      <Icon name="download" size={13} />
+                      {busy ? t('ghosts.downloading') : t('ghosts.download')}
+                    </button>
+                  {/if}
+                </span>
+              </div>
+
+              {#if open}
+                <dl class="details">
+                  {#if entry.lapSplits.length > 0}
+                    <div>
+                      <dt>{t('ghosts.detail.laps')}</dt>
+                      <dd class="splits">
+                        {#each entry.lapSplits as lap, index (index)}
+                          <span class:best={lap === entry.fastestLap}>{lap}</span>
+                        {/each}
+                      </dd>
+                    </div>
+                  {/if}
+                  {#if entry.fastestLap}
+                    <div>
+                      <dt>{t('ghosts.detail.bestLap')}</dt>
+                      <dd>{entry.fastestLap}</dd>
+                    </div>
+                  {/if}
                   {#if CONTROLLERS[entry.controller]}
-                    · {t(CONTROLLERS[entry.controller]!)}
+                    <div>
+                      <dt>{t('ghosts.detail.controller')}</dt>
+                      <dd>{t(CONTROLLERS[entry.controller]!)}</dd>
+                    </div>
                   {/if}
-                  {#if entry.shroomless}· {t('ghosts.shroomless')}{/if}
-                </span>
-              </span>
-              <span class="vk-faint date">{entry.dateSet ? formatDate(entry.dateSet) : ''}</span>
-              <span class="num action">
-                {#if entry.installed}
-                  <span class="vk-badge vk-badge--success installed">
-                    <Icon name="check" size={12} />
-                    {t('ghosts.installedBadge')}
-                  </span>
-                  <button
-                    class="vk-btn vk-btn--danger icon-btn"
-                    title={t('ghosts.remove')}
-                    aria-label={t('ghosts.remove')}
-                    onclick={() => remove(entry)}
-                    disabled={busy}
-                  >
-                    <Icon name="trash" size={13} />
-                  </button>
-                {:else}
-                  <button
-                    class="vk-btn vk-btn--primary small"
-                    onclick={() => install(entry)}
-                    disabled={busy || !track.installable}
-                    title={track.installable
-                      ? t('ghosts.downloadHint')
-                      : blockerText(track.blocker)}
-                  >
-                    <Icon name="download" size={13} />
-                    {busy ? t('ghosts.downloading') : t('ghosts.download')}
-                  </button>
-                {/if}
-              </span>
+                  <div>
+                    <dt>{t('ghosts.detail.drift')}</dt>
+                    <dd>
+                      {entry.automaticDrift ? t('ghosts.drift.auto') : t('ghosts.drift.manual')}
+                      {#if entry.shroomless}· {t('ghosts.shroomless')}{/if}
+                    </dd>
+                  </div>
+                  {#if entry.dateSet}
+                    <div>
+                      <dt>{t('ghosts.detail.date')}</dt>
+                      <dd>{formatDate(entry.dateSet)}</dd>
+                    </div>
+                  {/if}
+                </dl>
+              {/if}
             </li>
           {/each}
         </ul>
@@ -383,58 +499,71 @@
     <!-- ── LISTA DELLE PISTE ─────────────────────────────────────────── -->
     <div class="toolbar">
       <input class="vk-input search" bind:value={query} placeholder={t('ghosts.search')} />
-      <button class="vk-btn" onclick={() => load(true)} disabled={loading}>
-        <Icon name="refresh" size={14} />
-        {loading ? t('common.refreshing') : t('common.refreshAction')}
+
+      {#if categories.length > 1}
+        <div class="segmented" role="group" aria-label={t('ghosts.track')}>
+          <button class:active={category === 'all'} onclick={() => (category = 'all')}>
+            {t('ghosts.allTracks')}
+          </button>
+          {#each categories as item (item)}
+            <button class:active={category === item} onclick={() => (category = item)}>
+              {item}
+            </button>
+          {/each}
+        </div>
+      {/if}
+
+      <button
+        class="chip"
+        class:active={onlyRecords}
+        aria-pressed={onlyRecords}
+        onclick={() => (onlyRecords = !onlyRecords)}
+        disabled={withRecord === 0}
+      >
+        <Icon name="stopwatch" size={12} />
+        {t('ghosts.onlyRecords', { count: withRecord })}
+      </button>
+
+      <span class="vk-spacer"></span>
+
+      <button
+        class="vk-btn icon-btn"
+        onclick={() => load(true)}
+        disabled={loading}
+        title={t('common.refreshAction')}
+        aria-label={t('common.refreshAction')}
+      >
+        <span class:spinning={loading}><Icon name="refresh" size={15} /></span>
       </button>
       {#if catalog && !catalog.blocker}
-        <button class="vk-btn" onclick={() => openFolder()} title={t('ghosts.allFoldersHint')}>
-          <Icon name="folder" size={14} />
-          {t('ghosts.allFolders')}
+        <button
+          class="vk-btn icon-btn"
+          onclick={() => openFolder()}
+          title={t('ghosts.allFoldersHint')}
+          aria-label={t('ghosts.allFolders')}
+        >
+          <Icon name="folder" size={15} />
         </button>
       {/if}
     </div>
 
-    {#if catalog}
-      <div class="filters">
-        <button class="chip" class:active={category === 'all'} onclick={() => (category = 'all')}>
-          {t('ghosts.allTracks')}
-        </button>
-        {#each categories as item (item)}
-          <button class="chip" class:active={category === item} onclick={() => (category = item)}>
-            {item}
+    {#if catalog?.blocker}
+      <div class="notice">
+        <Icon name="warning" size={16} />
+        <p>{blockerText(catalog.blocker)}</p>
+        {#if blockerRoute(catalog.blocker)}
+          <button
+            class="vk-btn"
+            onclick={() => app.navigate(blockerRoute(catalog!.blocker) ?? 'mods')}
+          >
+            {t('ghosts.fix')}
           </button>
-        {/each}
-        <span class="vk-spacer"></span>
-        <button
-          class="chip"
-          class:active={onlyRecords}
-          onclick={() => (onlyRecords = !onlyRecords)}
-          disabled={withRecord === 0}
-        >
-          <Icon name="stopwatch" size={12} />
-          {t('ghosts.onlyRecords', { count: withRecord })}
-        </button>
+        {/if}
       </div>
+    {/if}
 
-      {#if catalog.blocker}
-        <div class="notice">
-          <Icon name="warning" size={16} />
-          <p>{blockerText(catalog.blocker)}</p>
-          {#if blockerRoute(catalog.blocker)}
-            <button
-              class="vk-btn"
-              onclick={() => app.navigate(blockerRoute(catalog!.blocker) ?? 'mods')}
-            >
-              {t('ghosts.fix')}
-            </button>
-          {/if}
-        </div>
-      {/if}
-
-      {#if !catalog.recordsAvailable}
-        <p class="vk-faint hint">{t('ghosts.recordsUnavailable')}</p>
-      {/if}
+    {#if catalog && !catalog.recordsAvailable}
+      <p class="vk-faint hint">{t('ghosts.recordsUnavailable')}</p>
     {/if}
 
     {#if loading && !catalog}
@@ -451,23 +580,27 @@
         <p>{catalog.tracks.length === 0 ? t('ghosts.noTracks') : t('ghosts.noMatch')}</p>
       </div>
     {:else if catalog}
-      <p class="vk-faint count-line">
-        {t('ghosts.count', { shown: tracks.length, total: catalog.tracks.length })}
-        · {catalog.channel} · {catalog.cc}cc
-      </p>
+      {#if filtering}
+        <p class="vk-faint hint">
+          {t('ghosts.count', { shown: tracks.length, total: catalog.tracks.length })}
+        </p>
+      {/if}
 
       <ul class="grid">
         {#each tracks as track (track.id)}
-          <li>
-            <button
-              class="track"
-              class:has-record={track.record !== null}
-              class:unavailable={!track.installable && track.blocker === 'track-not-in-modpack'}
-              onclick={() => openTrack(track)}
-              title={track.installable ? '' : blockerText(track.blocker)}
-            >
+          {@const record = track.record}
+          <li
+            class="track"
+            class:has-record={record !== null}
+            class:unavailable={!track.installable && track.blocker === 'track-not-in-modpack'}
+            title={track.installable ? undefined : blockerText(track.blocker)}
+          >
+            <!-- Il pulsante copre tutta la card; l'azione sul record sta sopra. -->
+            <button class="track-open" onclick={() => openTrack(track)}>
               <span class="track-top">
-                <span class="vk-badge track-category">{track.category || '—'}</span>
+                {#if track.category && track.category !== commonCategory}
+                  <span class="vk-badge track-category">{track.category}</span>
+                {/if}
                 <span class="vk-faint laps">{t('ghosts.laps', { count: track.laps })}</span>
                 {#if track.installedCount > 0}
                   <span
@@ -479,21 +612,38 @@
                   </span>
                 {/if}
               </span>
-
               <span class="track-name">{track.name}</span>
-
-              {#if track.record}
-                <span class="track-record">
-                  <strong>{track.record.finishTime}</strong>
-                  <span class="vk-faint">
-                    {#if track.record.country}<span class="flag">{track.record.country}</span>{/if}
-                    {track.record.playerName}
-                  </span>
-                </span>
-              {:else}
-                <span class="vk-faint track-record empty">{t('ghosts.noRecord')}</span>
-              {/if}
             </button>
+
+            {#if record}
+              <div class="track-record">
+                <strong>{record.finishTime}</strong>
+                <span class="holder">
+                  {#if record.country}<span class="flag">{record.country}</span>{/if}
+                  {playerName(record.playerName)}
+                </span>
+                {#if track.installable}
+                  {#if record.installed}
+                    <span class="record-done" title={t('ghosts.recordInstalled')}>
+                      <Icon name="check" size={13} label={t('ghosts.recordInstalled')} />
+                    </span>
+                  {:else}
+                    <button
+                      class="vk-btn icon-btn record-get"
+                      title={t('ghosts.downloadRecord')}
+                      aria-label={t('ghosts.downloadRecord')}
+                      disabled={working.includes(record.submissionId)}
+                      onclick={() =>
+                        download(track, record.submissionId, record.playerName, record.finishTime)}
+                    >
+                      <Icon name="download" size={13} />
+                    </button>
+                  {/if}
+                {/if}
+              </div>
+            {:else}
+              <span class="vk-faint track-record empty">{t('ghosts.noRecord')}</span>
+            {/if}
           </li>
         {/each}
       </ul>
@@ -511,27 +661,48 @@
 
   .toolbar {
     display: flex;
+    align-items: center;
     gap: 10px;
     flex-wrap: wrap;
   }
 
   .search {
-    flex: 1;
-    min-width: 220px;
+    flex: 1 1 220px;
+    min-width: 200px;
+    max-width: 420px;
   }
 
-  .filters {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-wrap: wrap;
+  /* Categorie: una scelta sola fra poche, quindi un controllo segmentato. */
+  .segmented {
+    display: inline-flex;
+    padding: 3px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: 999px;
+    background: var(--vk-input);
+  }
+
+  .segmented button {
+    padding: 5px 14px;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    font-size: var(--vk-fs-micro);
+    font-weight: 800;
+    cursor: pointer;
+  }
+
+  .segmented button.active {
+    background: var(--vk-active-surface);
+    color: var(--vk-text);
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vk-cyan) 40%, transparent);
   }
 
   .chip {
     display: inline-flex;
     align-items: center;
     gap: 5px;
-    padding: 5px 12px;
+    padding: 6px 12px;
     border: 1px solid var(--vk-stroke);
     border-radius: 999px;
     background: transparent;
@@ -558,6 +729,15 @@
     color: var(--vk-text);
   }
 
+  .icon-btn {
+    padding: 7px 9px;
+  }
+
+  .spinning {
+    display: inline-flex;
+    animation: spin 1s linear infinite;
+  }
+
   .notice {
     display: flex;
     align-items: center;
@@ -575,8 +755,7 @@
     margin: 0;
   }
 
-  .hint,
-  .count-line {
+  .hint {
     margin: 0;
     font-size: var(--vk-fs-micro);
   }
@@ -597,17 +776,14 @@
   }
 
   .track {
+    position: relative;
     display: flex;
     flex-direction: column;
     gap: 10px;
-    width: 100%;
-    height: 100%;
     padding: 14px 16px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-card);
     background: var(--vk-panel-soft);
-    color: inherit;
-    text-align: left;
     transition:
       transform var(--vk-dur-fast) var(--vk-ease),
       border-color var(--vk-dur-fast) var(--vk-ease),
@@ -617,6 +793,10 @@
   .track:hover {
     transform: translateY(-2px);
     border-color: #3a4c74;
+  }
+
+  .track:focus-within {
+    border-color: var(--vk-cyan);
   }
 
   /* Una pista con un record ha qualcosa da battere: si accende. */
@@ -629,16 +809,34 @@
     opacity: 0.55;
   }
 
+  .track-open {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+    outline: none;
+  }
+
+  /* Tutta la card apre la pista, non solo il titolo. */
+  .track-open::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+  }
+
   .track-top {
     display: flex;
     align-items: center;
     gap: 8px;
   }
 
-  .track-category {
-    font-size: var(--vk-fs-eyebrow);
-  }
-
+  .track-category,
   .laps {
     font-size: var(--vk-fs-eyebrow);
   }
@@ -659,11 +857,11 @@
 
   .track-record {
     display: flex;
-    align-items: baseline;
+    align-items: center;
     gap: 8px;
     margin-top: auto;
-    font-size: var(--vk-fs-micro);
     min-width: 0;
+    font-size: var(--vk-fs-micro);
   }
 
   .track-record strong {
@@ -673,14 +871,39 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .track-record .vk-faint {
+  .holder {
+    flex: 1;
+    min-width: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    font-weight: 700;
   }
 
   .track-record.empty {
-    font-style: italic;
+    font-size: var(--vk-fs-eyebrow);
+  }
+
+  /* L'azione sul record sta sopra il pulsante che copre la card. */
+  .record-get,
+  .record-done {
+    position: relative;
+    z-index: 1;
+    flex: none;
+  }
+
+  .record-get {
+    padding: 5px 7px;
+  }
+
+  .record-done {
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border-radius: 8px;
+    color: var(--vk-success);
+    background: color-mix(in srgb, var(--vk-success) 14%, transparent);
   }
 
   .flag {
@@ -723,13 +946,6 @@
     margin: 2px 0 0;
   }
 
-  .track-side {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-
   .record {
     display: flex;
     flex-direction: column;
@@ -739,12 +955,16 @@
   }
 
   .record-time {
-    font-size: 24px;
+    font-size: 26px;
     font-weight: 900;
     line-height: 1;
     color: #ffd166;
     font-variant-numeric: tabular-nums;
     text-shadow: 0 0 14px rgb(255 209 102 / 0.35);
+  }
+
+  .record-holder {
+    font-weight: 800;
   }
 
   .count {
@@ -778,10 +998,10 @@
 
   .row {
     display: grid;
-    grid-template-columns: 44px minmax(0, 1.4fr) 92px 84px minmax(0, 1.3fr) 96px 150px;
+    grid-template-columns: 44px minmax(0, 1.6fr) 112px minmax(0, 1.2fr) 168px;
     align-items: center;
     gap: 12px;
-    padding: 9px 18px;
+    padding: 8px 18px;
     font-size: var(--vk-fs-small);
   }
 
@@ -798,7 +1018,8 @@
     border-bottom: 1px solid rgb(255 255 255 / 0.04);
   }
 
-  .entry:hover {
+  .entry:hover,
+  .entry.open {
     background: rgb(255 255 255 / 0.03);
   }
 
@@ -832,45 +1053,75 @@
     align-items: center;
     gap: 6px;
     min-width: 0;
+    padding: 4px 0;
+    border: none;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
   }
 
-  .player-id {
-    display: flex;
-    flex-direction: column;
+  .player-name {
     min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 15px;
+    font-weight: 900;
   }
 
-  .player-name,
-  .mii {
+  .player:hover .player-name {
+    color: var(--vk-cyan-soft);
+  }
+
+  .profile {
+    flex: none;
+    max-width: 40%;
+    padding: 1px 7px;
+    border-radius: 999px;
+    background: rgb(255 255 255 / 0.07);
+    color: var(--vk-text-secondary);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .mii {
-    font-size: var(--vk-fs-eyebrow);
+  .caret {
+    display: inline-flex;
+    flex: none;
+    color: var(--vk-text-faint);
+    transition: transform var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .caret.up {
+    transform: rotate(180deg);
+  }
+
+  .time-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    line-height: 1.2;
   }
 
   .time {
     font-weight: 900;
     color: var(--vk-cyan-soft);
-    cursor: default;
+  }
+
+  .gap {
+    font-size: var(--vk-fs-eyebrow);
+    color: var(--vk-text-faint);
   }
 
   .combo {
-    display: flex;
-    flex-direction: column;
     min-width: 0;
-    font-size: var(--vk-fs-micro);
-  }
-
-  .combo span {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .date {
     font-size: var(--vk-fs-micro);
   }
 
@@ -892,8 +1143,42 @@
     font-size: var(--vk-fs-micro);
   }
 
-  .icon-btn {
-    padding: 6px 8px;
+  .details {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px 28px;
+    margin: 0;
+    padding: 4px 18px 14px 74px;
+    font-size: var(--vk-fs-micro);
+  }
+
+  .details div {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .details dt {
+    color: var(--vk-text-faint);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .details dd {
+    margin: 0;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .splits {
+    display: flex;
+    gap: 10px;
+  }
+
+  .splits .best {
+    color: var(--vk-cyan-soft);
   }
 
   .table-foot {
@@ -913,24 +1198,38 @@
     gap: 10px;
   }
 
-  @media (max-width: 1100px) {
+  @media (max-width: 1000px) {
     .row {
-      grid-template-columns: 40px minmax(0, 1.4fr) 88px minmax(0, 1fr) 140px;
+      grid-template-columns: 40px minmax(0, 1.4fr) 100px 150px;
     }
 
-    .row > :nth-child(4),
-    .row > :nth-child(6) {
+    .row > :nth-child(4) {
       display: none;
+    }
+
+    .details {
+      padding-left: 18px;
+    }
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
     }
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .track {
+    .track,
+    .caret {
       transition: none;
     }
 
     .track:hover {
       transform: none;
+    }
+
+    .spinning {
+      animation: none;
     }
   }
 </style>

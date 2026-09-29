@@ -4901,6 +4901,7 @@ dependencies = [
  "url",
  "vk-core",
  "vk-dolphin",
+ "vk-elevate",
  "vk-install",
  "vk-mii-render",
  "vk-save",
@@ -4952,6 +4953,7 @@ version = "2.2.1"
 dependencies = [
  "futures-util",
  "hex",
+ "png 0.17.16",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -4974,6 +4976,14 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.20",
  "tracing",
+]
+
+[[package]]
+name = "vk-elevate"
+version = "2.2.1"
+dependencies = [
+ "thiserror 2.0.20",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

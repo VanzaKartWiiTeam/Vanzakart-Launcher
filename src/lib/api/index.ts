@@ -349,10 +349,38 @@ export async function renderMiiPreview(
   editor: MiiEditorState,
   kind: MiiRenderKind = 'face',
   rotation = 0,
-  size = 512
+  size = 512,
+  view: MiiPreviewView = {}
 ): Promise<Blob | null> {
-  const bytes = await call<ArrayBuffer>('mii_render_preview', { editor, kind, rotation, size });
+  const bytes = await call<ArrayBuffer>('mii_render_preview', {
+    editor,
+    kind,
+    rotation,
+    size,
+    pitch: view.pitch ?? 0,
+    zoom: view.zoom ?? 1,
+    expression: view.expression ?? 'normal',
+    quality: view.quality ?? 'final'
+  });
   return bytes.byteLength > 0 ? new Blob([bytes], { type: 'image/png' }) : null;
+}
+
+/** Espressioni che il renderer nativo sa mostrare in anteprima. */
+export type MiiExpression =
+  'normal' | 'smile' | 'anger' | 'sorrow' | 'surprise' | 'blink' | 'open_mouth';
+
+/** Come guardare il Mii nell'anteprima dell'editor. */
+export interface MiiPreviewView {
+  /** Inclinazione in gradi, fra -30 e 30: positiva, guarda in basso. */
+  pitch?: number;
+  /** Ingrandimento, fra 0,7 e 1,8. */
+  zoom?: number;
+  expression?: MiiExpression;
+  /**
+   * `draft` mentre si trascina: un render da pochi millisecondi. `final`
+   * a Mii fermo: contorni lisci, supercampionati (§D-095).
+   */
+  quality?: 'draft' | 'final';
 }
 
 export const clearMiiAvatars = () => call<number>('mii_avatars_clear');

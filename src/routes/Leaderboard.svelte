@@ -15,17 +15,21 @@
    * (§D-066).
    *
    * Ogni giocatore porta la sua streak — i giorni di gioco consecutivi — con
-   * la stessa fiammella del sito (§D-085).
+   * la stessa fiammella del sito (§D-085), e il suo rank subito dopo il nome,
+   * come sul sito: il grado del gioco o lo stemma dello staff (§D-094).
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import RankBadge from '$lib/components/RankBadge.svelte';
   import StreakBadge from '$lib/components/StreakBadge.svelte';
   import { formatRelative } from '$lib/stores/app.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
-  import type { LeaderboardEntry } from '$lib/api/types';
+  import type { BadgeView, LeaderboardEntry } from '$lib/api/types';
 
   let entries = $state<LeaderboardEntry[]>([]);
+  /** Immagini dei rank, per chiave: arrivano una volta per pagina. */
+  let badges = $state<Record<string, BadgeView>>({});
   let loading = $state(true);
   let loadingMore = $state(false);
   let hasMore = $state(false);
@@ -57,6 +61,7 @@
     try {
       const page = await api.fetchLeaderboard(0);
       entries = page.entries;
+      badges = page.badges;
       hasMore = page.hasMore;
       error = '';
     } catch (caught) {
@@ -75,6 +80,7 @@
       const page = await api.fetchLeaderboard(entries.length);
       const known = new Set(entries.map((entry) => entry.position));
       entries = [...entries, ...page.entries.filter((entry) => !known.has(entry.position))];
+      badges = { ...badges, ...page.badges };
       hasMore = page.hasMore && page.entries.length > 0;
       error = '';
     } catch (caught) {
@@ -83,6 +89,11 @@
     } finally {
       loadingMore = false;
     }
+  }
+
+  /** L'immagine del rank di un giocatore, se ne ha una. */
+  function badgeOf(entry: LeaderboardEntry): BadgeView | undefined {
+    return entry.badge ? badges[entry.badge] : undefined;
   }
 
   /** Oro, argento e bronzo: la classe porta il colore a tutto il gradino. */
@@ -144,7 +155,15 @@
               />
             </span>
 
-            <span class="name">{entry.name}</span>
+            <span class="name-line">
+              <span class="name">{entry.name}</span>
+              <RankBadge
+                image={badgeOf(entry)?.image}
+                rank={entry.prestigeRank}
+                label={badgeOf(entry)?.label}
+                size={entry.position === 1 ? 30 : 26}
+              />
+            </span>
             <span class="points">{t('board.vr', { points: formatNumber(entry.points) })}</span>
             {#if entry.streak > 0}
               <StreakBadge days={entry.streak} vacation={entry.streakVacation} size="md" />
@@ -152,15 +171,6 @@
             <span class="vk-faint sub">
               {t('board.podiumSub', { wins: entry.wins, winrate: entry.winrate.toFixed(1) })}
             </span>
-
-            {#if entry.rankImage}
-              <img
-                class="rank-image"
-                src={entry.rankImage}
-                alt={t('board.rank', { rank: entry.prestigeRank })}
-                title={t('board.rank', { rank: entry.prestigeRank })}
-              />
-            {/if}
           </button>
         {/each}
       </section>
@@ -195,15 +205,12 @@
                   name={entry.name}
                   size={30}
                 />
-                {#if entry.rankImage}
-                  <img
-                    class="rank-mini"
-                    src={entry.rankImage}
-                    alt={t('board.rank', { rank: entry.prestigeRank })}
-                    title={t('board.rank', { rank: entry.prestigeRank })}
-                  />
-                {/if}
                 <span class="player-name">{entry.name}</span>
+                <RankBadge
+                  image={badgeOf(entry)?.image}
+                  rank={entry.prestigeRank}
+                  label={badgeOf(entry)?.label}
+                />
                 {#if entry.isSuspicious}
                   <span class="vk-badge vk-badge--warning">{t('board.suspicious')}</span>
                 {/if}
@@ -258,10 +265,15 @@
             <div class="details-id">
               <p class="vk-eyebrow">{t('board.position', { position: player.position })}</p>
               <h3 class="details-name">{player.name}</h3>
-              {#if player.rankImage}
+              {#if badgeOf(player) || player.prestigeRank > 0}
                 <p class="details-rank">
-                  <img src={player.rankImage} alt="" />
-                  {t('board.rankShort', { rank: player.prestigeRank })}
+                  <RankBadge
+                    image={badgeOf(player)?.image}
+                    rank={player.prestigeRank}
+                    label={badgeOf(player)?.label}
+                    size={24}
+                  />
+                  {badgeOf(player)?.label || t('board.rankShort', { rank: player.prestigeRank })}
                 </p>
               {/if}
             </div>
@@ -442,10 +454,18 @@
     box-shadow: 0 0 18px color-mix(in srgb, var(--medal) 40%, transparent);
   }
 
+  .name-line {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    max-width: 100%;
+  }
+
   .name {
+    min-width: 0;
     font-size: 17px;
     font-weight: 900;
-    max-width: 100%;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -459,12 +479,6 @@
 
   .sub {
     font-size: var(--vk-fs-micro);
-  }
-
-  .rank-image {
-    width: 40px;
-    height: 40px;
-    object-fit: contain;
   }
 
   /* --- Tabella e dettagli --- */
@@ -544,13 +558,6 @@
     text-overflow: ellipsis;
     white-space: nowrap;
     font-weight: 700;
-  }
-
-  .rank-mini {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
-    flex: none;
   }
 
   .num {
@@ -648,12 +655,6 @@
     margin: 6px 0 0;
     font-size: var(--vk-fs-micro);
     color: var(--vk-text-secondary);
-  }
-
-  .details-rank img {
-    width: 22px;
-    height: 22px;
-    object-fit: contain;
   }
 
   .close {

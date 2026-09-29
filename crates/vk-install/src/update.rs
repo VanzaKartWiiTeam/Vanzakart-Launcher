@@ -110,9 +110,18 @@ impl UpdateTarget {
             .filter(|version| !version.trim().is_empty())
     }
 
-    /// Perché questa copia non può aggiornarsi da sé, se non può.
-    fn ensure_updatable(&self) -> InstallResult<()> {
+    /// Come si può scrivere nella cartella d'installazione, o perché questa
+    /// copia non può aggiornarsi da sé.
+    ///
+    /// Su Windows una cartella che l'utente non può scrivere — `Programmi`,
+    /// per un'installazione per tutto il PC — non è un vicolo cieco: lo
+    /// scambio dei file lo fa un processo elevato, dopo la conferma della UAC
+    /// (§D-093). Altrove resta un'installazione che non si aggiorna da qui.
+    pub fn access(&self) -> InstallResult<Access> {
         if !is_writable(&self.install_dir) {
+            if cfg!(windows) {
+                return Ok(Access::Elevated);
+            }
             return Err(InstallError::NotUpdatable(format!(
                 "{} cannot be written to",
                 self.install_dir.display()
@@ -130,8 +139,17 @@ impl UpdateTarget {
             ));
         }
 
-        Ok(())
+        Ok(Access::Direct)
     }
+}
+
+/// Chi può sostituire i file dell'installazione.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Access {
+    /// Il launcher stesso: la cartella è sua.
+    Direct,
+    /// Solo un processo con i permessi di amministratore (Windows, UAC).
+    Elevated,
 }
 
 /// Che cosa succederebbe aggiornando, prima di scaricare qualunque cosa.
@@ -159,6 +177,9 @@ pub struct UpdatePlan {
     /// `true` quando l'installazione ha un registro: l'aggiornamento saprà
     /// esattamente cosa stava dove.
     pub managed: bool,
+    /// `true` quando lo scambio dei file richiede i permessi di
+    /// amministratore: Windows chiederà una conferma (§D-093).
+    pub needs_elevation: bool,
 }
 
 impl UpdatePlan {
@@ -177,7 +198,7 @@ pub fn plan(
     target: &UpdateTarget,
     current_version: &str,
 ) -> InstallResult<UpdatePlan> {
-    target.ensure_updatable()?;
+    let access = target.access()?;
 
     let (package_key, package) = manifest.select(Target::current())?;
     let latest = manifest.version.trim().to_string();
@@ -204,6 +225,7 @@ pub fn plan(
         verifiable: !package.sha256.is_empty(),
         signed: !package.signature.trim().is_empty(),
         managed: target.managed(),
+        needs_elevation: access == Access::Elevated,
     })
 }
 
@@ -234,6 +256,17 @@ pub fn required_space(download_bytes: u64) -> u64 {
         .saturating_add(HEADROOM_BYTES)
 }
 
+/// Un pacchetto scaricato e verificato, non ancora applicato.
+#[derive(Debug, Clone)]
+pub struct DownloadedUpdate {
+    /// Archivio nella cartella temporanea.
+    pub archive: PathBuf,
+    /// Versione del manifest da cui è stato scaricato.
+    pub version: String,
+    /// Riepilogo del download, con i tentativi.
+    pub summary: String,
+}
+
 impl Installer {
     /// Scarica il pacchetto e lo mette al posto di quello in uso.
     ///
@@ -241,6 +274,10 @@ impl Installer {
     /// scarica e si verifica **prima** di toccare la cartella. Un download
     /// interrotto o un pacchetto che non supera la firma lascia
     /// l'installazione esattamente com'era.
+    ///
+    /// Se la cartella richiede i permessi di amministratore non tocca niente e
+    /// risponde [`InstallError::NeedsElevation`]: quella strada passa da
+    /// [`Self::download_update`] e da un processo elevato (§D-093).
     pub async fn update_in_place(
         &self,
         manifest: &ReleaseManifest,
@@ -248,6 +285,41 @@ impl Installer {
         progress: &ProgressSink,
         cancel: &CancelToken,
     ) -> InstallResult<UpdateReport> {
+        if target.access()? == Access::Elevated {
+            return Err(InstallError::NeedsElevation(format!(
+                "{} can only be written with administrator rights",
+                target.install_dir.display()
+            )));
+        }
+
+        // 1. Scarico e verifica, con la cartella d'installazione intatta.
+        let downloaded = self
+            .download_update(manifest, target, progress, cancel)
+            .await?;
+
+        // 2–4. Srotolamento, scambio, registrazione.
+        cancel.check()?;
+        let applied = apply_archive(manifest, target, &downloaded.archive, progress, cancel);
+        fsops::remove_path_best_effort(&downloaded.archive);
+
+        let mut report = applied?;
+        report.download_summary = downloaded.summary;
+        Ok(report)
+    }
+
+    /// Scarica e verifica il pacchetto della piattaforma corrente, senza
+    /// toccare l'installazione.
+    ///
+    /// È la metà dell'aggiornamento che non ha bisogno di permessi: la fa il
+    /// launcher, con la sua barra e il suo pulsante per annullare, anche
+    /// quando lo scambio lo farà un processo elevato.
+    pub async fn download_update(
+        &self,
+        manifest: &ReleaseManifest,
+        target: &UpdateTarget,
+        progress: &ProgressSink,
+        cancel: &CancelToken,
+    ) -> InstallResult<DownloadedUpdate> {
         let plan = plan(manifest, target, &self.app_version)?;
         if !plan.enough_space {
             return Err(InstallError::NotEnoughSpace {
@@ -259,70 +331,87 @@ impl Installer {
         let (_, package) = manifest.select(Target::current())?;
         let format = package.format()?;
 
-        // 1. Scarico e verifica, con la cartella d'installazione intatta.
         let archive = paths::download_temp_path(format.temp_extension());
-        let download_summary = self
+        let summary = self
             .download_and_verify(package, &archive, progress, cancel)
             .await?;
 
-        // 2. Srotolamento in una cartella di appoggio, sullo stesso volume.
-        cancel.check()?;
-        let staging = staging_dir(&target.install_dir);
-        fsops::remove_path_best_effort(&staging);
-        let staged = payload::install_payload(
-            &archive,
-            format,
-            &staging,
-            &package.executable,
-            progress,
-            cancel,
-        );
-        fsops::remove_path_best_effort(&archive);
-
-        let staged = match staged {
-            Ok(staged) => staged,
-            Err(error) => {
-                fsops::remove_path_best_effort(&staging);
-                return Err(error);
-            }
-        };
-
-        // 3. Scambio. Da qui in poi non si annulla più: fermarsi a metà
-        //    lascerebbe una cartella con pezzi di due versioni.
-        progress(ProgressUpdate::new(
-            Phase::Installing,
-            "Replacing the installed files",
-        ));
-
-        let swap = swap_entries(&staging, &target.install_dir, &staged.entries);
-        fsops::remove_path_best_effort(&staging);
-        let swap = swap?;
-
-        let executable = relocate(&staged.executable, &staging, &target.install_dir);
-        fsops::set_executable(&executable)?;
-
-        #[cfg(target_os = "macos")]
-        platform::clear_quarantine(&executable);
-
-        // 4. Ciò che resta da dire al sistema: la versione nuova, nel
-        //    registro dell'installazione e fra i programmi installati. Non
-        //    una riga di più: scorciatoie, icone e disinstallatore sono
-        //    quelli di prima e restano dove sono.
-        let record_updated = refresh_registration(target, &manifest.version, &executable, &staged);
-
-        progress(ProgressUpdate::new(Phase::Completed, "Update complete").with_percent(100.0));
-
-        Ok(UpdateReport {
-            version: manifest.version.clone(),
-            install_dir: target.install_dir.clone(),
-            executable,
-            bytes: staged.bytes,
-            replaced: swap.replaced,
-            pending_cleanup: swap.pending_cleanup,
-            download_summary,
-            record_updated,
+        Ok(DownloadedUpdate {
+            archive,
+            version: manifest.version.trim().to_string(),
+            summary,
         })
     }
+}
+
+/// Srotola un pacchetto **già verificato**, lo mette al posto di quello in
+/// uso e aggiorna la registrazione.
+///
+/// Lo usano sia l'aggiornamento diretto sia il processo elevato: la
+/// procedura che sostituisce i file è una sola.
+pub fn apply_archive(
+    manifest: &ReleaseManifest,
+    target: &UpdateTarget,
+    archive: &Path,
+    progress: &ProgressSink,
+    cancel: &CancelToken,
+) -> InstallResult<UpdateReport> {
+    let (_, package) = manifest.select(Target::current())?;
+    let format = package.format()?;
+
+    // 2. Srotolamento in una cartella di appoggio, sullo stesso volume.
+    let staging = staging_dir(&target.install_dir);
+    fsops::remove_path_best_effort(&staging);
+    let staged = match payload::install_payload(
+        archive,
+        format,
+        &staging,
+        &package.executable,
+        progress,
+        cancel,
+    ) {
+        Ok(staged) => staged,
+        Err(error) => {
+            fsops::remove_path_best_effort(&staging);
+            return Err(error);
+        }
+    };
+
+    // 3. Scambio. Non si annulla più: se una voce non si può sostituire, le
+    //    precedenti tornano com'erano (vedi `swap_entries`).
+    progress(ProgressUpdate::new(
+        Phase::Installing,
+        "Replacing the installed files",
+    ));
+
+    let swap = swap_entries(&staging, &target.install_dir, &staged.entries);
+    fsops::remove_path_best_effort(&staging);
+    let swap = swap?;
+
+    let executable = relocate(&staged.executable, &staging, &target.install_dir);
+    fsops::set_executable(&executable)?;
+
+    #[cfg(target_os = "macos")]
+    platform::clear_quarantine(&executable);
+
+    // 4. Ciò che resta da dire al sistema: la versione nuova, nel registro
+    //    dell'installazione e fra i programmi installati. Non una riga di
+    //    più: scorciatoie, icone e disinstallatore sono quelli di prima e
+    //    restano dove sono.
+    let record_updated = refresh_registration(target, &manifest.version, &executable, &staged);
+
+    progress(ProgressUpdate::new(Phase::Completed, "Update complete").with_percent(100.0));
+
+    Ok(UpdateReport {
+        version: manifest.version.clone(),
+        install_dir: target.install_dir.clone(),
+        executable,
+        bytes: staged.bytes,
+        replaced: swap.replaced,
+        pending_cleanup: swap.pending_cleanup,
+        download_summary: String::new(),
+        record_updated,
+    })
 }
 
 /// Cancella le copie messe di lato da un aggiornamento precedente.
@@ -353,51 +442,40 @@ fn is_leftover(path: &Path) -> bool {
 }
 
 /// Esito dello scambio.
+#[derive(Debug)]
 struct Swap {
     replaced: Vec<PathBuf>,
     pending_cleanup: Vec<PathBuf>,
 }
 
 /// Mette al loro posto le voci srotolate, una per una.
+///
+/// È una transazione. Ogni voce sostituita finisce in un registro, e se una
+/// non si può sostituire — un file in uso che il sistema non lascia nemmeno
+/// rinominare, un permesso che manca — quelle già sostituite tornano com'erano
+/// prima di restituire l'errore. Senza, un errore a metà lasciava una
+/// cartella con pezzi di due versioni, cioè un launcher che non parte.
 fn swap_entries(staging: &Path, install_dir: &Path, entries: &[PathBuf]) -> InstallResult<Swap> {
     let stamp = format!("{}-{}", std::process::id(), vk_core::now_millis());
-    let mut replaced = Vec::with_capacity(entries.len());
-    let mut aside = Vec::new();
+    let mut journal: Vec<SwapStep> = Vec::with_capacity(entries.len());
 
     for entry in entries {
-        let source = staging.join(entry);
-        let destination = install_dir.join(entry);
-        vk_core::zipx::ensure_within(install_dir, &destination)?;
-
-        if let Some(parent) = destination.parent() {
-            fsops::ensure_dir(parent)?;
-        }
-
-        if std::fs::symlink_metadata(&destination).is_ok() {
-            let quarantine = quarantine_path(&destination, &stamp);
-            fsops::remove_path_best_effort(&quarantine);
-
-            // Rinominare riesce anche su un eseguibile in uso; cancellare no.
-            // Si prova quindi prima a spostare di lato, e solo se il sistema
-            // non lo permette si tenta la rimozione diretta.
-            match std::fs::rename(&destination, &quarantine) {
-                Ok(()) => aside.push(quarantine),
-                Err(rename_error) => {
-                    fsops::remove_path(&destination)
-                        .map_err(|_| InstallError::io(&destination, rename_error))?;
-                }
+        match swap_one(staging, install_dir, entry, &stamp) {
+            Ok(step) => journal.push(step),
+            Err(error) => {
+                tracing::warn!(%error, entry = %entry.display(), "scambio interrotto: ripristino");
+                roll_back(&journal, &stamp);
+                return Err(error);
             }
         }
-
-        std::fs::rename(&source, &destination)
-            .map_err(|error| InstallError::io(&destination, error))?;
-        replaced.push(entry.clone());
     }
 
+    let replaced = journal.iter().map(|step| step.entry.clone()).collect();
     // Le copie di lato si tolgono adesso; quella del binario in esecuzione
     // resisterà, ed è previsto.
-    let pending_cleanup = aside
+    let pending_cleanup = journal
         .into_iter()
+        .filter_map(|step| step.aside)
         .filter(|path| !fsops::remove_path_best_effort(path))
         .collect();
 
@@ -405,6 +483,90 @@ fn swap_entries(staging: &Path, install_dir: &Path, entries: &[PathBuf]) -> Inst
         replaced,
         pending_cleanup,
     })
+}
+
+/// Una voce sostituita: dove sta la nuova e dove è finita la vecchia.
+struct SwapStep {
+    entry: PathBuf,
+    destination: PathBuf,
+    /// La voce precedente, messa di lato. `None` se la voce è nuova.
+    aside: Option<PathBuf>,
+}
+
+fn swap_one(
+    staging: &Path,
+    install_dir: &Path,
+    entry: &Path,
+    stamp: &str,
+) -> InstallResult<SwapStep> {
+    let source = staging.join(entry);
+    let destination = install_dir.join(entry);
+    vk_core::zipx::ensure_within(install_dir, &destination)?;
+
+    if let Some(parent) = destination.parent() {
+        fsops::ensure_dir(parent)?;
+    }
+
+    // Rinominare riesce anche su un eseguibile in uso, cancellare no: la voce
+    // precedente si sposta di lato, e resta lì finché lo scambio non è finito
+    // per intero — è ciò che permette di tornare indietro.
+    let mut aside = None;
+    if std::fs::symlink_metadata(&destination).is_ok() {
+        let quarantine = quarantine_path(&destination, stamp);
+        fsops::remove_path_best_effort(&quarantine);
+        std::fs::rename(&destination, &quarantine)
+            .map_err(|error| swap_error(&destination, error))?;
+        aside = Some(quarantine);
+    }
+
+    if let Err(error) = std::fs::rename(&source, &destination) {
+        if let Some(aside) = &aside {
+            if let Err(restore) = std::fs::rename(aside, &destination) {
+                tracing::error!(%restore, path = %destination.display(), "voce non rimessa al suo posto");
+            }
+        }
+        return Err(swap_error(&destination, error));
+    }
+
+    Ok(SwapStep {
+        entry: entry.to_path_buf(),
+        destination,
+        aside,
+    })
+}
+
+/// Rimette le voci com'erano, dall'ultima alla prima.
+///
+/// La voce nuova si sposta di lato prima di riportare la vecchia: se fosse il
+/// binario appena avviato non si potrebbe cancellare, ma rinominare sì. Ciò
+/// che resta di lato lo toglie [`sweep_leftovers`].
+fn roll_back(journal: &[SwapStep], stamp: &str) {
+    for step in journal.iter().rev() {
+        let discarded = quarantine_path(&step.destination, &format!("{stamp}-rollback"));
+        fsops::remove_path_best_effort(&discarded);
+
+        if let Err(error) = std::fs::rename(&step.destination, &discarded) {
+            tracing::error!(%error, path = %step.destination.display(), "voce nuova non rimossa");
+            continue;
+        }
+        if let Some(aside) = &step.aside {
+            if let Err(error) = std::fs::rename(aside, &step.destination) {
+                tracing::error!(%error, path = %step.destination.display(), "voce precedente non ripristinata");
+            }
+        }
+        fsops::remove_path_best_effort(&discarded);
+    }
+}
+
+/// Un permesso negato durante lo scambio, su Windows, è la cartella in
+/// `Programmi` che l'utente non può scrivere: la UI propone di riprovare come
+/// amministratore invece di mostrare un errore di I/O (§D-093).
+fn swap_error(path: &Path, error: std::io::Error) -> InstallError {
+    if cfg!(windows) && error.kind() == std::io::ErrorKind::PermissionDenied {
+        InstallError::NeedsElevation(format!("{}: {error}", path.display()))
+    } else {
+        InstallError::io(path, error)
+    }
 }
 
 /// Aggiorna il registro dell'installazione e la voce fra i programmi
@@ -453,10 +615,10 @@ fn refresh_registration(
             size_bytes: staged.bytes,
             machine_wide: record.machine_wide,
         };
-        // In un'installazione per tutto il PC la voce sta in HKLM, che il
-        // launcher senza permessi di amministratore non può riscrivere: la
-        // versione mostrata fra i programmi resta quella dell'installazione
-        // finché non si ripassa dall'installer (§D-091).
+        // In un'installazione per tutto il PC la voce sta in HKLM: la
+        // riscrive il processo elevato (§D-093). Un launcher senza permessi
+        // che la trova chiusa lascia la versione di prima fra i programmi
+        // installati (§D-091).
         if let Err(error) = platform::register_uninstall(&registration) {
             tracing::warn!(%error, "voce fra i programmi installati non aggiornata");
         }
@@ -467,6 +629,15 @@ fn refresh_registration(
 
 fn staging_dir(install_dir: &Path) -> PathBuf {
     install_dir.join(format!("{STAGING_PREFIX}-{}", std::process::id()))
+}
+
+/// Copia del pacchetto che il processo elevato verifica e srotola: dentro la
+/// cartella d'installazione, dove l'utente non scrive (§D-093).
+pub(crate) fn staging_package_path(install_dir: &Path, extension: &str) -> PathBuf {
+    install_dir.join(format!(
+        "{STAGING_PREFIX}-{}.{extension}",
+        std::process::id()
+    ))
 }
 
 fn quarantine_path(destination: &Path, stamp: &str) -> PathBuf {
@@ -617,6 +788,71 @@ mod tests {
                 .all(|entry| !is_leftover(&entry.path())),
             "nessuna copia di lato sopravvive alla pulizia"
         );
+    }
+
+    /// Una voce che non si può mettere al suo posto riporta indietro anche
+    /// quelle già sostituite: niente cartelle con pezzi di due versioni.
+    #[test]
+    fn a_failed_swap_puts_everything_back() {
+        let temp = tempfile::tempdir().expect("temp");
+        let install_dir = installed(temp.path());
+        let staging = staged_payload(&install_dir);
+        write(&staging.join("nuovo.dll"), "solo nella versione 2");
+
+        // `manca` non c'è nella cartella di appoggio: il suo scambio fallisce
+        // dopo che `launcher`, `resources` e `nuovo.dll` sono già passati.
+        let entries = vec![
+            PathBuf::from("launcher"),
+            PathBuf::from("resources"),
+            PathBuf::from("nuovo.dll"),
+            PathBuf::from("manca"),
+        ];
+        let error = swap_entries(&staging, &install_dir, &entries).expect_err("scambio fallito");
+        assert_eq!(error.code(), "io");
+
+        assert_eq!(
+            std::fs::read_to_string(install_dir.join("launcher")).expect("letto"),
+            "versione 1",
+            "il launcher torna quello di prima"
+        );
+        assert_eq!(
+            std::fs::read_to_string(install_dir.join("resources").join("endpoints.json"))
+                .expect("letto"),
+            "{}",
+            "le risorse tornano quelle di prima"
+        );
+        assert!(
+            !install_dir.join("nuovo.dll").exists(),
+            "una voce nuova non resta"
+        );
+        sweep_leftovers(&install_dir);
+        assert!(
+            std::fs::read_dir(&install_dir)
+                .expect("letta")
+                .flatten()
+                .all(|entry| !is_leftover(&entry.path())),
+            "niente copie di lato dopo la pulizia"
+        );
+    }
+
+    #[test]
+    fn a_denied_permission_asks_for_elevation_only_on_windows() {
+        let error = swap_error(
+            Path::new("launcher"),
+            std::io::Error::from(std::io::ErrorKind::PermissionDenied),
+        );
+        let expected = if cfg!(windows) {
+            "needs-elevation"
+        } else {
+            "io"
+        };
+        assert_eq!(error.code(), expected);
+
+        let error = swap_error(
+            Path::new("launcher"),
+            std::io::Error::from(std::io::ErrorKind::NotFound),
+        );
+        assert_eq!(error.code(), "io");
     }
 
     #[test]

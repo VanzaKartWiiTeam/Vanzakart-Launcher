@@ -37,6 +37,19 @@ pub enum InstallError {
     #[error("this copy of the launcher cannot update itself: {0}")]
     NotUpdatable(String),
 
+    /// La cartella si può scrivere solo come amministratore (Windows).
+    #[error("administrator rights are needed to update: {0}")]
+    NeedsElevation(String),
+
+    /// L'utente ha risposto "No" alla richiesta di Windows.
+    #[error("the administrator request was declined: nothing was changed")]
+    ElevationDeclined,
+
+    /// Il processo elevato si è fermato: `code` è quello dell'errore che ha
+    /// incontrato, così la UI lo tratta come se fosse successo qui.
+    #[error("{message}")]
+    Elevated { code: &'static str, message: String },
+
     #[error("launcher executable not found after extracting {0}")]
     ExecutableNotFound(PathBuf),
 
@@ -82,6 +95,9 @@ impl InstallError {
             Self::HashMismatch { .. } => "hash-mismatch",
             Self::InvalidSignature(_) => "invalid-signature",
             Self::NotUpdatable(_) => "not-updatable",
+            Self::NeedsElevation(_) => "needs-elevation",
+            Self::ElevationDeclined => "elevation-declined",
+            Self::Elevated { code, .. } => code,
             Self::ExecutableNotFound(_) => "executable-not-found",
             Self::UnsafePath(_) => "unsafe-path",
             Self::NotEnoughSpace { .. } => "not-enough-space",
@@ -95,7 +111,8 @@ impl InstallError {
     /// `true` quando l'operazione è stata fermata dall'utente: la UI non deve
     /// mostrarla come un guasto.
     pub fn is_cancelled(&self) -> bool {
-        matches!(self, Self::Cancelled) || matches!(self, Self::Core(vk_core::CoreError::Cancelled))
+        matches!(self, Self::Cancelled | Self::ElevationDeclined)
+            || matches!(self, Self::Core(vk_core::CoreError::Cancelled))
     }
 }
 

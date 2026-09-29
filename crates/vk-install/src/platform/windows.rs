@@ -351,14 +351,21 @@ const SID_SYSTEM: &str = "*S-1-5-18";
 const SID_ADMINISTRATORS: &str = "*S-1-5-32-544";
 const SID_USERS: &str = "*S-1-5-32-545";
 
-/// Permessi di un'installazione per tutto il PC (§D-091).
+/// Permessi di un'installazione per tutto il PC (§D-091, §D-093).
 ///
-/// Prima si chiude la sottocartella del disinstallatore: solo SYSTEM e gli
-/// amministratori la modificano, gli utenti la leggono ed eseguono. Poi si dà
-/// agli utenti il permesso di modifica sul resto della cartella, che è ciò che
-/// permette al launcher di aggiornarsi da sé senza chiedere la password, come
-/// fa Steam. L'ordine conta: al contrario, per un istante anche la
-/// sottocartella sarebbe stata modificabile da tutti.
+/// La cartella resta protetta come ogni programma in `Programmi`: gli utenti
+/// la leggono e la eseguono, solo gli amministratori la modificano. Il
+/// launcher si aggiorna lo stesso, chiedendo la conferma della UAC per il solo
+/// scambio dei file.
+///
+/// Due passi, e l'ordine conta:
+///
+/// 1. la sottocartella del disinstallatore perde l'ereditarietà: solo SYSTEM
+///    e gli amministratori la modificano, anche se qualcuno riaprisse la
+///    cartella madre;
+/// 2. dalla cartella si toglie il permesso di modifica che fino alla 2.2
+///    l'installer dava agli utenti: reinstallando sopra una di quelle
+///    versioni, la cartella torna protetta.
 pub fn secure_machine_install(install_dir: &Path, protected_dir: &Path) -> InstallResult<()> {
     if protected_dir != install_dir && protected_dir.is_dir() {
         run_icacls(
@@ -376,10 +383,9 @@ pub fn secure_machine_install(install_dir: &Path, protected_dir: &Path) -> Insta
         )?;
     }
 
-    run_icacls(
-        install_dir,
-        &["/grant", &format!("{SID_USERS}:(OI)(CI)M"), "/C", "/Q"],
-    )
+    // Toglie solo i permessi *concessi esplicitamente* agli utenti: quelli
+    // ereditati da `Programmi` (lettura ed esecuzione) restano.
+    run_icacls(install_dir, &["/remove:g", SID_USERS, "/C", "/Q"])
 }
 
 fn run_icacls(target: &Path, arguments: &[&str]) -> InstallResult<()> {
@@ -717,17 +723,29 @@ mod tests {
         assert_ne!(Some(programs), start_menu_programs());
     }
 
-    /// Ciò che conta davvero dei permessi: nella sottocartella protetta un
-    /// utente normale non scrive, nel resto sì. Si prova su una cartella
-    /// temporanea, di cui chi esegue i test è proprietario e su cui quindi
-    /// può cambiare i permessi senza essere amministratore.
+    /// Ciò che conta davvero dei permessi: la cartella non resta aperta agli
+    /// utenti, e nella sottocartella protetta un utente normale non scrive.
+    /// Si prova su una cartella temporanea, di cui chi esegue i test è
+    /// proprietario e su cui quindi può cambiare i permessi senza essere
+    /// amministratore.
     #[test]
-    fn the_uninstaller_folder_is_closed_and_the_rest_is_open() {
+    fn the_folder_is_not_left_open_and_the_uninstaller_is_closed() {
         let temp = tempfile::tempdir().expect("temp");
         let install = temp.path().join("VanzaKart Launcher");
         let protected = install.join(crate::paths::PROTECTED_DIR_NAME);
         std::fs::create_dir_all(&protected).expect("cartelle");
         std::fs::write(protected.join("VanzaKart Uninstaller.exe"), b"MZ").expect("scritto");
+
+        // Com'era un'installazione fatta dall'installer fino alla 2.2.
+        run_icacls(
+            &install,
+            &["/grant", &format!("{SID_USERS}:(OI)(CI)M"), "/C", "/Q"],
+        )
+        .expect("cartella aperta come prima");
+        assert!(
+            explicit_modify_grant(&install),
+            "la prova parte da una cartella aperta"
+        );
 
         secure_machine_install(&install, &protected).expect("permessi applicati");
 
@@ -738,7 +756,7 @@ mod tests {
             .output()
             .is_ok_and(|output| String::from_utf8_lossy(&output.stdout).contains("S-1-16-12288"));
 
-        let open = std::fs::write(install.join("launcher-update.tmp"), b"ok");
+        let still_open = explicit_modify_grant(&install);
         let closed = std::fs::write(protected.join("planted.dll"), b"MZ");
         let replaced = std::fs::write(protected.join("VanzaKart Uninstaller.exe"), b"XX");
 
@@ -748,14 +766,23 @@ mod tests {
             .args(["/reset", "/T", "/C", "/Q"])
             .status();
 
-        assert!(
-            open.is_ok(),
-            "il launcher deve potersi aggiornare: {open:?}"
-        );
+        assert!(!still_open, "la cartella non resta aperta agli utenti");
         if !elevated {
             assert!(closed.is_err(), "una DLL accanto al disinstallatore");
             assert!(replaced.is_err(), "il disinstallatore sostituito");
         }
+    }
+
+    /// `true` se la cartella concede esplicitamente la modifica a qualcuno:
+    /// un ACE ereditato porta `(I)`, uno esplicito no.
+    fn explicit_modify_grant(directory: &Path) -> bool {
+        let output = Command::new(system_tool("icacls.exe"))
+            .arg(directory)
+            .output()
+            .expect("icacls");
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .any(|line| line.contains(":(OI)(CI)(M)"))
     }
 
     #[test]

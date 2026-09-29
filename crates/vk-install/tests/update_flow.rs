@@ -16,6 +16,7 @@ use std::sync::OnceLock;
 use support::TestServer;
 use tokio::sync::{Mutex, MutexGuard};
 use vk_core::progress::{noop_sink, CancelToken};
+use vk_install::elevated::ElevatedJob;
 use vk_install::install::{InstallMode, InstallOptions, Installer};
 use vk_install::paths;
 use vk_install::record::InstallRecord;
@@ -289,4 +290,195 @@ fn listing(directory: &Path) -> Vec<PathBuf> {
         .collect();
     entries.sort();
     entries
+}
+
+// ---------------------------------------------------------------------------
+// Aggiornamento con i permessi di amministratore (§D-093)
+// ---------------------------------------------------------------------------
+
+/// Installa la 2.0.0 e pubblica la 2.1.0: il punto di partenza di ogni prova
+/// dell'aggiornamento elevato.
+async fn installed_with_update(
+    server: &TestServer,
+    install_dir: &Path,
+) -> (String, UpdateTarget, vk_install::ReleaseManifest) {
+    let executable = publish(server, "2.0.0", "versione 2.0.0");
+    let engine = installer("2.0.0");
+    let manifest = engine
+        .fetch_manifest(&[server.url("/install.json")])
+        .await
+        .expect("manifest");
+    engine
+        .install(
+            &manifest,
+            &options(install_dir.to_path_buf()),
+            &noop_sink(),
+            &CancelToken::new(),
+        )
+        .await
+        .expect("installazione");
+
+    publish(server, "2.1.0", "versione 2.1.0");
+    let manifest = engine
+        .fetch_manifest(&[server.url("/install.json")])
+        .await
+        .expect("manifest");
+    let target = UpdateTarget::for_bundle(&install_dir.join(&executable)).expect("bersaglio");
+    (executable, target, manifest)
+}
+
+/// Il launcher scarica, il processo elevato applica: alla fine la cartella è
+/// quella di prima con dentro la versione nuova, e la copia del pacchetto non
+/// resta in giro.
+#[tokio::test]
+async fn the_elevated_half_applies_what_the_launcher_downloaded() {
+    let (_data_root, _lock) = isolated_data_root().await;
+    let server = TestServer::start(vec![]).await;
+    let temp = tempfile::tempdir().expect("temp");
+    let install_dir = temp.path().join("Programmi").join("VanzaKart");
+    let (executable, target, manifest) = installed_with_update(&server, &install_dir).await;
+    let before = listing(&install_dir);
+
+    let engine = installer("2.0.0");
+    let downloaded = engine
+        .download_update(&manifest, &target, &noop_sink(), &CancelToken::new())
+        .await
+        .expect("download");
+    assert_eq!(downloaded.version, "2.1.0");
+
+    let job = ElevatedJob {
+        version: downloaded.version.clone(),
+        archive: downloaded.archive.clone(),
+        nonce: "prova".into(),
+    };
+    let job_path = job.write_to(&temp.path().join("job")).expect("job");
+    let job = ElevatedJob::read(&job_path).expect("job letto");
+
+    let report = engine
+        .apply_elevated_job_to(&job, &target, &[server.url("/install.json")])
+        .await
+        .expect("aggiornamento elevato");
+
+    assert_eq!(report.version, "2.1.0");
+    assert_eq!(installed_body(&install_dir, &executable), "versione 2.1.0");
+    update::sweep_leftovers(&install_dir);
+    assert_eq!(
+        listing(&install_dir),
+        before,
+        "nessuna copia del pacchetto resta"
+    );
+    let _ = std::fs::remove_file(&downloaded.archive);
+}
+
+/// Il pacchetto sta in una cartella che l'utente può scrivere: se viene
+/// cambiato dopo la verifica del launcher, il processo elevato se ne accorge.
+#[tokio::test]
+async fn a_package_swapped_after_the_download_is_refused() {
+    let (_data_root, _lock) = isolated_data_root().await;
+    let server = TestServer::start(vec![]).await;
+    let temp = tempfile::tempdir().expect("temp");
+    let install_dir = temp.path().join("Programmi").join("VanzaKart");
+    let (executable, target, manifest) = installed_with_update(&server, &install_dir).await;
+
+    let engine = installer("2.0.0");
+    let downloaded = engine
+        .download_update(&manifest, &target, &noop_sink(), &CancelToken::new())
+        .await
+        .expect("download");
+    let (forged, _) = package("versione contraffatta");
+    std::fs::write(&downloaded.archive, forged).expect("sostituito");
+
+    let job = ElevatedJob {
+        version: downloaded.version.clone(),
+        archive: downloaded.archive.clone(),
+        nonce: "prova".into(),
+    };
+    let error = engine
+        .apply_elevated_job_to(&job, &target, &[server.url("/install.json")])
+        .await
+        .expect_err("pacchetto rifiutato");
+
+    assert_eq!(error.code(), "hash-mismatch");
+    assert_eq!(installed_body(&install_dir, &executable), "versione 2.0.0");
+    assert_eq!(
+        update::sweep_leftovers(&install_dir),
+        0,
+        "la copia è già stata tolta"
+    );
+    let _ = std::fs::remove_file(&downloaded.archive);
+}
+
+/// Se fra il download e la conferma della UAC esce un'altra versione, il
+/// processo elevato non applica un pacchetto che non corrisponde più.
+#[tokio::test]
+async fn a_newer_release_in_the_meantime_stops_the_elevated_half() {
+    let (_data_root, _lock) = isolated_data_root().await;
+    let server = TestServer::start(vec![]).await;
+    let temp = tempfile::tempdir().expect("temp");
+    let install_dir = temp.path().join("Programmi").join("VanzaKart");
+    let (executable, target, manifest) = installed_with_update(&server, &install_dir).await;
+
+    let engine = installer("2.0.0");
+    let downloaded = engine
+        .download_update(&manifest, &target, &noop_sink(), &CancelToken::new())
+        .await
+        .expect("download");
+    publish(&server, "2.2.0", "versione 2.2.0");
+
+    let job = ElevatedJob {
+        version: downloaded.version.clone(),
+        archive: downloaded.archive.clone(),
+        nonce: "prova".into(),
+    };
+    let error = engine
+        .apply_elevated_job_to(&job, &target, &[server.url("/install.json")])
+        .await
+        .expect_err("versione cambiata");
+
+    assert_eq!(error.code(), "manifest");
+    assert_eq!(installed_body(&install_dir, &executable), "versione 2.0.0");
+    let _ = std::fs::remove_file(&downloaded.archive);
+}
+
+/// Senza impronta né firma non c'è niente con cui verificare la copia: come
+/// amministratore non si installa.
+#[tokio::test]
+async fn an_unverifiable_package_is_never_applied_as_administrator() {
+    let (_data_root, _lock) = isolated_data_root().await;
+    let server = TestServer::start(vec![]).await;
+    let temp = tempfile::tempdir().expect("temp");
+    let install_dir = temp.path().join("Programmi").join("VanzaKart");
+    let (executable, target, _) = installed_with_update(&server, &install_dir).await;
+
+    let (payload, _) = package("versione 2.1.0");
+    let size = payload.len();
+    server.replace("/2.1.0.zip", payload);
+    server.replace(
+        "/install.json",
+        manifest_json("2.1.0", &server.url("/2.1.0.zip"), "", size, &executable),
+    );
+
+    let engine = installer("2.0.0");
+    let manifest = engine
+        .fetch_manifest(&[server.url("/install.json")])
+        .await
+        .expect("manifest");
+    let downloaded = engine
+        .download_update(&manifest, &target, &noop_sink(), &CancelToken::new())
+        .await
+        .expect("download");
+
+    let job = ElevatedJob {
+        version: downloaded.version.clone(),
+        archive: downloaded.archive.clone(),
+        nonce: "prova".into(),
+    };
+    let error = engine
+        .apply_elevated_job_to(&job, &target, &[server.url("/install.json")])
+        .await
+        .expect_err("rifiutato");
+
+    assert_eq!(error.code(), "manifest");
+    assert_eq!(installed_body(&install_dir, &executable), "versione 2.0.0");
+    let _ = std::fs::remove_file(&downloaded.archive);
 }

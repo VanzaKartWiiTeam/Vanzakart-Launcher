@@ -14,6 +14,7 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import RankBadge from '$lib/components/RankBadge.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { RoomsSummary, RoomView } from '$lib/api/types';
 
@@ -179,6 +180,12 @@
                     <div class="roster-id">
                       <span class="roster-name">
                         {player.name}
+                        <RankBadge
+                          image={player.rankImage}
+                          rank={player.prestigeRank}
+                          label={player.rankLabel}
+                          size={18}
+                        />
                         {#if player.isHost}
                           <span class="vk-badge host-badge">{t('rooms.hostBadge')}</span>
                         {/if}

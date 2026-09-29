@@ -19,7 +19,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use vk_core::progress::{CancelToken, Phase, ProgressSink, ProgressUpdate};
-use vk_mii_render::{MiiRenderer, RenderRequest, View};
+use vk_mii_render::{Expression, MiiRenderer, RenderRequest, View};
 
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -458,6 +458,69 @@ fn native_size(size: u32) -> u32 {
     size.clamp(NATIVE_MIN_SIZE, NATIVE_MAX_SIZE)
 }
 
+/// Come disegnare un'anteprima dell'editor, oltre a inquadratura e lato.
+#[derive(Debug, Clone, Copy)]
+pub struct PreviewOptions {
+    /// Inclinazione in gradi: positiva, il Mii guarda in basso.
+    pub pitch: i32,
+    /// Ingrandimento: 1 è l'inquadratura normale, 1,5 più vicino.
+    pub zoom: f32,
+    pub expression: Expression,
+    /// Supercampionamento 2×: contorni lisci, un render che costa il
+    /// quadruplo. Per l'immagine ferma, non mentre si trascina (§D-095).
+    pub smooth: bool,
+}
+
+impl Default for PreviewOptions {
+    fn default() -> Self {
+        Self {
+            pitch: 0,
+            zoom: 1.0,
+            expression: Expression::Normal,
+            smooth: true,
+        }
+    }
+}
+
+impl PreviewOptions {
+    /// Le opzioni che arrivano dall'editor, riportate dentro limiti sensati.
+    pub fn from_editor(
+        pitch: Option<i32>,
+        zoom: Option<f32>,
+        expression: Option<&str>,
+        quality: Option<&str>,
+    ) -> Self {
+        Self {
+            pitch: pitch.unwrap_or(0).clamp(-MAX_PITCH, MAX_PITCH),
+            zoom: zoom
+                .filter(|zoom| zoom.is_finite())
+                .unwrap_or(1.0)
+                .clamp(MIN_ZOOM, MAX_ZOOM),
+            expression: expression.map_or(Expression::Normal, parse_expression),
+            smooth: quality != Some("draft"),
+        }
+    }
+}
+
+/// Oltre questa inclinazione si vedrebbe l'interno della testa.
+const MAX_PITCH: i32 = 30;
+const MIN_ZOOM: f32 = 0.7;
+const MAX_ZOOM: f32 = 1.8;
+
+/// Le espressioni di FFL, per nome. Un nome sconosciuto è l'espressione
+/// normale: è solo un'anteprima.
+fn parse_expression(name: &str) -> Expression {
+    match name {
+        "smile" => Expression::Smile,
+        "anger" => Expression::Anger,
+        "sorrow" => Expression::Sorrow,
+        "surprise" => Expression::Surprise,
+        "blink" => Expression::Blink,
+        "open_mouth" => Expression::OpenMouth,
+        _ => Expression::Normal,
+    }
+}
+
 /// Render nativo in PNG, fuori dal runtime asincrono: è lavoro di CPU.
 async fn render_native_png(
     renderer: Arc<MiiRenderer>,
@@ -465,6 +528,7 @@ async fn render_native_png(
     kind: &str,
     rotation: i32,
     size: u32,
+    options: PreviewOptions,
 ) -> Option<Vec<u8>> {
     let request = RenderRequest {
         size: native_size(size),
@@ -473,7 +537,10 @@ async fn render_native_png(
         } else {
             View::Face
         },
-        character_rotation: [0.0, rotation as f32, 0.0],
+        character_rotation: [options.pitch as f32, rotation as f32, 0.0],
+        camera_zoom: 1.0 / options.zoom.clamp(MIN_ZOOM, MAX_ZOOM),
+        expression: options.expression,
+        supersample: if options.smooth { 2 } else { 1 },
         ..RenderRequest::default()
     };
     let studio_data = studio_data.to_string();
@@ -510,11 +577,20 @@ pub async fn render_preview_png(
     kind: &str,
     rotation: i32,
     size: u32,
+    options: PreviewOptions,
 ) -> Option<Vec<u8>> {
     let renderer = native(state).await?;
     let block = vk_save::mii::write_editor_state(editor);
     let studio_data = vk_save::mii::studio_data(&block);
-    render_native_png(renderer, &studio_data, normalize_kind(kind), rotation, size).await
+    render_native_png(
+        renderer,
+        &studio_data,
+        normalize_kind(kind),
+        rotation,
+        size,
+        options,
+    )
+    .await
 }
 
 /// Render di una "studio data" come `data:` URI, oppure `None`.
@@ -541,7 +617,15 @@ pub async fn render_studio(
 
     let kind = normalize_kind(kind);
     if let Some(renderer) = native(state).await {
-        if let Some(png) = render_native_png(renderer, studio_data, kind, rotation, size).await {
+        // Gli avatar piccoli sono quelli in cui gli scalini del contorno si
+        // notano di più, e il supercampionamento lì costa poco.
+        let options = PreviewOptions {
+            smooth: size <= 256,
+            ..PreviewOptions::default()
+        };
+        if let Some(png) =
+            render_native_png(renderer, studio_data, kind, rotation, size, options).await
+        {
             return Ok(Some(data_uri(&png)));
         }
     }
@@ -906,9 +990,30 @@ mod tests {
         let state = state_at(dir.path()).await;
 
         let editor = vk_save::mii::MiiEditorState::default();
-        assert!(render_preview_png(&state, &editor, "face", 0, 256)
-            .await
-            .is_none());
+        assert!(
+            render_preview_png(&state, &editor, "face", 0, 256, PreviewOptions::default())
+                .await
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn preview_options_stay_within_sensible_bounds() {
+        let options =
+            PreviewOptions::from_editor(Some(90), Some(9.0), Some("smile"), Some("draft"));
+        assert_eq!(options.pitch, MAX_PITCH);
+        assert_eq!(options.zoom, MAX_ZOOM);
+        assert_eq!(options.expression, Expression::Smile);
+        assert!(
+            !options.smooth,
+            "mentre si trascina niente supercampionamento"
+        );
+
+        let options = PreviewOptions::from_editor(None, Some(f32::NAN), Some("boh"), None);
+        assert_eq!(options.pitch, 0);
+        assert_eq!(options.zoom, 1.0);
+        assert_eq!(options.expression, Expression::Normal);
+        assert!(options.smooth, "l'immagine ferma è liscia");
     }
 
     #[test]

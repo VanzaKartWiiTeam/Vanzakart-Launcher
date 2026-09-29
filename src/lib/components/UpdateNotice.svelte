@@ -90,10 +90,8 @@
   </ul>
 
   {#if launcher && modpack}
-    <p class="vk-subtitle order">
-      Conviene partire dal launcher: la modpack si aggiorna dopo, dalla sua pagina.
-    </p>
-    <button class="vk-btn secondary" onclick={goToMods}>Vai invece alla modpack</button>
+    <p class="vk-subtitle order">{t('notice.launcherFirst')}</p>
+    <button class="vk-btn secondary" onclick={goToMods}>{t('notice.modpackInstead')}</button>
   {/if}
 </Modal>
 

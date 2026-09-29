@@ -17,6 +17,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 vk-core.workspace = true
 vk-dolphin.workspace = true
+vk-elevate.workspace = true
 vk-install.workspace = true
 vk-mii-render.workspace = true
 vk-save.workspace = true

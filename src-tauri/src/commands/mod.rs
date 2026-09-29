@@ -754,10 +754,21 @@ pub async fn launcher_update_check(
 #[tauri::command]
 pub async fn launcher_update_install(
     app: AppHandle,
+    window: tauri::WebviewWindow,
     state: Shared<'_>,
 ) -> AppResult<services::launcher::LauncherUpdateOutcome> {
+    // La richiesta della UAC, quando serve, compare davanti a questa finestra
+    // invece di lampeggiare nella barra delle applicazioni (§D-093).
+    #[cfg(windows)]
+    let owner = window.hwnd().ok().map(|hwnd| hwnd.0 as isize);
+    #[cfg(not(windows))]
+    let owner = {
+        let _ = &window;
+        None
+    };
+
     let sink = progress_sink(app, services::launcher::OPERATION);
-    services::launcher::install(&state.inner().clone(), sink).await
+    services::launcher::install(&state.inner().clone(), sink, owner).await
 }
 
 #[tauri::command]
@@ -1032,6 +1043,10 @@ pub async fn mii_render_preview(
     kind: Option<String>,
     rotation: Option<i32>,
     size: Option<u32>,
+    pitch: Option<i32>,
+    zoom: Option<f32>,
+    expression: Option<String>,
+    quality: Option<String>,
 ) -> AppResult<tauri::ipc::Response> {
     let png = services::mii_render::render_preview_png(
         &state.inner().clone(),
@@ -1039,6 +1054,12 @@ pub async fn mii_render_preview(
         kind.as_deref().unwrap_or("face"),
         rotation.unwrap_or(0),
         size.unwrap_or(512),
+        services::mii_render::PreviewOptions::from_editor(
+            pitch,
+            zoom,
+            expression.as_deref(),
+            quality.as_deref(),
+        ),
     )
     .await
     .unwrap_or_default();

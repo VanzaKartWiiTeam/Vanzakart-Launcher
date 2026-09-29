@@ -97,6 +97,12 @@ pub struct RenderRequest {
     pub camera_zoom: f32,
     /// Colore di fondo RGBA.
     pub background: [u8; 4],
+    /// Campioni per lato di ogni pixel, fra 1 e 4. Il rasterizzatore prende
+    /// un campione solo, al centro del pixel: i bordi escono a scalini, e
+    /// girando il Mii gli scalini si muovono. Con 2 si disegna al doppio del
+    /// lato e si riduce, e il contorno torna liscio (§D-095). 1 è il render
+    /// di riferimento, confrontato pixel per pixel con FFL (§D-092).
+    pub supersample: u32,
 }
 
 impl Default for RenderRequest {
@@ -110,6 +116,7 @@ impl Default for RenderRequest {
             camera_vertical_offset: 0.0,
             camera_zoom: 1.0,
             background: [255, 255, 255, 0],
+            supersample: 1,
         }
     }
 }
@@ -176,7 +183,14 @@ impl MiiRenderer {
         studio: &[u8; STUDIO_SIZE],
         request: &RenderRequest,
     ) -> RenderResult<Image> {
-        let size = request.size.clamp(16, 4096) as usize;
+        let output = request.size.clamp(16, 4096) as usize;
+        // Il lato su cui si rasterizza: quello chiesto, o un suo multiplo da
+        // ridurre alla fine. Mai oltre 4096, anche a costo di campionare meno.
+        let factor = (request.supersample.clamp(1, 4) as usize)
+            .min(4096 / output)
+            .max(1);
+        let size = output * factor;
+
         let info = CharInfo::from_studio(studio);
         let expression = request.expression.ffl_id();
         let resolution = if size <= 384 { 256 } else { 512 };
@@ -271,11 +285,14 @@ impl MiiRenderer {
             );
         }
 
-        Ok(Image {
-            width: width as u32,
-            height: height as u32,
-            rgba: target.pixels,
-        })
+        if factor == 1 {
+            return Ok(Image {
+                width: width as u32,
+                height: height as u32,
+                rgba: target.pixels,
+            });
+        }
+        Ok(downsample(&target.pixels, width, height, factor))
     }
 
     /// La testa del Mii, dalla cache o costruita adesso.
@@ -398,6 +415,48 @@ fn ieee_remainder(x: f32, y: f32) -> f32 {
     }
 }
 
+/// Riduce un'immagine di `factor` per lato, con la media di ogni blocco.
+///
+/// La media è in alfa premoltiplicato: il fondo è trasparente, e senza i
+/// pixel del contorno prenderebbero il colore dello sfondo invisibile — un
+/// alone chiaro attorno al Mii.
+fn downsample(pixels: &[u8], width: usize, height: usize, factor: usize) -> Image {
+    let (out_width, out_height) = (width / factor, height / factor);
+    let mut rgba = vec![0u8; out_width * out_height * 4];
+    let samples = (factor * factor) as u32;
+
+    for oy in 0..out_height {
+        for ox in 0..out_width {
+            let mut sum = [0u32; 4];
+            for sy in 0..factor {
+                let row = (oy * factor + sy) * width;
+                for sx in 0..factor {
+                    let px = &pixels[(row + ox * factor + sx) * 4..][..4];
+                    let alpha = u32::from(px[3]);
+                    sum[0] += u32::from(px[0]) * alpha;
+                    sum[1] += u32::from(px[1]) * alpha;
+                    sum[2] += u32::from(px[2]) * alpha;
+                    sum[3] += alpha;
+                }
+            }
+
+            let out = &mut rgba[(oy * out_width + ox) * 4..][..4];
+            for channel in 0..3 {
+                if let Some(value) = (sum[channel] + sum[3] / 2).checked_div(sum[3]) {
+                    out[channel] = value.min(255) as u8;
+                }
+            }
+            out[3] = ((sum[3] + samples / 2) / samples).min(255) as u8;
+        }
+    }
+
+    Image {
+        width: out_width as u32,
+        height: out_height as u32,
+        rgba,
+    }
+}
+
 fn round_up_even(value: usize) -> usize {
     if value % 2 == 0 {
         value
@@ -435,6 +494,27 @@ mod tests {
         assert_eq!(parse_background("12345678"), Some([0x12, 0x34, 0x56, 0x78]));
         assert_eq!(parse_background("fff"), None);
         assert_eq!(parse_background("GGGGGGGG"), None);
+    }
+
+    #[test]
+    fn the_supersampled_image_keeps_the_colour_of_its_edges() {
+        // Un blocco 2×2 metà opaco (ciano) e metà trasparente (nero).
+        let mut pixels = Vec::new();
+        for alpha in [255u8, 0, 255, 0] {
+            pixels.extend_from_slice(&[0, 200, 255, alpha][..3]);
+            pixels.push(alpha);
+        }
+        let image = downsample(&pixels, 2, 2, 2);
+        assert_eq!((image.width, image.height), (1, 1));
+        assert_eq!(image.rgba, vec![0, 200, 255, 128]);
+    }
+
+    #[test]
+    fn a_flat_image_survives_the_reduction() {
+        let pixels = [10u8, 20, 30, 255].repeat(16);
+        let image = downsample(&pixels, 4, 4, 2);
+        assert_eq!((image.width, image.height), (2, 2));
+        assert!(image.rgba.chunks_exact(4).all(|px| px == [10, 20, 30, 255]));
     }
 
     #[test]

@@ -129,7 +129,11 @@ const controls = CATEGORIES.flatMap((category) => category.controls);
 describe('categorie dell’editor Mii', () => {
   it('mette ogni campo numerico in un controllo, una volta sola', () => {
     const numeric = controls.flatMap((control) =>
-      control.kind === 'switch' || control.kind === 'toggle' ? [] : [control.field]
+      control.kind === 'switch' || control.kind === 'toggle'
+        ? []
+        : control.kind === 'date'
+          ? [control.field, control.dayField]
+          : [control.field]
     );
     expect(new Set(numeric).size).toBe(numeric.length);
 

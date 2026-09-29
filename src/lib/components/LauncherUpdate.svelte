@@ -35,6 +35,8 @@
   let stage = $state<Stage>('checking');
   let offer = $state<LauncherUpdateOffer | null>(null);
   let error = $state('');
+  /** La richiesta di Windows è stata rifiutata: non è un guasto. */
+  let declined = $state(false);
 
   /** I progressi dell'operazione "launcher", e solo quelli. */
   const progress = $derived(app.progress.operation === 'launcher' ? app.progress : null);
@@ -78,6 +80,7 @@
 
     stage = 'installing';
     error = '';
+    declined = false;
 
     try {
       // Dallo store delle operazioni: finché si aggiorna il launcher, gli
@@ -87,10 +90,16 @@
       // Un istante perché si legga "installato" prima che la finestra sparisca.
       setTimeout(() => void relaunch(), 900);
     } catch (err) {
-      error = api.errorMessage(err);
+      // Un "No" alla richiesta di Windows non è un guasto: non è cambiato
+      // niente, e il pulsante resta lì per riprovare.
+      declined = api.errorCode(err) === 'elevation-declined';
+      error = declined ? '' : api.errorMessage(err);
       stage = 'ready';
     }
   }
+
+  /** Il launcher sta aspettando la conferma della UAC, o il processo elevato. */
+  const elevating = $derived(stage === 'installing' && replacing && offer?.needsElevation === true);
 
   const latest = $derived(offer?.latest || status.latest);
   const current = $derived(offer?.current || status.current);
@@ -109,9 +118,11 @@
         {#if stage === 'checking'}
           {t('updater.checking')}
         {:else if stage === 'installing'}
-          {replacing
-            ? t('updater.installing')
-            : t('updater.downloadingVersion', { version: latest })}
+          {elevating
+            ? t('updater.adminTitle')
+            : replacing
+              ? t('updater.installing')
+              : t('updater.downloadingVersion', { version: latest })}
         {:else if stage === 'done'}
           {t('updater.done')}
         {:else if stage === 'upToDate'}
@@ -153,6 +164,14 @@
     {:else if stage === 'done'}
       <p class="vk-subtitle">{t('updater.doneBody')}</p>
       <div class="progress"><div class="fill" style="width: 100%"></div></div>
+    {:else if stage === 'installing' && elevating}
+      <p class="vk-subtitle admin-wait">
+        <Icon name="shield" size={16} />
+        {t('updater.adminBody')}
+      </p>
+      <div class="vk-progress vk-progress--indeterminate admin-bar">
+        <div class="vk-progress__fill"></div>
+      </div>
     {:else if stage === 'installing'}
       <p class="vk-subtitle">
         {replacing ? t('updater.installingBody') : t('updater.downloadingBody')}
@@ -188,10 +207,22 @@
           <Icon name={offer.signed ? 'check' : 'warning'} size={14} />
           {offer.signed ? t('updater.checkedPackage') : t('updater.unsignedPackage')}
         </p>
+        {#if offer.needsElevation}
+          <p class="assurance">
+            <Icon name="shield" size={14} />
+            {t('updater.needsAdmin')}
+          </p>
+        {/if}
       {/if}
 
       {#if offer?.notes?.trim()}
         <p class="notes">{offer.notes}</p>
+      {/if}
+      {#if declined}
+        <p class="assurance warning">
+          <Icon name="shield" size={14} />
+          {t('updater.adminDeclined')}
+        </p>
       {/if}
       {#if error}
         <p class="vk-error inline">{error}</p>
@@ -199,7 +230,7 @@
 
       <div class="actions">
         <button class="vk-btn vk-btn--primary" onclick={installNow}>
-          <Icon name="download" size={14} />
+          <Icon name={offer?.needsElevation ? 'shield' : 'download'} size={14} />
           {t('updater.installAndRestart')}
         </button>
         <button class="vk-btn" onclick={onclose}>{t('notice.later')}</button>
@@ -257,6 +288,21 @@
       0 0 12px rgb(255 0 102 / 0.35),
       0 0 12px rgb(0 242 255 / 0.35);
     transition: width var(--vk-dur-fast) linear;
+  }
+
+  .admin-wait {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
+
+  .admin-wait :global(.vk-icon) {
+    margin-top: 2px;
+    color: var(--vk-cyan-soft);
+  }
+
+  .admin-bar {
+    margin-top: 14px;
   }
 
   .metrics {

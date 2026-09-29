@@ -162,6 +162,13 @@ pub struct RoomPlayerView {
     pub studio_data: String,
     pub avatar_initial: String,
     pub accent_color: String,
+    /// Rank del giocatore, dalla classifica (§D-094). Zero se non ne ha.
+    pub prestige_rank: i32,
+    /// Immagine del rank come data URI, quando esiste.
+    pub rank_image: Option<String>,
+    /// Nome di un rank speciale (staff, sviluppatori…); vuoto per i rank
+    /// del gioco, che la UI chiama con il loro numero.
+    pub rank_label: String,
 }
 
 /// Stanza online.
@@ -221,8 +228,13 @@ pub struct LeaderboardEntry {
     pub streak: u32,
     /// In vacanza: la streak è congelata, non persa.
     pub streak_vacation: bool,
-    /// Percorso locale dell'immagine del rank, se già in cache.
-    pub rank_image: Option<String>,
+    /// Chiave dell'immagine del rank in [`LeaderboardPage::badges`]; vuota
+    /// quando il giocatore non ne ha una che si possa mostrare.
+    pub badge: String,
+    /// Immagine che il server assegna al giocatore (`rank_image_url`): è la
+    /// strada dei rank speciali dello staff. Resta nel backend.
+    #[serde(skip)]
+    pub rank_image_url: String,
     /// Payload di render del Mii del giocatore, vuoto quando il server non
     /// manda un blocco Mii valido.
     pub studio_data: String,
@@ -241,6 +253,20 @@ pub struct LeaderboardPage {
     pub offset: u32,
     /// `true` quando la pagina è piena: il server potrebbe averne un'altra.
     pub has_more: bool,
+    /// Le immagini dei rank citati dalla pagina, **una volta ciascuna**: cento
+    /// giocatori con lo stesso rank non si portano dietro cento copie della
+    /// stessa immagine.
+    pub badges: std::collections::BTreeMap<String, BadgeView>,
+}
+
+/// Un'immagine di rank pronta da mostrare.
+#[derive(Debug, Clone, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BadgeView {
+    /// Miniatura PNG come data URI.
+    pub image: String,
+    /// Nome di un rank speciale; vuoto per i rank del gioco.
+    pub label: String,
 }
 
 /// Licenza letta da `rksys.dat`.
@@ -292,6 +318,8 @@ pub struct PlayerStatsView {
     pub prestige_rank: i32,
     /// Immagine del rank come data URI, quando esiste.
     pub rank_image: Option<String>,
+    /// Nome di un rank speciale; vuoto per i rank del gioco.
+    pub rank_label: String,
     pub last_seen: Option<String>,
     /// Giorni di gioco consecutivi, come nella classifica (§D-085).
     pub streak: u32,

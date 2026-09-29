@@ -120,3 +120,51 @@ fn the_same_mii_renders_the_same_pixels_twice() {
     let png = first.to_png().unwrap();
     assert!(png.starts_with(&[0x89, b'P', b'N', b'G']));
 }
+
+/// Con il supercampionamento l'immagine ha il lato chiesto e la figura resta
+/// la stessa: cambia solo il contorno, che da scalini diventa sfumato (§D-095).
+#[test]
+fn supersampling_keeps_the_size_and_smooths_the_edges() {
+    let Some(renderer) = renderer() else {
+        eprintln!("VK_MII_RESOURCE non impostata: test saltato");
+        return;
+    };
+
+    let studio = mii::studio_data(&mii::write_editor_state(&MiiEditorState::default()));
+    let plain = renderer
+        .render_hex(
+            &studio,
+            &RenderRequest {
+                size: 128,
+                ..RenderRequest::default()
+            },
+        )
+        .unwrap();
+    let smooth = renderer
+        .render_hex(
+            &studio,
+            &RenderRequest {
+                size: 128,
+                supersample: 2,
+                ..RenderRequest::default()
+            },
+        )
+        .unwrap();
+
+    assert_eq!((smooth.width, smooth.height), (plain.width, plain.height));
+
+    let (a, b) = (opaque(&plain) as f64, opaque(&smooth) as f64);
+    assert!((a - b).abs() / a < 0.08, "la figura cambia: {a} contro {b}");
+
+    let partial = |image: &vk_mii_render::Image| {
+        image
+            .rgba
+            .chunks_exact(4)
+            .filter(|px| px[3] > 0 && px[3] < 255)
+            .count()
+    };
+    assert!(
+        partial(&smooth) > partial(&plain),
+        "il contorno non è più morbido"
+    );
+}

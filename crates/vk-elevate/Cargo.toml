@@ -1,0 +1,23 @@
+[package]
+name = "vk-elevate"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+description = "Avvio di un processo con i permessi di amministratore (UAC), e attesa del suo esito."
+
+[dependencies]
+thiserror.workspace = true
+
+# L'unico punto del progetto che chiama Win32 direttamente: `ShellExecuteExW`
+# con il verbo `runas` non ha un equivalente in `std` (§D-093). È la stessa
+# versione che Tauri porta già nel grafo.
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+]

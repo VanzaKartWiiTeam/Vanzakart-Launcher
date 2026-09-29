@@ -3,6 +3,7 @@ resolver = "2"
 members = [
     "crates/vk-core",
     "crates/vk-dolphin",
+    "crates/vk-elevate",
     "crates/vk-install",
     "crates/vk-mii-render",
     "crates/vk-save",
@@ -21,6 +22,7 @@ repository = "https://github.com/cripsum/vanzakart-launcher"
 [workspace.dependencies]
 vk-core = { path = "crates/vk-core" }
 vk-dolphin = { path = "crates/vk-dolphin" }
+vk-elevate = { path = "crates/vk-elevate" }
 vk-install = { path = "crates/vk-install" }
 vk-mii-render = { path = "crates/vk-mii-render" }
 vk-save = { path = "crates/vk-save" }

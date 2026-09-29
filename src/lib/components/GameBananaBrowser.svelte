@@ -19,9 +19,11 @@
   interface Props {
     /** Chiamata dopo un'installazione riuscita, per ricaricare gli addon. */
     oninstalled: () => void;
+    /** Id delle mod già installate come addon: si segnano nell'elenco. */
+    installed?: number[];
   }
 
-  const { oninstalled }: Props = $props();
+  const { oninstalled, installed = [] }: Props = $props();
 
   const SORTS = $derived([
     { value: 'Generic_Newest', label: t('gb.sort.newest') },
@@ -37,10 +39,15 @@
   let loading = $state(false);
   let error = $state('');
   let mods = $state<GameBananaMod[]>([]);
-  let total = $state(0);
   let hasMore = $state(false);
   let truncated = $state(false);
   let expanded = $state<number | null>(null);
+
+  /** Numeri grandi in forma breve: 12,3k invece di 12345. */
+  const compact = new Intl.NumberFormat(undefined, {
+    notation: 'compact',
+    maximumFractionDigits: 1
+  });
 
   /**
    * Il file in download, dallo store delle operazioni: il browser può essere
@@ -64,7 +71,6 @@
     try {
       const result = await api.searchGameBanana(query.trim(), sort, target);
       mods = result.mods;
-      total = result.totalAvailable;
       hasMore = result.hasMore;
       truncated = result.catalogTruncated;
       page = target;
@@ -156,7 +162,7 @@
     </button>
   </div>
 
-  {#if truncated}
+  {#if truncated && query.trim()}
     <p class="vk-faint note">{t('gb.truncated')}</p>
   {/if}
 
@@ -169,8 +175,6 @@
       {query.trim() ? t('gb.noMatch') : t('gb.noResults')}
     </p>
   {:else}
-    <p class="vk-faint note">{t('gb.count', { count: total, page })}</p>
-
     <ul class="mods">
       {#each mods as item (item.id)}
         <li class="mod" class:open={expanded === item.id}>
@@ -188,13 +192,27 @@
             {/if}
 
             <div class="mod-id">
-              <p class="mod-name">{item.name}</p>
+              <p class="mod-name">
+                {item.name}
+                {#if installed.includes(item.id)}
+                  <span class="vk-badge vk-badge--success owned">
+                    <Icon name="check" size={11} />
+                    {t('gb.installedBadge')}
+                  </span>
+                {/if}
+              </p>
               <p class="vk-faint mod-meta">
-                {t('gb.modMeta', {
-                  author: item.author || t('gb.unknownAuthor'),
-                  likes: item.likes,
-                  files: item.files.length
-                })}
+                <span>{item.author || t('gb.unknownAuthor')}</span>
+                <span class="stat" title={t('gb.likes', { count: item.likes })}>
+                  <Icon name="heart" size={11} />
+                  {compact.format(item.likes)}
+                </span>
+                {#if item.downloads > 0}
+                  <span class="stat" title={t('gb.downloads', { count: item.downloads })}>
+                    <Icon name="download" size={11} />
+                    {compact.format(item.downloads)}
+                  </span>
+                {/if}
               </p>
               {#if item.description}
                 <p class="vk-faint mod-desc">{item.description.slice(0, 190)}</p>
@@ -259,14 +277,17 @@
       {/each}
     </ul>
 
-    <div class="pager">
-      <button class="vk-btn" onclick={() => run(page - 1)} disabled={loading || page <= 1}>
-        {t('gb.previous')}
-      </button>
-      <button class="vk-btn" onclick={() => run(page + 1)} disabled={loading || !hasMore}>
-        {t('gb.next')}
-      </button>
-    </div>
+    {#if page > 1 || hasMore}
+      <div class="pager">
+        <button class="vk-btn" onclick={() => run(page - 1)} disabled={loading || page <= 1}>
+          {t('gb.previous')}
+        </button>
+        <span class="vk-faint page-label">{t('gb.page', { page })}</span>
+        <button class="vk-btn" onclick={() => run(page + 1)} disabled={loading || !hasMore}>
+          {t('gb.next')}
+        </button>
+      </div>
+    {/if}
   {/if}
 </section>
 
@@ -355,14 +376,34 @@
   }
 
   .mod-name {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
     margin: 0;
     font-weight: 800;
     overflow-wrap: anywhere;
   }
 
-  .mod-meta {
-    margin: 2px 0 0;
+  .owned {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
     font-size: var(--vk-fs-eyebrow);
+  }
+
+  .mod-meta {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 3px 0 0;
+    font-size: var(--vk-fs-eyebrow);
+  }
+
+  .stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
   }
 
   .mod-desc {
@@ -441,9 +482,14 @@
 
   .pager {
     display: flex;
+    align-items: center;
     justify-content: center;
     gap: 10px;
     margin-top: 14px;
+  }
+
+  .page-label {
+    font-size: var(--vk-fs-micro);
   }
 
   @media (max-width: 720px) {

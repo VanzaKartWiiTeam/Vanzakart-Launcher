@@ -22,6 +22,7 @@
   import StreakBadge from '$lib/components/StreakBadge.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
+  import RankBadge from '$lib/components/RankBadge.svelte';
   import { app } from '$lib/stores/app.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
   import type { FriendView, LicenseView } from '$lib/api/types';
@@ -268,15 +269,15 @@
                   badge marcava come anomalo lo stato normale (§D-060).
                 -->
                 <p class="friend-name">
-                  {#if friend.stats?.rankImage}
-                    <img
-                      class="rank-mini"
-                      src={friend.stats.rankImage}
-                      alt={t('friends.rank', { rank: friend.stats.prestigeRank })}
-                      title={t('friends.rank', { rank: friend.stats.prestigeRank })}
+                  <span class="friend-name-text">{friend.miiName}</span>
+                  {#if friend.stats}
+                    <RankBadge
+                      image={friend.stats.rankImage}
+                      rank={friend.stats.prestigeRank}
+                      label={friend.stats.rankLabel}
+                      size={20}
                     />
                   {/if}
-                  {friend.miiName}
                 </p>
                 <p class="vk-mono friend-code">{friend.friendCode}</p>
               </div>
@@ -605,11 +606,10 @@
     white-space: nowrap;
   }
 
-  .rank-mini {
-    width: 18px;
-    height: 18px;
-    flex: none;
-    object-fit: contain;
+  .friend-name-text {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .friend-code {

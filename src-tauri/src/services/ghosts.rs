@@ -50,13 +50,19 @@ const INDEX_FILE: &str = "ghosts.json";
 #[serde(rename_all = "camelCase")]
 pub struct GhostRecordView {
     pub submission_id: i64,
+    /// Chi ha fatto il tempo: il nome del Mii (vedi [`player_names`]).
     pub player_name: String,
+    /// Profilo con cui il tempo è stato caricato, solo se dice qualcosa in
+    /// più del nome; vuoto altrimenti.
+    pub profile_name: String,
     pub country: String,
     pub finish_time_ms: u32,
     pub finish_time: String,
     pub date_set: String,
     pub character: String,
     pub vehicle: String,
+    /// `true` se il ghost del record è già stato scaricato dal launcher.
+    pub installed: bool,
 }
 
 /// Una pista, con ciò che serve alla lista delle mappe.
@@ -98,8 +104,11 @@ pub struct GhostCatalogView {
 pub struct GhostEntryView {
     pub submission_id: i64,
     pub rank: u32,
+    /// Chi ha fatto il tempo: il nome del Mii (vedi [`player_names`]).
     pub player_name: String,
-    pub mii_name: String,
+    /// Profilo con cui il tempo è stato caricato, solo se dice qualcosa in
+    /// più del nome; vuoto altrimenti.
+    pub profile_name: String,
     pub country: String,
     pub country_name: String,
     pub finish_time_ms: u32,
@@ -278,24 +287,65 @@ fn record_view(value: &Value) -> GhostRecordView {
     GhostRecordView {
         submission_id: entry.submission_id,
         player_name: entry.player_name,
+        profile_name: entry.profile_name,
         country: entry.country,
         finish_time_ms: entry.finish_time_ms,
         finish_time: entry.finish_time,
         date_set: entry.date_set,
         character: entry.character,
         vehicle: entry.vehicle,
+        installed: false,
     }
+}
+
+/// Profili che il server usa per i tempi caricati in blocco. Non sono
+/// persone: sono il nome di una tabella, e non si mostrano mai. Il confronto
+/// ignora maiuscole e segni (`TT_Leaderboard`, `tt-leaderboard`…).
+const SYSTEM_PROFILES: &[&str] = &["ttleaderboard"];
+
+fn is_system_profile(name: &str) -> bool {
+    let key: String = name
+        .chars()
+        .filter(char::is_ascii_alphanumeric)
+        .map(|ch| ch.to_ascii_lowercase())
+        .collect();
+    SYSTEM_PROFILES.contains(&key.as_str())
+}
+
+/// Chi ha fatto il tempo, e con quale profilo è stato caricato.
+///
+/// Il server mette in `playerName` il **profilo** del time trial — spesso
+/// quello di sistema, `TT_Leaderboard` — e in `miiName` il nome del Mii che
+/// ha corso, cioè il giocatore. Si mostra il secondo; il profilo resta solo
+/// quando è di una persona e dice qualcosa in più (`Staff Ghost IT`).
+fn player_names(value: &Value) -> (String, String) {
+    let mii = humanize(&loose::text(value, &["miiName", "mii_name"]));
+    let profile = humanize(&loose::text(value, &["playerName", "player_name", "name"]));
+    let profile = if is_system_profile(&profile) {
+        String::new()
+    } else {
+        profile
+    };
+
+    if mii.is_empty() {
+        return (profile, String::new());
+    }
+    if profile.eq_ignore_ascii_case(&mii) {
+        return (mii, String::new());
+    }
+    (mii, profile)
 }
 
 fn entry_view(value: &Value) -> GhostEntryView {
     let finish_time_ms = loose::count(value, &["finishTimeMs", "finish_time_ms"]);
     let country = loose::text(value, &["countryAlpha2", "country_alpha2", "country"]);
+    let (player_name, profile_name) = player_names(value);
 
     GhostEntryView {
         submission_id: i64::from(loose::int(value, &["id", "submissionId", "submission_id"])),
         rank: loose::count(value, &["rank", "position"]),
-        player_name: humanize(&loose::text(value, &["playerName", "player_name", "name"])),
-        mii_name: humanize(&loose::text(value, &["miiName", "mii_name"])),
+        player_name,
+        profile_name,
         // Due lettere, o niente: la UI lo mostra com'è.
         country: if country.len() == 2 && country.chars().all(|c| c.is_ascii_alphabetic()) {
             country.to_ascii_uppercase()
@@ -505,12 +555,19 @@ impl GhostIndex {
 pub async fn catalog(state: &Arc<AppState>, refresh: bool) -> AppResult<GhostCatalogView> {
     let remote = remote_catalog(state, refresh).await?;
     let local = LocalContext::load(state).await;
+    let installed = GhostIndex::load(state).await.installed(local.channel);
 
     Ok(GhostCatalogView {
         tracks: remote
             .tracks
             .iter()
-            .map(|track| local.track_view(track, remote.records.get(&track.id)))
+            .map(|track| {
+                let record = remote.records.get(&track.id).map(|record| GhostRecordView {
+                    installed: installed.contains(&record.submission_id),
+                    ..record.clone()
+                });
+                local.track_view(track, record.as_ref())
+            })
             .collect(),
         channel: local.channel,
         cc: CC,
@@ -547,7 +604,11 @@ pub async fn leaderboard(
         .read()
         .await
         .as_ref()
-        .and_then(|(_, catalog)| catalog.records.get(&track.id).cloned());
+        .and_then(|(_, catalog)| catalog.records.get(&track.id).cloned())
+        .map(|record| GhostRecordView {
+            installed: installed.contains(&record.submission_id),
+            ..record
+        });
 
     let mut view = parse_leaderboard(&payload, page);
     for entry in &mut view.entries {
@@ -852,6 +913,37 @@ mod tests {
         assert_eq!(record.country, "IT");
         assert_eq!(record.character, "Bowser");
         assert_eq!(record.vehicle, "Flame Runner");
+        assert_eq!(
+            record.player_name, "Staff Ghost IT",
+            "senza Mii resta il profilo"
+        );
+        assert!(record.profile_name.is_empty());
+    }
+
+    /// Il caso che si vedeva nel launcher: `TT_Leaderboard` in grande e il
+    /// giocatore in piccolo. Il profilo di sistema non compare mai.
+    #[test]
+    fn the_player_comes_first_and_the_system_profile_never_shows() {
+        let names = |raw: &str| player_names(&json(raw));
+
+        assert_eq!(
+            names(r#"{"playerName":"TT_Leaderboard","miiName":"lacly"}"#),
+            ("lacly".to_string(), String::new())
+        );
+        assert_eq!(
+            names(r#"{"playerName":"tt-leaderboard","miiName":""}"#),
+            (String::new(), String::new()),
+            "nessun nome è meglio del nome di una tabella"
+        );
+        assert_eq!(
+            names(r#"{"playerName":"Staff Ghost IT","miiName":"NITROFOX"}"#),
+            ("NITROFOX".to_string(), "Staff Ghost IT".to_string())
+        );
+        assert_eq!(
+            names(r#"{"playerName":"Lacly","miiName":"lacly"}"#),
+            ("lacly".to_string(), String::new()),
+            "lo stesso nome non si ripete"
+        );
     }
 
     #[test]
@@ -881,7 +973,8 @@ mod tests {
         assert_eq!(view.fastest_lap, "0:38.918");
 
         let first = &view.entries[0];
-        assert_eq!(first.player_name, "Staff Ghost IT");
+        assert_eq!(first.player_name, "NITROFOX", "prima il nome del Mii");
+        assert_eq!(first.profile_name, "Staff Ghost IT");
         assert_eq!(first.lap_splits.len(), 3);
         assert_eq!(first.controller, 1);
         assert!(!first.automatic_drift);

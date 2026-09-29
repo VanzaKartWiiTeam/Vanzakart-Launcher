@@ -11,7 +11,9 @@
  * - `slider`: un cursore con i pulsanti − e +;
  * - `features`: i tratti del viso (trucco, rughe), che un'icona non sa
  *   mostrare e che quindi restano miniature renderizzate;
- * - `switch` e `toggle`: le scelte sì/no.
+ * - `switch` e `toggle`: le scelte sì/no;
+ * - `date`: mese e giorno insieme, come due menu — due cursori da 12 e 31
+ *   tacche per una data erano il controllo più scomodo dell'editor.
  *
  * Nessun controllo porta i propri limiti: arrivano dal backend
  * (`mii_editor_limits`, cioè `vk_save::mii::LIMITS`), l'unico posto in cui
@@ -38,7 +40,8 @@ export type Control =
       off: TranslationKey;
       on: TranslationKey;
     }
-  | { kind: 'toggle'; label: TranslationKey; field: MiiBooleanField };
+  | { kind: 'toggle'; label: TranslationKey; field: MiiBooleanField }
+  | { kind: 'date'; label: TranslationKey; field: 'birthMonth'; dayField: 'birthDay' };
 
 /**
  * Etichette e descrizioni sono **chiavi di traduzione**, non testo: la
@@ -71,8 +74,7 @@ export const CATEGORIES: [Category, ...Category[]] = [
       { kind: 'toggle', label: 'miicat.favorite', field: 'isFavorite' },
       { kind: 'slider', label: 'miicat.bodyHeight', field: 'height' },
       { kind: 'slider', label: 'miicat.build', field: 'weight' },
-      { kind: 'slider', label: 'miicat.birthMonth', field: 'birthMonth' },
-      { kind: 'slider', label: 'miicat.birthDay', field: 'birthDay' }
+      { kind: 'date', label: 'miicat.date', field: 'birthMonth', dayField: 'birthDay' }
     ]
   },
   {

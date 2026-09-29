@@ -22,12 +22,15 @@
 //! nessun secondo installer: si scarica, si verifica impronta e firma, e si
 //! sostituiscono i file dove sono.
 
+use std::ffi::OsString;
+use std::path::Path;
 use std::sync::Arc;
 
 use serde::Serialize;
-use vk_core::progress::{Phase, ProgressSink, ProgressUpdate};
-use vk_install::update::{self, UpdateTarget};
-use vk_install::Installer;
+use vk_core::progress::{CancelToken, Phase, ProgressSink, ProgressUpdate};
+use vk_install::elevated::{self, ElevatedJob, ElevatedResult};
+use vk_install::update::{self, Access, UpdateTarget};
+use vk_install::{InstallError, Installer, ReleaseManifest};
 
 use crate::error::{AppError, AppResult};
 use crate::state::{AppState, LAUNCHER_VERSION};
@@ -83,6 +86,9 @@ pub struct LauncherUpdateOffer {
     pub managed: bool,
     /// `true` quando il pulsante "Aggiorna" ha senso.
     pub can_install: bool,
+    /// `true` quando lo scambio dei file richiede i permessi di
+    /// amministratore: Windows chiederà una conferma (§D-093).
+    pub needs_elevation: bool,
     pub download_page: String,
     /// Perché da qui non si può aggiornare, quando non si può. Vuoto
     /// altrimenti.
@@ -184,6 +190,7 @@ pub async fn check(state: &Arc<AppState>) -> AppResult<LauncherUpdateOffer> {
         signed: plan.signed,
         managed: plan.managed,
         can_install,
+        needs_elevation: plan.needs_elevation,
         download_page,
         blocked: blocked_reason,
         blocked_code,
@@ -194,9 +201,15 @@ pub async fn check(state: &Arc<AppState>) -> AppResult<LauncherUpdateOffer> {
 ///
 /// Prende lo stesso lucchetto della modpack: un launcher che si sostituisce
 /// da sé mentre sta scaricando altro si porterebbe dietro un download a metà.
+///
+/// Se la cartella si scrive solo come amministratore — `Programmi` — il
+/// download resta qui e lo scambio lo fa un processo elevato, dopo la
+/// conferma della UAC (§D-093). `owner_window` è la finestra davanti a cui
+/// Windows mette la richiesta.
 pub async fn install(
     state: &Arc<AppState>,
     progress: ProgressSink,
+    owner_window: Option<isize>,
 ) -> AppResult<LauncherUpdateOutcome> {
     let guard = state.begin_operation(OPERATION)?;
     let cancel = state.renew_cancel_token().await;
@@ -206,23 +219,38 @@ pub async fn install(
         let engine = engine(state)?;
         let manifest = engine.fetch_manifest(&manifest_urls(state).await).await?;
 
-        let report = engine
+        if target.access()? == Access::Elevated {
+            return install_elevated(&engine, &manifest, &target, &progress, &cancel, owner_window)
+                .await;
+        }
+
+        match engine
             .update_in_place(&manifest, &target, &progress, &cancel)
-            .await?;
-
-        tracing::info!(
-            version = %report.version,
-            directory = %report.install_dir.display(),
-            pending = report.pending_cleanup.len(),
-            "launcher aggiornato in loco"
-        );
-
-        Ok::<_, AppError>(LauncherUpdateOutcome {
-            version: report.version,
-            install_dir: report.install_dir.to_string_lossy().to_string(),
-            bytes: report.bytes,
-            cleanup_pending: !report.pending_cleanup.is_empty(),
-        })
+            .await
+        {
+            Ok(report) => {
+                tracing::info!(
+                    version = %report.version,
+                    directory = %report.install_dir.display(),
+                    pending = report.pending_cleanup.len(),
+                    "launcher aggiornato in loco"
+                );
+                Ok(LauncherUpdateOutcome {
+                    version: report.version,
+                    install_dir: report.install_dir.to_string_lossy().to_string(),
+                    bytes: report.bytes,
+                    cleanup_pending: !report.pending_cleanup.is_empty(),
+                })
+            }
+            // Un permesso negato a metà scambio: la cartella è già tornata
+            // com'era, e la stessa operazione come amministratore può riuscire.
+            Err(InstallError::NeedsElevation(reason)) if cfg!(windows) => {
+                tracing::info!(%reason, "permesso negato durante lo scambio: si riprova come amministratore");
+                install_elevated(&engine, &manifest, &target, &progress, &cancel, owner_window)
+                    .await
+            }
+            Err(error) => Err(error.into()),
+        }
     }
     .await;
     drop(guard);
@@ -234,6 +262,192 @@ pub async fn install(
         ));
     }
     result
+}
+
+/// L'aggiornamento di un'installazione in `Programmi`.
+///
+/// Il download e la verifica restano in questo processo, con la barra e il
+/// pulsante per annullare. Poi il launcher avvia **sé stesso** come
+/// amministratore con un job che dice dove sta il pacchetto, aspetta che
+/// finisca e ne legge l'esito. Il processo elevato non si fida del job: vedi
+/// `vk_install::elevated`.
+async fn install_elevated(
+    engine: &Installer,
+    manifest: &ReleaseManifest,
+    target: &UpdateTarget,
+    progress: &ProgressSink,
+    cancel: &CancelToken,
+    owner_window: Option<isize>,
+) -> AppResult<LauncherUpdateOutcome> {
+    if !cfg!(windows) {
+        return Err(InstallError::NotUpdatable(format!(
+            "{} cannot be written to",
+            target.install_dir.display()
+        ))
+        .into());
+    }
+
+    let downloaded = engine
+        .download_update(manifest, target, progress, cancel)
+        .await?;
+    if let Err(error) = cancel.check() {
+        let _ = std::fs::remove_file(&downloaded.archive);
+        return Err(error.into());
+    }
+
+    let nonce = hex(&crate::platform::random_bytes::<16>());
+    let job_dir = std::env::temp_dir().join(format!("vk-launcher-update-{nonce}"));
+    let job = ElevatedJob {
+        version: downloaded.version.clone(),
+        archive: downloaded.archive.clone(),
+        nonce,
+    };
+
+    let result = run_elevated_job(&job, &job_dir, target, progress, owner_window).await;
+
+    let _ = std::fs::remove_dir_all(&job_dir);
+    let _ = std::fs::remove_file(&downloaded.archive);
+    result
+}
+
+async fn run_elevated_job(
+    job: &ElevatedJob,
+    job_dir: &Path,
+    target: &UpdateTarget,
+    progress: &ProgressSink,
+    owner_window: Option<isize>,
+) -> AppResult<LauncherUpdateOutcome> {
+    let job_path = job.write_to(job_dir)?;
+
+    progress(ProgressUpdate::new(
+        Phase::Installing,
+        "Waiting for the administrator confirmation",
+    ));
+
+    let executable = target.executable.clone();
+    let args = vec![
+        OsString::from(elevated::APPLY_UPDATE_FLAG),
+        job_path.into_os_string(),
+    ];
+    let exit = tokio::task::spawn_blocking(move || {
+        vk_elevate::run_elevated(&executable, &args, owner_window)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))?;
+
+    let exit = match exit {
+        Ok(exit) => exit,
+        Err(vk_elevate::ElevationError::Cancelled) => {
+            tracing::info!("richiesta di amministratore rifiutata: niente è cambiato");
+            return Err(InstallError::ElevationDeclined.into());
+        }
+        Err(error) => return Err(InstallError::platform(error.to_string()).into()),
+    };
+
+    let result = elevated::read_result(&target.install_dir, &job.nonce);
+    if exit != elevated::EXIT_OK {
+        let error = elevated::error_for_exit(exit, result.as_ref());
+        tracing::warn!(
+            exit,
+            error = %vk_core::redact::redact(&error.to_string()),
+            "aggiornamento come amministratore non riuscito"
+        );
+        return Err(error.into());
+    }
+
+    let result = result.unwrap_or_else(|| ElevatedResult {
+        ok: true,
+        version: job.version.clone(),
+        ..ElevatedResult::default()
+    });
+    tracing::info!(
+        version = %result.version,
+        directory = %target.install_dir.display(),
+        "launcher aggiornato come amministratore"
+    );
+    progress(ProgressUpdate::new(Phase::Completed, "Update complete").with_percent(100.0));
+
+    Ok(LauncherUpdateOutcome {
+        version: result.version,
+        install_dir: target.install_dir.to_string_lossy().to_string(),
+        bytes: result.bytes,
+        cleanup_pending: result.cleanup_pending,
+    })
+}
+
+/// Se questo processo è quello elevato di un aggiornamento, fa il suo lavoro
+/// ed esce.
+///
+/// Va chiamata per prima cosa: il processo elevato non apre finestre, non
+/// avvia WebView2 e non tocca la cartella dati. Quando è un genitore a
+/// digitare la password gira con il **suo** profilo, e non deve lasciarci
+/// niente (§D-093).
+pub fn handle_elevated_update_if_requested() {
+    let mut args = std::env::args_os().skip(1);
+    if args.next().as_deref() != Some(std::ffi::OsStr::new(elevated::APPLY_UPDATE_FLAG)) {
+        return;
+    }
+
+    let exit = match args.next() {
+        Some(job) => apply_elevated_job(Path::new(&job)),
+        None => elevated::exit_code(&InstallError::platform("no update job")),
+    };
+    std::process::exit(exit as i32);
+}
+
+fn apply_elevated_job(job_path: &Path) -> u32 {
+    let job = match ElevatedJob::read(job_path) {
+        Ok(job) => job,
+        Err(error) => return elevated::exit_code(&error),
+    };
+
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(runtime) => runtime,
+        Err(error) => return elevated::exit_code(&InstallError::platform(error.to_string())),
+    };
+
+    let applied = runtime.block_on(async {
+        let engine = Installer::new(LAUNCHER_VERSION, None)?;
+        engine
+            .apply_elevated_job(&job, &elevated_manifest_urls())
+            .await
+    });
+
+    match applied {
+        Ok(report) => {
+            elevated::write_result(&report.install_dir, &ElevatedResult::success(&job, &report));
+            elevated::EXIT_OK
+        }
+        Err(error) => {
+            if let Ok(target) = UpdateTarget::current() {
+                elevated::write_result(
+                    &target.install_dir,
+                    &ElevatedResult::failure(&job.nonce, &error),
+                );
+            }
+            elevated::exit_code(&error)
+        }
+    }
+}
+
+/// Gli indirizzi di `install.json` per il processo elevato: solo quelli
+/// **compilati**. La cache degli endpoint sta nella cartella dati
+/// dell'utente, che per un processo amministratore è un dato non fidato.
+fn elevated_manifest_urls() -> Vec<String> {
+    let defaults = crate::storage::endpoints::defaults();
+    let mut urls: Vec<String> = std::iter::once(defaults.launcher_install_url)
+        .chain(defaults.launcher_install_mirrors)
+        .filter(|url| vk_core::endpoints::is_safe_endpoint(url))
+        .collect();
+    urls.push(INSTALL_MANIFEST_URL.to_string());
+    vk_core::net::dedupe_urls(&urls)
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
 }
 
 /// Toglie ciò che un aggiornamento precedente non aveva potuto cancellare.
@@ -380,6 +594,23 @@ mod tests {
 
         let urls = manifest_urls(&state).await;
         assert_eq!(urls, vec![INSTALL_MANIFEST_URL.to_string()]);
+    }
+
+    /// Il processo elevato non legge la cache degli endpoint, che sta nella
+    /// cartella dati dell'utente: solo gli indirizzi compilati, e solo https.
+    #[test]
+    fn the_elevated_process_only_trusts_the_compiled_addresses() {
+        let urls = elevated_manifest_urls();
+        assert_eq!(urls.last().map(String::as_str), Some(INSTALL_MANIFEST_URL));
+        assert!(
+            urls.iter().all(|url| url.starts_with("https://")),
+            "{urls:?}"
+        );
+    }
+
+    #[test]
+    fn the_nonce_is_plain_hex() {
+        assert_eq!(hex(&[0x00, 0x0f, 0xa5, 0xff]), "000fa5ff");
     }
 
     /// Ciò che non si può aggiornare si racconta, non si nasconde dietro un

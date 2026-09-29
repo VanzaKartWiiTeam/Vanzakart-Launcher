@@ -357,11 +357,11 @@ impl Installer {
         // stesso, altrimenti la disinstallazione lo lascia lì.
         let _ = record.save();
 
-        // 5. Permessi, per ultimi: prima si chiude la sottocartella del
-        //    disinstallatore, poi si apre il resto agli utenti, così che il
-        //    launcher possa aggiornarsi da sé senza chiedere la password
-        //    (§D-091). Se non riesce l'installazione resta valida: il launcher
-        //    rimanderà alla pagina dei download invece di aggiornarsi da solo.
+        // 5. Permessi, per ultimi: si chiude la sottocartella del
+        //    disinstallatore e la cartella resta protetta come ogni
+        //    programma in Programmi; il launcher si aggiornerà chiedendo la
+        //    conferma della UAC (§D-091, §D-093). Se non riesce
+        //    l'installazione resta valida.
         if machine_wide {
             if let Err(error) = platform::secure_machine_install(
                 &install_dir,
@@ -409,48 +409,7 @@ impl Installer {
             .download_with_mirrors(&package.urls(), archive, progress, cancel)
             .await?;
 
-        if !package.sha256.is_empty() {
-            progress(ProgressUpdate::new(
-                Phase::Verifying,
-                "Verifying the package checksum",
-            ));
-            let actual = vk_core::hash::sha256_file(archive).await?;
-            if !vk_core::hash::hash_eq(&actual, &package.sha256) {
-                fsops::remove_path_best_effort(archive);
-                return Err(InstallError::HashMismatch {
-                    expected: package.sha256.clone(),
-                    actual,
-                });
-            }
-        } else {
-            tracing::warn!("il manifest non dichiara un'impronta: pacchetto non verificabile");
-        }
-
-        // La firma viene dopo l'impronta perché è la domanda successiva: il
-        // file è quello descritto dal manifest, e il manifest l'ha scritto
-        // chi ha la chiave privata? Un pacchetto che non la supera viene
-        // cancellato, non solo rifiutato (§D-084).
-        if !package.signature.trim().is_empty() {
-            progress(ProgressUpdate::new(
-                Phase::Verifying,
-                "Verifying the package signature",
-            ));
-            let archive_path = archive.to_path_buf();
-            let signature = package.signature.clone();
-            let verified = tokio::task::spawn_blocking(move || {
-                crate::signing::verify_file(&archive_path, &signature)
-            })
-            .await
-            .map_err(|error| InstallError::platform(error.to_string()))?;
-
-            if let Err(error) = verified {
-                fsops::remove_path_best_effort(archive);
-                return Err(error);
-            }
-        } else {
-            tracing::warn!("il manifest non dichiara una firma: pacchetto non autenticato");
-        }
-
+        verify_archive(package, archive, progress).await?;
         Ok(outcome.summary("launcher package"))
     }
 
@@ -483,6 +442,62 @@ impl Installer {
             }
         }
     }
+}
+
+/// Verifica impronta e firma di un pacchetto già scaricato.
+///
+/// Un pacchetto che non passa viene **cancellato**, non solo rifiutato: non
+/// deve restare in giro un file che qualcuno potrebbe applicare dopo. È la
+/// stessa verifica del download, che il processo elevato ripete sulla propria
+/// copia del pacchetto (§D-093).
+pub(crate) async fn verify_archive(
+    package: &ReleasePackage,
+    archive: &Path,
+    progress: &ProgressSink,
+) -> InstallResult<()> {
+    if !package.sha256.is_empty() {
+        progress(ProgressUpdate::new(
+            Phase::Verifying,
+            "Verifying the package checksum",
+        ));
+        let actual = vk_core::hash::sha256_file(archive).await?;
+        if !vk_core::hash::hash_eq(&actual, &package.sha256) {
+            fsops::remove_path_best_effort(archive);
+            return Err(InstallError::HashMismatch {
+                expected: package.sha256.clone(),
+                actual,
+            });
+        }
+    } else {
+        tracing::warn!("il manifest non dichiara un'impronta: pacchetto non verificabile");
+    }
+
+    // La firma viene dopo l'impronta perché è la domanda successiva: il file
+    // è quello descritto dal manifest, e il manifest l'ha scritto chi ha la
+    // chiave privata? Un pacchetto che non la supera viene cancellato, non
+    // solo rifiutato (§D-084).
+    if !package.signature.trim().is_empty() {
+        progress(ProgressUpdate::new(
+            Phase::Verifying,
+            "Verifying the package signature",
+        ));
+        let archive_path = archive.to_path_buf();
+        let signature = package.signature.clone();
+        let verified = tokio::task::spawn_blocking(move || {
+            crate::signing::verify_file(&archive_path, &signature)
+        })
+        .await
+        .map_err(|error| InstallError::platform(error.to_string()))?;
+
+        if let Err(error) = verified {
+            fsops::remove_path_best_effort(archive);
+            return Err(error);
+        }
+    } else {
+        tracing::warn!("il manifest non dichiara una firma: pacchetto non autenticato");
+    }
+
+    Ok(())
 }
 
 /// Spazio richiesto: il pacchetto scaricato, quello estratto e un margine.

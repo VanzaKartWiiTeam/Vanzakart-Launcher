@@ -150,6 +150,10 @@ export interface RoomPlayerView {
   studioData: string;
   avatarInitial: string;
   accentColor: string;
+  /** Grado dalla classifica; 0 se non ne ha o se non è ancora noto. */
+  prestigeRank: number;
+  rankImage: string | null;
+  rankLabel: string;
 }
 
 export interface RoomView {
@@ -197,7 +201,8 @@ export interface LeaderboardEntry {
   streak: number;
   /** In vacanza: la streak è congelata, non persa. */
   streakVacation: boolean;
-  rankImage: string | null;
+  /** Chiave dell'immagine del rank in `LeaderboardPage.badges`; vuota se non c'è. */
+  badge: string;
   /** Payload di render del Mii; vuoto quando il server non ne manda uno valido. */
   studioData: string;
   avatarInitial: string;
@@ -210,8 +215,18 @@ export interface LeaderboardEntry {
  * Il server ne manda al massimo cento righe per volta: `hasMore` dice se vale
  * la pena chiedere la pagina successiva.
  */
+/** Immagine di un rank, una per pagina di classifica. */
+export interface BadgeView {
+  /** Miniatura PNG come data URI. */
+  image: string;
+  /** Nome di un rank speciale (staff); vuoto per i gradi del gioco. */
+  label: string;
+}
+
 export interface LeaderboardPage {
   entries: LeaderboardEntry[];
+  /** Le immagini dei rank della pagina, una volta ciascuna. */
+  badges: Record<string, BadgeView>;
   offset: number;
   hasMore: boolean;
 }
@@ -316,6 +331,11 @@ export interface LauncherUpdateOffer {
   /** L'installazione ha il registro scritto dall'installer. */
   managed: boolean;
   canInstall: boolean;
+  /**
+   * Lo scambio dei file richiede i permessi di amministratore: il launcher
+   * è in Programmi e Windows chiederà una conferma (§D-093).
+   */
+  needsElevation: boolean;
   downloadPage: string;
   /** Perché da qui non si può aggiornare; vuoto quando si può. */
   blocked: string;
@@ -348,6 +368,8 @@ export interface PlayerStatsView {
   prestigeRank: number;
   /** Immagine del rank come data URI, quando esiste. */
   rankImage: string | null;
+  /** Nome di un rank speciale (staff); vuoto per i gradi del gioco. */
+  rankLabel: string;
   lastSeen: string | null;
   streak: number;
   streakVacation: boolean;
@@ -709,7 +731,10 @@ export type GhostBlocker =
 
 export interface GhostRecordView {
   submissionId: number;
+  /** Chi ha fatto il tempo: il nome del Mii, mai il profilo di sistema. */
   playerName: string;
+  /** Profilo del caricamento, solo quando dice qualcosa in più del nome. */
+  profileName: string;
   /** Due lettere, per esempio `IT`; vuoto se il server non lo sa. */
   country: string;
   finishTimeMs: number;
@@ -717,6 +742,8 @@ export interface GhostRecordView {
   dateSet: string;
   character: string;
   vehicle: string;
+  /** Il ghost del record è già stato scaricato dal launcher. */
+  installed: boolean;
 }
 
 export interface GhostTrackView {
@@ -744,8 +771,10 @@ export interface GhostCatalogView {
 export interface GhostEntryView {
   submissionId: number;
   rank: number;
+  /** Chi ha fatto il tempo: il nome del Mii, mai il profilo di sistema. */
   playerName: string;
-  miiName: string;
+  /** Profilo del caricamento, solo quando dice qualcosa in più del nome. */
+  profileName: string;
   country: string;
   countryName: string;
   finishTimeMs: number;

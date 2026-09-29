@@ -27,6 +27,11 @@ pub use error::{AppError, AppResult};
 
 /// Punto d'ingresso condiviso fra il binario e i test.
 pub fn run() {
+    // Questo processo potrebbe essere quello elevato di un aggiornamento in
+    // Programmi: fa lo scambio dei file ed esce, senza finestre e senza
+    // toccare la cartella dati (§D-093).
+    services::launcher::handle_elevated_update_if_requested();
+
     // Questo processo potrebbe essere una sonda grafica lanciata dal launcher
     // vero: in quel caso prova ad aprire il display e si chiude, senza toccare
     // niente (§D-071).

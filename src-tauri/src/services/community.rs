@@ -10,7 +10,7 @@
 //! campi si leggono da un `serde_json::Value`, dove le chiavi ripetute sono
 //! semplicemente sinonimi e vince la prima non nulla (§D-056).
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -18,7 +18,8 @@ use serde_json::Value;
 
 use crate::domain::wii_text::humanize;
 use crate::domain::{
-    LeaderboardEntry, LeaderboardPage, PlayerStatsView, RoomPlayerView, RoomView, RoomsSummary,
+    BadgeView, LeaderboardEntry, LeaderboardPage, PlayerStatsView, RoomPlayerView, RoomView,
+    RoomsSummary,
 };
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -224,6 +225,17 @@ pub async fn rooms(state: &Arc<AppState>) -> AppResult<RoomsSummary> {
         .map(room)
         .collect();
 
+    let mut rooms = rooms;
+    if let Some(index) = cached_player_index(state).await {
+        for player in rooms.iter_mut().flat_map(|room| room.players.iter_mut()) {
+            if let Some(stats) = index.get(&player.friend_code) {
+                player.prestige_rank = stats.prestige_rank;
+                player.rank_image = stats.rank_image.clone();
+                player.rank_label = stats.rank_label.clone();
+            }
+        }
+    }
+
     let declared_players = loose::count(&meta, &["total_players", "totalPlayers"]);
     let declared_rooms = loose::count(&meta, &["total_rooms", "totalRooms"]);
 
@@ -305,6 +317,7 @@ fn room_player(value: &Value, index: usize) -> RoomPlayerView {
         studio_data: face.studio_data,
         avatar_initial: face.avatar_initial,
         accent_color: face.accent_color,
+        ..RoomPlayerView::default()
     }
 }
 
@@ -345,7 +358,7 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
         attach_streaks(state, &mut entries).await;
     }
 
-    attach_rank_images(state, &mut entries).await;
+    let badges = attach_badges(state, &mut entries).await;
 
     Ok(LeaderboardPage {
         // Una pagina piena non prova che ce ne sia un'altra, ma è l'unico
@@ -353,6 +366,7 @@ pub async fn leaderboard(state: &Arc<AppState>, offset: u32) -> AppResult<Leader
         has_more: entries.len() as u32 >= LEADERBOARD_PAGE_SIZE,
         offset,
         entries,
+        badges,
     })
 }
 
@@ -397,8 +411,9 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
         vr_last_month: loose::int(value, &["vr_gain_month", "vrLastMonth", "vr_last_month"]),
         streak: loose::count(value, &STREAK_KEYS),
         streak_vacation: loose::flag(value, &VACATION_KEYS),
-        // La riempie `attach_rank_images`, che prima deve scaricare il file.
-        rank_image: None,
+        // La riempie `attach_badges`, che prima deve scaricare il file.
+        badge: String::new(),
+        rank_image_url: loose::text(value, &RANK_IMAGE_KEYS),
         name,
         studio_data: face.studio_data,
         avatar_initial: face.avatar_initial,
@@ -523,108 +538,270 @@ async fn fetch_streak_index(state: &Arc<AppState>) -> AppResult<StreakIndex> {
 // Immagini dei rank
 // ---------------------------------------------------------------------------
 
-/// Mette in ogni riga l'immagine del proprio rank.
-///
-/// Il percorso su disco non serviva a niente: la webview non apre file locali,
-/// e la riga mostrava il numero anche quando l'immagine c'era. Viaggia come
-/// data URI, come già fanno le facce dei Mii (§D-065). Il download avviene
-/// **prima** di comporre le righe, altrimenti al primo avvio — quando la cache
-/// è vuota — nessuna riga avrebbe la sua immagine.
-async fn attach_rank_images(state: &Arc<AppState>, entries: &mut [LeaderboardEntry]) {
-    let ranks: Vec<i32> = entries.iter().map(|entry| entry.prestige_rank).collect();
-    let images = rank_images(state, &ranks).await;
+/// Chiavi con cui il server può assegnare a un giocatore un'immagine sua: è
+/// la strada dei rank speciali (staff, sviluppatori…). Sono quelle che il
+/// launcher legacy già leggeva (`GetRankImageUrl`).
+const RANK_IMAGE_KEYS: [&str; 8] = [
+    "rank_image_url",
+    "rankImageUrl",
+    "rank_icon_url",
+    "rankIconUrl",
+    "rank_image",
+    "rankImage",
+    "badge_url",
+    "badgeUrl",
+];
 
-    for entry in entries {
-        entry.rank_image = images.get(&entry.prestige_rank).cloned();
-    }
+/// Lato delle miniature: il doppio della misura più grande in cui compaiono
+/// (32 px nel podio), per gli schermi ad alta densità.
+const BADGE_SIDE: u32 = 80;
+
+/// Una miniatura in cache si riscarica dopo una settimana: il sito può
+/// cambiare disegno senza cambiare nome al file.
+const BADGE_TTL: Duration = Duration::from_secs(7 * 24 * 60 * 60);
+
+/// Da dove viene l'immagine di un rank, e come si chiama in cache.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct BadgeSource {
+    /// `rank-3`, oppure `custom-<impronta>` per un'immagine assegnata.
+    key: String,
+    /// Indirizzi da provare in ordine.
+    urls: Vec<String>,
+    /// Nome di un rank speciale, ricavato dal file; vuoto per i rank del
+    /// gioco.
+    label: String,
 }
 
-/// Immagini dei rank citati, come data URI, scaricando quelle che mancano.
-async fn rank_images(state: &Arc<AppState>, ranks: &[i32]) -> HashMap<i32, String> {
-    let wanted = distinct_ranks(ranks);
-    if wanted.is_empty() {
-        return HashMap::new();
-    }
-
-    let _ = cache_rank_images(state, &wanted).await;
-
-    let directory = state.paths.rank_images_dir();
-    let mut images = HashMap::new();
-
-    for rank in wanted {
-        let path = directory.join(format!("rank-{rank}.png"));
-        match tokio::fs::read(&path).await {
-            Ok(bytes) if !bytes.is_empty() => {
-                images.insert(
-                    rank,
-                    format!(
-                        "data:image/png;base64,{}",
-                        vk_save::mii::base64_encode(&bytes)
-                    ),
-                );
-            }
-            _ => {}
+/// L'immagine da mostrare accanto a un giocatore, se ne ha una.
+///
+/// Un'immagine assegnata dal server vince sul rank del gioco: è il modo in
+/// cui lo staff ha il suo stemma. Il rank del gioco si cerca prima sul sito,
+/// che ha tutti i disegni attuali, poi sul server del gioco (§D-094).
+fn badge_source(
+    prestige_rank: i32,
+    custom: &str,
+    endpoints: &vk_core::endpoints::EndpointsInfo,
+) -> Option<BadgeSource> {
+    let custom = custom.trim();
+    if !custom.is_empty() {
+        let urls = custom_badge_urls(custom, endpoints);
+        if !urls.is_empty() {
+            let digest = vk_core::hash::sha256_bytes(custom.as_bytes());
+            return Some(BadgeSource {
+                key: format!("custom-{}", &digest[..16]),
+                urls,
+                label: badge_label(custom),
+            });
         }
     }
 
-    images
+    if prestige_rank < 1 {
+        return None;
+    }
+    let file = format!("rank-{prestige_rank}.png");
+    let urls = [
+        &endpoints.rank_images_site_url,
+        &endpoints.rank_images_base_url,
+    ]
+    .into_iter()
+    .filter(|base| !base.trim().is_empty())
+    .map(|base| join_url(base, &file))
+    .collect::<Vec<_>>();
+
+    (!urls.is_empty()).then(|| BadgeSource {
+        key: format!("rank-{prestige_rank}"),
+        urls,
+        label: String::new(),
+    })
 }
 
-/// Rank rankati, una volta sola ciascuno.
-fn distinct_ranks(ranks: &[i32]) -> Vec<i32> {
-    let mut wanted: Vec<i32> = ranks.iter().copied().filter(|rank| *rank >= 1).collect();
-    wanted.sort_unstable();
-    wanted.dedup();
-    wanted
-}
-
-/// Scarica in cache le immagini dei rank citate dalla classifica.
+/// Indirizzi di un'immagine assegnata dal server.
 ///
-/// Non è un errore se una singola immagine manca: il rank viene mostrato con
-/// il solo numero.
-async fn cache_rank_images(state: &Arc<AppState>, ranks: &[i32]) -> AppResult<usize> {
-    let base = state.endpoints.read().await.rank_images_base_url.clone();
-    if base.trim().is_empty() {
-        return Ok(0);
+/// Un indirizzo completo vale solo se è https e del progetto, come ogni altro
+/// endpoint (§D-004). Un percorso relativo — come lo scrive il sito,
+/// `/FOOTAGE/ranks/developer_full_00000.png` — si cerca sul sito e poi sul
+/// server del gioco.
+fn custom_badge_urls(raw: &str, endpoints: &vk_core::endpoints::EndpointsInfo) -> Vec<String> {
+    if raw.contains("://") {
+        return if vk_core::endpoints::is_safe_endpoint(raw)
+            && vk_core::endpoints::is_project_url(raw)
+        {
+            vec![raw.to_string()]
+        } else {
+            Vec::new()
+        };
     }
 
+    let path = raw.trim_start_matches('/');
+    if path.is_empty() || path.split(['/', '\\']).any(|part| part == "..") {
+        return Vec::new();
+    }
+
+    let site_root = url::Url::parse(&endpoints.rank_images_site_url)
+        .ok()
+        .map(|url| format!("{}/", url.origin().ascii_serialization()));
+    site_root
+        .into_iter()
+        .chain(std::iter::once(endpoints.server_base_url.clone()))
+        .filter(|root| !root.trim().is_empty())
+        .map(|root| join_url(&root, path))
+        .collect()
+}
+
+fn join_url(base: &str, path: &str) -> String {
+    format!("{}/{}", base.trim().trim_end_matches('/'), path)
+}
+
+/// Il nome di un rank speciale, dal nome del file: `staff_ghost_full_00010.png`
+/// diventa "Staff Ghost".
+fn badge_label(raw: &str) -> String {
+    let file = raw.rsplit(['/', '\\']).next().unwrap_or(raw);
+    let stem = file.split('.').next().unwrap_or(file);
+
+    stem.split(['_', '-', ' '])
+        .filter(|word| !word.is_empty())
+        .filter(|word| !word.eq_ignore_ascii_case("full"))
+        .filter(|word| !word.chars().all(|ch| ch.is_ascii_digit()))
+        .map(|word| {
+            let mut chars = word.chars();
+            chars.next().map_or_else(String::new, |first| {
+                first
+                    .to_uppercase()
+                    .chain(chars.flat_map(char::to_lowercase))
+                    .collect()
+            })
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// Assegna a ogni riga la chiave della sua immagine e restituisce le
+/// immagini, una per chiave.
+///
+/// Il download avviene **prima** di comporre la pagina, altrimenti al primo
+/// avvio — con la cache vuota — nessuna riga avrebbe la sua immagine. Le
+/// immagini diverse si scaricano insieme: al primo avvio sono al massimo una
+/// dozzina.
+async fn attach_badges(
+    state: &Arc<AppState>,
+    entries: &mut [LeaderboardEntry],
+) -> BTreeMap<String, BadgeView> {
+    let endpoints = state.endpoints.read().await.clone();
+
+    let mut sources: BTreeMap<String, BadgeSource> = BTreeMap::new();
+    for entry in entries.iter_mut() {
+        entry.badge.clear();
+        if let Some(source) = badge_source(entry.prestige_rank, &entry.rank_image_url, &endpoints) {
+            entry.badge = source.key.clone();
+            sources.entry(source.key.clone()).or_insert(source);
+        }
+    }
+
+    let fetched = futures_util::future::join_all(sources.into_values().map(|source| async move {
+        let image = badge_image(state, &source).await;
+        (source, image)
+    }))
+    .await;
+
+    let badges: BTreeMap<String, BadgeView> = fetched
+        .into_iter()
+        .filter_map(|(source, image)| {
+            image.map(|image| {
+                (
+                    source.key,
+                    BadgeView {
+                        image,
+                        label: source.label,
+                    },
+                )
+            })
+        })
+        .collect();
+
+    // Una chiave senza immagine non serve alla UI: il rank del gioco resta
+    // leggibile dal suo numero.
+    for entry in entries {
+        if !badges.contains_key(&entry.badge) {
+            entry.badge.clear();
+        }
+    }
+    badges
+}
+
+/// La miniatura di un rank come data URI, dalla cache o scaricandola.
+///
+/// Se il download non riesce resta buona la miniatura vecchia: un rank
+/// mostrato col disegno della settimana scorsa è meglio di nessun rank.
+async fn badge_image(state: &Arc<AppState>, source: &BadgeSource) -> Option<String> {
+    let directory = state.paths.rank_images_dir();
+    let thumbnail = directory.join(format!("{}@{BADGE_SIDE}.png", source.key));
+
+    let fresh = tokio::fs::metadata(&thumbnail)
+        .await
+        .ok()
+        .and_then(|meta| meta.modified().ok())
+        .and_then(|modified| modified.elapsed().ok())
+        .is_some_and(|age| age < BADGE_TTL);
+
+    if !fresh {
+        if let Err(error) = refresh_badge(state, source, &thumbnail).await {
+            tracing::debug!(
+                key = %source.key,
+                error = %vk_core::redact::redact(&error.to_string()),
+                "immagine del rank non aggiornata"
+            );
+        }
+    }
+
+    let bytes = tokio::fs::read(&thumbnail).await.ok()?;
+    (!bytes.is_empty()).then(|| {
+        format!(
+            "data:image/png;base64,{}",
+            vk_save::mii::base64_encode(&bytes)
+        )
+    })
+}
+
+/// Scarica l'immagine, la ritaglia e la riduce, e mette la miniatura in
+/// cache. L'originale non si tiene: arriva a 450 KB e non serve più.
+async fn refresh_badge(
+    state: &Arc<AppState>,
+    source: &BadgeSource,
+    thumbnail: &std::path::Path,
+) -> AppResult<()> {
     let directory = state.paths.rank_images_dir();
     tokio::fs::create_dir_all(&directory)
         .await
         .map_err(|error| AppError::io(&directory, error))?;
 
-    let mut cached = 0usize;
-
-    for &rank in ranks {
-        let destination = directory.join(format!("rank-{rank}.png"));
-        if destination.is_file() {
-            continue;
+    let download = directory.join(format!("{}.download", source.key));
+    let outcome = state
+        .downloader
+        .download_with_mirrors(
+            &source.urls,
+            &download,
+            &vk_core::progress::noop_sink(),
+            &vk_core::progress::CancelToken::new(),
+        )
+        .await;
+    let bytes = match outcome {
+        Ok(_) => tokio::fs::read(&download).await.ok(),
+        Err(error) => {
+            let _ = tokio::fs::remove_file(&download).await;
+            return Err(error.into());
         }
+    };
+    let _ = tokio::fs::remove_file(&download).await;
+    let bytes = bytes.ok_or_else(|| AppError::Internal("rank image unreadable".into()))?;
 
-        let url = format!("{}/rank-{rank}.png", base.trim_end_matches('/'));
-        match state
-            .downloader
-            .download_with_mirrors(
-                std::slice::from_ref(&url),
-                &destination,
-                &vk_core::progress::noop_sink(),
-                &vk_core::progress::CancelToken::new(),
-            )
-            .await
-        {
-            Ok(_) => cached += 1,
-            Err(error) => {
-                let _ = tokio::fs::remove_file(&destination).await;
-                tracing::debug!(
-                    rank,
-                    error = %vk_core::redact::redact(&error.to_string()),
-                    "immagine del rank non disponibile"
-                );
-            }
-        }
-    }
+    let png = tokio::task::spawn_blocking(move || {
+        vk_core::thumbnail::badge_thumbnail(&bytes, BADGE_SIDE)
+    })
+    .await
+    .map_err(|error| AppError::Internal(error.to_string()))??;
 
-    Ok(cached)
+    vk_core::fsx::write_atomic(thumbnail, &png).await?;
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------
@@ -680,6 +857,33 @@ pub async fn player_index(state: &Arc<AppState>) -> Arc<PlayerIndex> {
     index
 }
 
+/// L'indice che c'è già, anche se scaduto, senza aspettare la rete.
+///
+/// Le stanze si aggiornano spesso e devono arrivare subito: se l'indice non
+/// c'è ancora lo si costruisce in sottofondo, e i rank compaiono al giro
+/// successivo invece di ritardare questo.
+async fn cached_player_index(state: &Arc<AppState>) -> Option<Arc<PlayerIndex>> {
+    let cached = {
+        let guard = state.leaderboard_index.read().await;
+        guard.clone()
+    };
+    if let Some((fetched_at, index)) = cached {
+        if fetched_at.elapsed() >= INDEX_TTL {
+            let state = state.clone();
+            tokio::spawn(async move {
+                player_index(&state).await;
+            });
+        }
+        return Some(index);
+    }
+
+    let state = state.clone();
+    tokio::spawn(async move {
+        player_index(&state).await;
+    });
+    None
+}
+
 async fn build_player_index(state: &Arc<AppState>) -> PlayerIndex {
     let mut players = HashMap::new();
     let mut offset = 0u32;
@@ -693,7 +897,8 @@ async fn build_player_index(state: &Arc<AppState>) -> PlayerIndex {
         for entry in page.entries {
             let key = digits(&entry.friend_code);
             if !key.is_empty() {
-                players.insert(key, stats_of(entry));
+                let badge = page.badges.get(&entry.badge);
+                players.insert(key, stats_of(entry, badge));
             }
         }
 
@@ -706,7 +911,7 @@ async fn build_player_index(state: &Arc<AppState>) -> PlayerIndex {
     PlayerIndex { players }
 }
 
-fn stats_of(entry: LeaderboardEntry) -> PlayerStatsView {
+fn stats_of(entry: LeaderboardEntry, badge: Option<&BadgeView>) -> PlayerStatsView {
     PlayerStatsView {
         position: entry.position,
         name: entry.name,
@@ -715,7 +920,8 @@ fn stats_of(entry: LeaderboardEntry) -> PlayerStatsView {
         games: entry.games,
         winrate: entry.winrate,
         prestige_rank: entry.prestige_rank,
-        rank_image: entry.rank_image,
+        rank_image: badge.map(|badge| badge.image.clone()),
+        rank_label: badge.map(|badge| badge.label.clone()).unwrap_or_default(),
         last_seen: entry.last_seen,
         streak: entry.streak,
         streak_vacation: entry.streak_vacation,
@@ -922,10 +1128,81 @@ mod tests {
         assert!(StreakIndex::from_payload(&json(r#"{"error":"x"}"#)).is_empty());
     }
 
+    fn endpoints() -> vk_core::endpoints::EndpointsInfo {
+        crate::storage::endpoints::defaults()
+    }
+
     #[test]
     fn only_ranked_players_ask_for_a_rank_image() {
-        assert_eq!(distinct_ranks(&[0, 3, 3, 1, 0, -2]), vec![1, 3]);
-        assert!(distinct_ranks(&[0, 0]).is_empty());
+        assert!(badge_source(0, "", &endpoints()).is_none());
+        assert!(badge_source(-2, "  ", &endpoints()).is_none());
+
+        let source = badge_source(3, "", &endpoints()).expect("rank 3");
+        assert_eq!(source.key, "rank-3");
+        assert!(
+            source.label.is_empty(),
+            "i rank del gioco si chiamano col numero"
+        );
+        // Prima il sito, che ha tutti i disegni; poi il server del gioco.
+        assert_eq!(
+            source.urls,
+            vec![
+                "https://vwfc.vanzakart.net/FOOTAGE/ranks/rank-3.png".to_string(),
+                "https://vanzakart.net:8443/FOOTAGE/ranks/rank-3.png".to_string(),
+            ]
+        );
+    }
+
+    /// Lo stemma dello staff: il server lo assegna con `rank_image_url`, e
+    /// vince sul rank del gioco.
+    #[test]
+    fn an_image_assigned_by_the_server_wins_and_is_named_after_its_file() {
+        let entry = player(
+            r#"{"prestigeRank":2,"rank_image_url":"/FOOTAGE/ranks/staff_ghost_full_00010.png"}"#,
+        );
+        assert_eq!(
+            entry.rank_image_url,
+            "/FOOTAGE/ranks/staff_ghost_full_00010.png"
+        );
+
+        let source = badge_source(entry.prestige_rank, &entry.rank_image_url, &endpoints())
+            .expect("immagine assegnata");
+        assert!(source.key.starts_with("custom-"));
+        assert_eq!(source.label, "Staff Ghost");
+        assert_eq!(
+            source.urls.first().map(String::as_str),
+            Some("https://vwfc.vanzakart.net/FOOTAGE/ranks/staff_ghost_full_00010.png")
+        );
+    }
+
+    #[test]
+    fn an_assigned_image_outside_the_project_is_ignored() {
+        for raw in [
+            "http://vwfc.vanzakart.net/x.png",
+            "https://example.com/x.png",
+            "../../etc/passwd",
+        ] {
+            let source = badge_source(0, raw, &endpoints());
+            assert!(source.is_none(), "{raw}");
+        }
+        // Un'immagine rifiutata lascia il rank del gioco.
+        assert_eq!(
+            badge_source(4, "https://example.com/x.png", &endpoints()).map(|source| source.key),
+            Some("rank-4".to_string())
+        );
+    }
+
+    #[test]
+    fn a_special_rank_is_named_after_its_file() {
+        assert_eq!(badge_label("developer_full_00000.png"), "Developer");
+        assert_eq!(
+            badge_label("https://x/FOOTAGE/ranks/creative_director_full_00011.png"),
+            "Creative Director"
+        );
+        assert_eq!(
+            badge_label("website-launcher-dev.png"),
+            "Website Launcher Dev"
+        );
     }
 
     #[test]

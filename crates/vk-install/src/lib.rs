@@ -24,6 +24,7 @@
 #![warn(missing_debug_implementations)]
 
 pub mod discovery;
+pub mod elevated;
 pub mod error;
 pub mod fsops;
 pub mod install;
@@ -43,7 +44,7 @@ pub use record::{Artifact, ArtifactKind, InstallRecord};
 pub use release::{PackageFormat, ReleaseManifest, ReleasePackage};
 pub use target::Target;
 pub use uninstall::{RemovalItem, UninstallOptions, UninstallReport};
-pub use update::{UpdatePlan, UpdateReport, UpdateTarget};
+pub use update::{Access, DownloadedUpdate, UpdatePlan, UpdateReport, UpdateTarget};
 
 /// Nome del prodotto, usato ovunque compaia all'utente.
 pub const PRODUCT_NAME: &str = "VanzaKart Launcher";

@@ -131,6 +131,11 @@ pub struct EndpointsInfo {
     pub server_base_url: String,
     #[serde(default, rename = "rank_images_base_url")]
     pub rank_images_base_url: String,
+    /// Immagini dei rank sul sito: le ha tutte, nel disegno attuale. Si
+    /// provano prima di `rank_images_base_url`, che sul server del gioco ne ha
+    /// solo alcune, in piccolo (§D-094).
+    #[serde(default, rename = "rank_images_site_url")]
+    pub rank_images_site_url: String,
     /// Classifica del sito (`leaderboard.php`): l'unica che oggi porta la
     /// streak dei giocatori.
     #[serde(default, rename = "site_leaderboard_api_url")]
@@ -264,6 +269,7 @@ impl EndpointsInfo {
         merge_url!(mii_rendering_archive_url);
         merge_url!(server_base_url);
         merge_url!(rank_images_base_url);
+        merge_url!(rank_images_site_url);
         merge_url!(site_leaderboard_api_url);
         merge_url!(timetrial_api_url);
 
