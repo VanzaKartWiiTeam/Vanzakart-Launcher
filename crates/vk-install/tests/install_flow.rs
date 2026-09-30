@@ -48,6 +48,11 @@ fn installer() -> Installer {
                 // restano ammessi solo indirizzi https (§D-004).
                 .with_loopback_http(true),
         )
+        // Il launcher vero può essere aperto sulla macchina che esegue i test:
+        // il controllo per nome lo vedrebbe e ogni installazione si
+        // fermerebbe. Qui il launcher è sempre chiuso; il caso opposto ha il
+        // suo test.
+        .with_running_probe(|_| false)
 }
 
 /// Pacchetto ZIP con dentro l'eseguibile atteso dalla piattaforma corrente.
@@ -182,6 +187,39 @@ async fn installs_the_package_and_writes_the_record() {
         .artifacts
         .iter()
         .any(|artifact| artifact.kind == vk_install::ArtifactKind::Record));
+}
+
+#[tokio::test]
+async fn a_running_launcher_stops_the_install_before_anything_is_touched() {
+    let (_data_root, _lock) = isolated_data_root().await;
+    let (server, _) = serve(&digest_of_package()).await;
+    let temp = tempfile::tempdir().expect("temp");
+    let install_dir = temp.path().join("programmi").join("VanzaKart Launcher");
+
+    let installer = installer().with_running_probe(|_| true);
+    let manifest = installer
+        .fetch_manifest(&[server.url("/install.json")])
+        .await
+        .expect("manifest");
+
+    let preflight = installer
+        .preflight(&manifest, &install_dir)
+        .expect("controlli");
+    assert!(preflight.launcher_running);
+    assert!(!preflight.is_ready());
+
+    let error = installer
+        .install(
+            &manifest,
+            &options(install_dir.clone()),
+            &noop_sink(),
+            &CancelToken::new(),
+        )
+        .await
+        .expect_err("launcher aperto");
+
+    assert_eq!(error.code(), "launcher-running");
+    assert!(!install_dir.exists(), "la cartella non doveva nascere");
 }
 
 #[tokio::test]

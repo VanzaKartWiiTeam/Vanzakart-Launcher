@@ -136,6 +136,11 @@ pub struct Installer {
     icon: Option<PathBuf>,
     /// L'installer stesso, da copiare come disinstallatore.
     setup_bundle: PathBuf,
+    /// Dice se il launcher è aperto. Di norma è [`platform::is_running`], che
+    /// riconosce il processo anche solo dal nome: nei test lo si sostituisce,
+    /// altrimenti basterebbe il launcher vero aperto sulla macchina per farli
+    /// fallire.
+    running_probe: fn(&Path) -> bool,
 }
 
 impl Installer {
@@ -145,6 +150,7 @@ impl Installer {
             downloader: Downloader::new(&crate::user_agent(app_version))?,
             icon: icon.filter(|path| path.exists()),
             setup_bundle: platform::self_bundle_path()?,
+            running_probe: platform::is_running,
         })
     }
 
@@ -152,6 +158,14 @@ impl Installer {
     /// `with_loopback_http`).
     pub fn with_downloader(mut self, downloader: Downloader) -> Self {
         self.downloader = downloader;
+        self
+    }
+
+    /// Solo per i test: come riconoscere il launcher aperto. I test che
+    /// installano in una cartella temporanea non devono dipendere dai
+    /// processi della macchina su cui girano.
+    pub fn with_running_probe(mut self, probe: fn(&Path) -> bool) -> Self {
+        self.running_probe = probe;
         self
     }
 
@@ -211,7 +225,7 @@ impl Installer {
             // l'installazione: si prosegue e sarà il disco a dire di no.
             enough_space: available_bytes == 0 || available_bytes >= required_bytes,
             writable: is_writable(&install_dir),
-            launcher_running: platform::is_running(&executable),
+            launcher_running: (self.running_probe)(&executable),
             verifiable: !package.sha256.is_empty(),
             machine_wide: paths::is_machine_wide(&install_dir),
             install_dir,
