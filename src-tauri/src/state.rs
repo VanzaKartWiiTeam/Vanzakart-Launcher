@@ -94,7 +94,25 @@ pub struct AppState {
 #[derive(Debug, Clone)]
 pub struct GameSession {
     pub pid: u32,
+    /// Avvio del processo secondo il sistema, in secondi Unix, se si è
+    /// riusciti a leggerlo: con il PID riconosce *quel* Dolphin (§D-106).
+    pub process_started: Option<u64>,
     pub started_at: std::time::Instant,
+    /// Fin dove il tempo giocato è già stato sommato alle statistiche.
+    pub counted_until: std::time::Instant,
+}
+
+impl GameSession {
+    /// Sessione che comincia adesso.
+    pub fn starting_now(pid: u32, process_started: Option<u64>) -> Self {
+        let now = std::time::Instant::now();
+        Self {
+            pid,
+            process_started,
+            started_at: now,
+            counted_until: now,
+        }
+    }
 }
 
 /// Operazione lunga in corso: tiene il lucchetto e il suo nome finché vive.
@@ -246,6 +264,14 @@ pub fn now_iso() -> String {
     let now = time::OffsetDateTime::now_utc();
     now.format(&time::format_description::well_known::Rfc3339)
         .unwrap_or_else(|_| String::new())
+}
+
+/// Adesso, in secondi Unix: il formato dei tempi che devono sopravvivere a un
+/// riavvio del launcher, dove un `Instant` non vale più niente.
+pub fn unix_now() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |elapsed| elapsed.as_secs())
 }
 
 #[cfg(test)]

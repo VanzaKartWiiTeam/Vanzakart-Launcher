@@ -81,7 +81,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
     }
 
     let mii_database = read_mii_database(&user_folder).await;
-    let ratings = mod_ratings(state).await;
+    let index = crate::services::community::player_index(state).await;
     let mut out = Vec::new();
 
     for (save_index, save_path) in save_files(state).await.into_iter().enumerate() {
@@ -101,7 +101,7 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
 
         for card in cards {
             let mii = mii_database.get(&card.mii_id);
-            let rating = ratings.get(&digits(&card.friend_code));
+            let (vr, br) = ratings_of(&index, &card.friend_code);
 
             out.push(LicenseView {
                 save_index,
@@ -128,11 +128,8 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
                 friend_count: vk_save::rksys::read_friends(&bytes, card.slot).len(),
                 name: humanize(&card.name),
                 friend_code: card.friend_code,
-                // Il VR della licenza è quello vanilla: la modpack ripristina
-                // i valori originali prima di riscrivere `rksys.dat`, e il
-                // punteggio vero sta in `VKRating.pul` (§D-063).
-                vr: rating.map_or_else(|| u32::from(card.vr), |rating| rating.vr),
-                br: rating.map_or_else(|| u32::from(card.br), |rating| rating.br),
+                vr,
+                br,
                 races: card.races,
                 wins: card.wins,
                 source_label: "Dolphin save".into(),
@@ -145,40 +142,26 @@ pub async fn list_licenses(state: &Arc<AppState>) -> AppResult<Vec<LicenseView>>
     Ok(out)
 }
 
-/// Punteggi della modpack, indicizzati per friend code.
+/// VR e BR con cui parte chi non è mai stato online, come nel gioco.
+const DEFAULT_RATING: u32 = 5000;
+
+/// VR e BR di una licenza, dal database del server (§D-107).
 ///
-/// Se il file non c'è — modpack mai avviata, o avviata da un'altra macchina —
-/// restano i valori della licenza, che è quanto di meglio si abbia.
-async fn mod_ratings(
-    state: &Arc<AppState>,
-) -> std::collections::HashMap<String, vk_save::pulsar::Rating> {
-    let user_folder = state.settings.read().await.user_folder();
-    let layout = state.layout(state.channel().await).await;
-
-    let files = vk_save::pulsar::find_rating_files(
-        &user_folder,
-        &layout.mod_root(),
-        layout.directory_name(),
-    );
-
-    let mut out = std::collections::HashMap::new();
-    // I file arrivano con quello della modpack in uso per primo: `or_insert`
-    // fa sì che un altro pack Pulsar non ne sovrascriva i punteggi.
-    for path in files {
-        let Ok(bytes) = tokio::fs::read(&path).await else {
-            continue;
-        };
-        for rating in vk_save::pulsar::read_ratings(&bytes) {
-            out.entry(digits(&rating.friend_code)).or_insert(rating);
-        }
-    }
-
-    out
-}
-
-/// Le sole cifre di un friend code, per confrontarlo comunque sia scritto.
-fn digits(friend_code: &str) -> String {
-    friend_code.chars().filter(char::is_ascii_digit).collect()
+/// Né `rksys.dat` né `VKRating.pul` tengono i punteggi di VanzaKart: quelli
+/// veri stanno nel database, per friend code. Chi non c'è non è mai stato
+/// online e ha i valori di partenza; lo stesso vale per il BR finché il
+/// server non lo manda.
+fn ratings_of(index: &crate::services::community::PlayerIndex, friend_code: &str) -> (u32, u32) {
+    let stats = index.get(friend_code);
+    let known = |value: i32| u32::try_from(value).ok().filter(|value| *value > 0);
+    (
+        stats
+            .and_then(|stats| known(stats.points))
+            .unwrap_or(DEFAULT_RATING),
+        stats
+            .and_then(|stats| known(stats.br))
+            .unwrap_or(DEFAULT_RATING),
+    )
 }
 
 /// Database Mii di Dolphin, indicizzato per Mii id.
@@ -963,6 +946,41 @@ mod tests {
             cfg!(feature = "save-writes"),
             SAVE_WRITES_ENABLED,
             "la costante non segue la feature"
+        );
+    }
+
+    #[test]
+    fn ratings_come_from_the_server_and_default_to_5000() {
+        use crate::domain::PlayerStatsView;
+        use crate::services::community::PlayerIndex;
+
+        let index = PlayerIndex::with_players([
+            (
+                "0000-0002-0202",
+                PlayerStatsView {
+                    points: 22123,
+                    br: 6100,
+                    ..Default::default()
+                },
+            ),
+            // In classifica, ma il server non manda il BR.
+            (
+                "4176-1182-7933",
+                PlayerStatsView {
+                    points: 11963,
+                    ..Default::default()
+                },
+            ),
+        ]);
+
+        assert_eq!(ratings_of(&index, "000000020202"), (22123, 6100));
+        assert_eq!(ratings_of(&index, "4176-1182-7933"), (11963, 5000));
+        // Mai stato online, o slot vuoto: i valori di partenza.
+        assert_eq!(ratings_of(&index, "1111-2222-3333"), (5000, 5000));
+        assert_eq!(ratings_of(&index, ""), (5000, 5000));
+        assert_eq!(
+            ratings_of(&PlayerIndex::default(), "0000-0002-0202"),
+            (5000, 5000)
         );
     }
 

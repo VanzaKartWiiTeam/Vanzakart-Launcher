@@ -113,11 +113,22 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             // La finestra nasce nascosta e viene mostrata a layout pronto,
             // così l'utente non vede un lampo bianco.
             if let Some(window) = app.get_webview_window("main") {
+                follow_window_size(&window);
                 let _ = window.show();
             }
 
             // Da qui in poi l'avvio è riuscito: il segno si toglie.
             finish_startup(&started.paths);
+
+            // Un Dolphin rimasto aperto dall'ultima volta continua a contare
+            // come tempo di gioco (§D-106).
+            let resumed = started.clone();
+            let notify = commands::session_notifier(app.handle().clone());
+            tauri::async_runtime::spawn(async move {
+                if let Err(error) = services::launch::resume_session(&resumed, notify).await {
+                    tracing::warn!(%error, "sessione di gioco non ripresa");
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -139,7 +150,6 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::gamebanana_install,
             commands::launch_preflight,
             commands::launch_game,
-            commands::launch_session_finished,
             commands::settings_get,
             commands::settings_update_paths,
             commands::settings_detect_dolphin,
@@ -217,6 +227,52 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::addons_remove,
             commands::addons_conflicts,
         ])
+}
+
+/// Ingrandisce la UI insieme alla finestra: massimizzata su uno schermo
+/// grande, elementi più grandi e più spazio (§D-108).
+///
+/// Si ricalcola quando cambia la dimensione o la scala del monitor — anche
+/// spostando la finestra su uno schermo con un'altra scala — e solo se lo
+/// zoom cambia davvero: ogni `set_zoom` ricalcola il layout della pagina.
+fn follow_window_size(window: &tauri::WebviewWindow) {
+    use std::sync::Mutex;
+
+    fn apply(window: &tauri::WebviewWindow, last: &Mutex<f64>) {
+        let (Ok(size), Ok(scale)) = (window.inner_size(), window.scale_factor()) else {
+            return;
+        };
+        // Ridotta a icona la finestra misura zero: si tiene lo zoom che c'era.
+        if size.width == 0 || size.height == 0 {
+            return;
+        }
+        let logical = size.to_logical::<f64>(scale);
+        let zoom = services::ui_scale::zoom_for(logical.width, logical.height);
+
+        let Ok(mut current) = last.lock() else {
+            return;
+        };
+        if (*current - zoom).abs() < f64::EPSILON {
+            return;
+        }
+        match window.set_zoom(zoom) {
+            Ok(()) => *current = zoom,
+            Err(error) => tracing::debug!(%error, zoom, "zoom della UI non applicato"),
+        }
+    }
+
+    let last = Arc::new(Mutex::new(1.0));
+    apply(window, &last);
+
+    let target = window.clone();
+    window.on_window_event(move |event| {
+        if matches!(
+            event,
+            tauri::WindowEvent::Resized(_) | tauri::WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            apply(&target, &last);
+        }
+    });
 }
 
 /// Segna che un avvio è cominciato. `true` se il precedente non è finito.

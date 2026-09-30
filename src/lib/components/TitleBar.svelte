@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
    * Barra del titolo custom, come il `WindowChrome` di MainWindow.xaml:
-   * logo, wordmark VANZAKART, badge versione, badge stato, minimize/close.
+   * logo, wordmark VANZAKART, minimize/maximize/close. Versione e stato non
+   * stanno qui: la versione è nella scheda About delle impostazioni, lo stato
+   * della modpack sotto PLAY.
    */
   import { onMount } from 'svelte';
   import { getCurrentWindow } from '@tauri-apps/api/window';
 
   import Icon from './Icon.svelte';
   import logo from '$lib/assets/logo.png';
-  import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import { tooltip } from '$lib/attachments/tooltip';
 
@@ -45,15 +46,6 @@
     };
   });
 
-  const toneClass = $derived(
-    {
-      info: '',
-      success: 'vk-badge--success',
-      warning: 'vk-badge--warning',
-      danger: 'vk-badge--danger'
-    }[app.statusTone]
-  );
-
   async function minimize() {
     await window.minimize();
   }
@@ -71,13 +63,6 @@
   <div class="brand" data-tauri-drag-region>
     <img src={logo} alt="" width="28" height="28" />
     <span class="wordmark">VANZAKART</span>
-
-    <span class="vk-badge chip">
-      {t('titlebar.version', { version: app.status?.launcherVersion ?? '—' })}
-    </span>
-    <span class="vk-badge chip {toneClass}"
-      >{app.statusTone === 'info' ? t('titlebar.ready') : app.statusLine.slice(0, 46)}</span
-    >
   </div>
 
   {#if !isLinux}
@@ -126,18 +111,6 @@
     font-size: var(--vk-fs-body);
     font-weight: 900;
     letter-spacing: 0.05em;
-  }
-
-  .chip {
-    font-weight: 600;
-    color: var(--vk-text-secondary);
-    max-width: 46ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  .chip:first-of-type {
-    margin-left: 2px;
   }
 
   .controls {

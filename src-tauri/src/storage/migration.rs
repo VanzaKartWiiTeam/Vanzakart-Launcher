@@ -266,6 +266,7 @@ async fn import_preferences(source: &Path) -> (UserPreferences, String) {
             last_played_utc: legacy.last_played_utc,
             launch_count: legacy.launch_count,
             total_play_time_minutes: legacy.total_play_time_minutes,
+            open_session: None,
         },
         last_known: crate::storage::preferences::LastKnownVersions {
             stable: legacy.last_known_stable,

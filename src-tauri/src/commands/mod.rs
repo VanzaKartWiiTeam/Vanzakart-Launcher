@@ -20,6 +20,9 @@ use crate::state::AppState;
 /// Nome dell'evento con cui il backend spinge i progressi verso la UI.
 pub const PROGRESS_EVENT: &str = "vk://progress";
 
+/// Nome dell'evento con cui il backend dice che una sessione di gioco è finita.
+pub const GAME_SESSION_EVENT: &str = "vk://game-session";
+
 type Shared<'a> = State<'a, Arc<AppState>>;
 
 /// Costruisce un sink che inoltra i progressi al frontend, con throttling a
@@ -328,13 +331,19 @@ pub async fn launch_preflight(
 }
 
 #[tauri::command]
-pub async fn launch_game(state: Shared<'_>) -> AppResult<services::launch::LaunchResult> {
-    services::launch::launch(&state.inner().clone()).await
+pub async fn launch_game(
+    app: AppHandle,
+    state: Shared<'_>,
+) -> AppResult<services::launch::LaunchResult> {
+    services::launch::launch(&state.inner().clone(), session_notifier(app)).await
 }
 
-#[tauri::command]
-pub async fn launch_session_finished(state: Shared<'_>) -> AppResult<f64> {
-    services::launch::finish_session(&state.inner().clone()).await
+/// Dice alla UI che una sessione di gioco è finita, con i minuti giocati: la
+/// home rilegge le statistiche senza aspettare un altro giro (§D-106).
+pub fn session_notifier(app: AppHandle) -> impl FnOnce(f64) + Send + 'static {
+    move |minutes| {
+        let _ = app.emit(GAME_SESSION_EVENT, minutes);
+    }
 }
 
 // ---------------------------------------------------------------------------

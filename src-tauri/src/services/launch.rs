@@ -5,11 +5,13 @@
 //! **mai** attraverso una shell.
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use vk_dolphin::riivolution::{self, GameModDescriptor};
 
 use crate::error::{AppError, AppResult};
-use crate::state::{now_iso, AppState, GameSession};
+use crate::state::{now_iso, unix_now, AppState, GameSession};
+use crate::storage::preferences::OpenSession;
 
 /// Esito della richiesta di avvio.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -174,7 +176,13 @@ pub async fn close_running_dolphin(state: &Arc<AppState>) -> AppResult<bool> {
 }
 
 /// Genera il descrittore e avvia Dolphin.
-pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
+///
+/// `on_session_end` riceve i minuti della sessione quando Dolphin si chiude:
+/// il guscio IPC lo usa per dirlo alla UI, che rilegge le statistiche.
+pub async fn launch(
+    state: &Arc<AppState>,
+    on_session_end: impl FnOnce(f64) + Send + 'static,
+) -> AppResult<LaunchResult> {
     if let Some(blocker) = preflight(state).await? {
         return Err(AppError::Configuration(blocker.message));
     }
@@ -235,17 +243,22 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
         let _ = child.wait();
     });
 
-    // 3. Statistiche e tracciamento della sessione.
+    // 3. Statistiche e tracciamento della sessione: da qui un watcher guarda
+    //    Dolphin e somma i minuti mentre si gioca e quando si chiude (§D-106).
+    let process_started = crate::platform::process_start_time(pid);
     {
         let mut preferences = state.preferences.write().await;
         preferences.record_launch(now_iso());
+        preferences.stats.open_session = Some(OpenSession {
+            pid,
+            process_started: process_started.unwrap_or(0),
+            counted_until: unix_now(),
+        });
     }
-    state.persist_preferences().await?;
+    *state.game_session.write().await = Some(GameSession::starting_now(pid, process_started));
+    spawn_watcher(state, pid, on_session_end);
 
-    *state.game_session.write().await = Some(GameSession {
-        pid,
-        started_at: std::time::Instant::now(),
-    });
+    state.persist_preferences().await?;
 
     tracing::info!(pid, channel = ?channel, "Dolphin avviato");
 
@@ -257,26 +270,230 @@ pub async fn launch(state: &Arc<AppState>) -> AppResult<LaunchResult> {
     })
 }
 
-/// Chiude la sessione corrente e somma i minuti giocati.
+/// Ogni quanto il watcher guarda se Dolphin è ancora aperto, e ogni quanto
+/// salva i minuti giocati fin lì.
+#[derive(Debug, Clone, Copy)]
+struct WatchTiming {
+    poll: Duration,
+    checkpoint: Duration,
+}
+
+impl WatchTiming {
+    /// Un launcher chiuso a metà partita — o ucciso — perde al massimo un
+    /// minuto: il resto è già su disco.
+    const DEFAULT: Self = Self {
+        poll: Duration::from_secs(5),
+        checkpoint: Duration::from_secs(60),
+    };
+}
+
+/// Il processo di una sessione: PID e, quando si conosce, l'ora di avvio.
+#[derive(Debug, Clone, Copy)]
+struct SessionProcess {
+    pid: u32,
+    started: Option<u64>,
+}
+
+impl SessionProcess {
+    /// `true` se quel processo è ancora vivo.
+    ///
+    /// Con l'ora di avvio un PID riciclato non inganna: un altro programma con
+    /// lo stesso numero è partito in un altro momento. Un secondo di tolleranza
+    /// copre gli arrotondamenti del sistema.
+    fn is_alive(self) -> bool {
+        match crate::platform::process_start_time(self.pid) {
+            None => false,
+            Some(started) => self
+                .started
+                .is_none_or(|expected| started.abs_diff(expected) <= 1),
+        }
+    }
+}
+
+fn spawn_watcher(state: &Arc<AppState>, pid: u32, on_end: impl FnOnce(f64) + Send + 'static) {
+    tokio::spawn(watch_session(
+        state.clone(),
+        pid,
+        WatchTiming::DEFAULT,
+        on_end,
+    ));
+}
+
+/// Segue la sessione di `pid` finché Dolphin resta aperto.
 ///
-/// Viene chiamata quando il processo non risulta più in esecuzione.
-pub async fn finish_session(state: &Arc<AppState>) -> AppResult<f64> {
-    let Some(session) = state.game_session.write().await.take() else {
-        return Ok(0.0);
+/// Mentre si gioca salva i minuti a intervalli; quando il processo sparisce
+/// chiude la sessione e chiama `on_end` con la durata. Se la sessione è già
+/// stata chiusa da qualcun altro — un nuovo avvio che ha chiuso Dolphin prima
+/// di ripartire — esce senza contare niente: l'ha già fatto chi l'ha chiusa.
+async fn watch_session(
+    state: Arc<AppState>,
+    pid: u32,
+    timing: WatchTiming,
+    on_end: impl FnOnce(f64) + Send + 'static,
+) {
+    let mut last_checkpoint = Instant::now();
+    loop {
+        tokio::time::sleep(timing.poll).await;
+
+        let process = match state.game_session.read().await.as_ref() {
+            Some(session) if session.pid == pid => SessionProcess {
+                pid,
+                started: session.process_started,
+            },
+            _ => return,
+        };
+
+        if !process.is_alive() {
+            match finish_session_of(&state, pid).await {
+                Ok(Some(minutes)) => on_end(minutes),
+                Ok(None) => {}
+                Err(error) => tracing::warn!(%error, "tempo di gioco non salvato"),
+            }
+            return;
+        }
+
+        if last_checkpoint.elapsed() >= timing.checkpoint {
+            last_checkpoint = Instant::now();
+            if let Err(error) = checkpoint_session(&state, pid).await {
+                tracing::warn!(%error, "tempo di gioco parziale non salvato");
+            }
+        }
+    }
+}
+
+/// Somma alle statistiche il tempo giocato dall'ultimo conteggio e lo salva.
+async fn checkpoint_session(state: &Arc<AppState>, pid: u32) -> AppResult<()> {
+    let minutes = {
+        let mut slot = state.game_session.write().await;
+        let Some(session) = slot.as_mut().filter(|session| session.pid == pid) else {
+            return Ok(());
+        };
+        let now = Instant::now();
+        let minutes = now.duration_since(session.counted_until).as_secs_f64() / 60.0;
+        session.counted_until = now;
+        minutes
     };
 
-    let minutes = session.started_at.elapsed().as_secs_f64() / 60.0;
     {
         let mut preferences = state.preferences.write().await;
         preferences.record_session(minutes);
+        if let Some(open) = preferences
+            .stats
+            .open_session
+            .as_mut()
+            .filter(|open| open.pid == pid)
+        {
+            open.counted_until = unix_now();
+        }
+    }
+    state.persist_preferences().await
+}
+
+/// Chiude la sessione corrente e somma i minuti giocati.
+///
+/// La chiama il watcher quando Dolphin si chiude, e [`close_running_dolphin`]
+/// prima di chiuderlo a forza. Restituisce la durata dell'intera sessione.
+pub async fn finish_session(state: &Arc<AppState>) -> AppResult<f64> {
+    let session = state.game_session.write().await.take();
+    Ok(close_session(state, session).await?.unwrap_or(0.0))
+}
+
+/// Come [`finish_session`], ma solo se la sessione in corso è quella di `pid`.
+async fn finish_session_of(state: &Arc<AppState>, pid: u32) -> AppResult<Option<f64>> {
+    let session = {
+        let mut slot = state.game_session.write().await;
+        if slot.as_ref().is_some_and(|session| session.pid == pid) {
+            slot.take()
+        } else {
+            None
+        }
+    };
+    close_session(state, session).await
+}
+
+async fn close_session(
+    state: &Arc<AppState>,
+    session: Option<GameSession>,
+) -> AppResult<Option<f64>> {
+    let Some(session) = session else {
+        return Ok(None);
+    };
+
+    // Il grosso è già nel totale, sommato a intervalli: resta la coda
+    // dall'ultimo conteggio.
+    let tail = session.counted_until.elapsed().as_secs_f64() / 60.0;
+    {
+        let mut preferences = state.preferences.write().await;
+        preferences.record_session(tail);
+        if preferences
+            .stats
+            .open_session
+            .as_ref()
+            .is_some_and(|open| open.pid == session.pid)
+        {
+            preferences.stats.open_session = None;
+        }
     }
     state.persist_preferences().await?;
 
+    let minutes = session.started_at.elapsed().as_secs_f64() / 60.0;
     tracing::info!(
         minutes = format!("{minutes:.1}"),
         "sessione di gioco conclusa"
     );
-    Ok(minutes)
+    Ok(Some(minutes))
+}
+
+/// Riprende la sessione rimasta aperta quando il launcher si è chiuso prima
+/// di Dolphin (§D-106).
+///
+/// Se è ancora aperto *lo stesso* Dolphin — stesso PID, stessa ora di avvio —
+/// è rimasto acceso per tutto il tempo: si somma la pausa dall'ultimo
+/// salvataggio e si riprende a seguirlo. Se non c'è più si è chiuso a launcher
+/// spento, e quando non si può sapere: resta contato fino all'ultimo
+/// salvataggio, che è al più un minuto prima della chiusura del launcher.
+pub async fn resume_session(
+    state: &Arc<AppState>,
+    on_end: impl FnOnce(f64) + Send + 'static,
+) -> AppResult<()> {
+    let Some(open) = state.preferences.read().await.stats.open_session.clone() else {
+        return Ok(());
+    };
+
+    // Senza l'ora di avvio un PID vivo non prova niente: dopo un riavvio
+    // potrebbe essere un altro programma, e la pausa conterebbe giorni.
+    let process = SessionProcess {
+        pid: open.pid,
+        started: Some(open.process_started),
+    };
+    if open.process_started == 0 || !process.is_alive() {
+        state.preferences.write().await.stats.open_session = None;
+        state.persist_preferences().await?;
+        tracing::info!(
+            pid = open.pid,
+            "sessione chiusa mentre il launcher era spento"
+        );
+        return Ok(());
+    }
+
+    let now = unix_now();
+    let gap = now.saturating_sub(open.counted_until) as f64 / 60.0;
+    {
+        let mut preferences = state.preferences.write().await;
+        preferences.record_session(gap);
+        if let Some(open) = preferences.stats.open_session.as_mut() {
+            open.counted_until = now;
+        }
+    }
+    *state.game_session.write().await = Some(GameSession::starting_now(open.pid, process.started));
+    spawn_watcher(state, open.pid, on_end);
+
+    tracing::info!(
+        pid = open.pid,
+        gap = format!("{gap:.1}"),
+        "sessione di gioco ripresa"
+    );
+    state.persist_preferences().await
 }
 
 /// `true` se il gioco risulta ancora in esecuzione.
@@ -386,7 +603,7 @@ mod tests {
         seed_ready_to_play(dir.path(), &state).await;
         testkit::break_modpack(&state.layout(Channel::Stable).await);
 
-        let error = launch(&state).await.unwrap_err();
+        let error = launch(&state, |_| {}).await.unwrap_err();
         assert_eq!(error.code(), "configuration");
         assert!(state.game_session.read().await.is_none());
         assert!(!state.paths.launcher_descriptor(Channel::Stable).is_file());
@@ -424,7 +641,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let state = state_with(dir.path()).await;
 
-        let error = launch(&state).await.unwrap_err();
+        let error = launch(&state, |_| {}).await.unwrap_err();
         assert_eq!(error.code(), "configuration");
         assert!(state.game_session.read().await.is_none());
     }
@@ -438,7 +655,7 @@ mod tests {
         // L'avvio fallisce — il file ha il permesso di esecuzione ma dentro
         // non c'è un programma — e il descrittore dev'essere già stato
         // scritto e valido.
-        let _ = launch(&state).await;
+        let _ = launch(&state, |_| {}).await;
 
         let descriptor_path = state.paths.launcher_descriptor(Channel::Stable);
         assert!(descriptor_path.is_file());
@@ -475,10 +692,7 @@ mod tests {
         assert!(preflight(&state).await.unwrap().is_none());
 
         // La sessione aperta viene chiusa e il tempo contato.
-        *state.game_session.write().await = Some(GameSession {
-            pid: 1,
-            started_at: std::time::Instant::now(),
-        });
+        *state.game_session.write().await = Some(GameSession::starting_now(1, None));
 
         assert!(close_running_dolphin(&state).await.unwrap());
         assert!(!crate::platform::is_executable_running(&fake));
@@ -503,18 +717,195 @@ mod tests {
         assert!(!is_running(&state).await);
     }
 
+    /// Una sessione cominciata `minutes` minuti fa.
+    fn session_started_ago(pid: u32, minutes: u64) -> GameSession {
+        let mut session = GameSession::starting_now(pid, None);
+        let past = Instant::now()
+            .checked_sub(Duration::from_secs(minutes * 60))
+            .expect("orologio monotono troppo giovane");
+        session.started_at = past;
+        session.counted_until = past;
+        session
+    }
+
+    async fn saved_minutes(state: &Arc<AppState>) -> f64 {
+        crate::storage::preferences::load(&state.paths)
+            .await
+            .unwrap()
+            .stats
+            .total_play_time_minutes
+    }
+
     #[tokio::test]
     async fn finishing_a_session_accumulates_play_time() {
         let dir = tempfile::tempdir().unwrap();
         let state = state_with(dir.path()).await;
 
-        *state.game_session.write().await = Some(GameSession {
-            pid: 1,
-            started_at: std::time::Instant::now(),
-        });
+        *state.game_session.write().await = Some(session_started_ago(1, 90));
 
         let minutes = finish_session(&state).await.unwrap();
-        assert!(minutes >= 0.0);
+        assert!((90.0..91.0).contains(&minutes), "{minutes}");
         assert!(state.game_session.read().await.is_none());
+
+        // Sommati e scritti su disco, non solo in memoria.
+        let saved = saved_minutes(&state).await;
+        assert!((90.0..91.0).contains(&saved), "{saved}");
+    }
+
+    #[tokio::test]
+    async fn a_checkpoint_counts_only_the_time_since_the_previous_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+        *state.game_session.write().await = Some(session_started_ago(7, 30));
+
+        checkpoint_session(&state, 7).await.unwrap();
+        let after_checkpoint = saved_minutes(&state).await;
+        assert!(
+            (30.0..31.0).contains(&after_checkpoint),
+            "{after_checkpoint}"
+        );
+
+        // La chiusura aggiunge solo la coda: niente contato due volte.
+        let session = finish_session(&state).await.unwrap();
+        assert!((30.0..31.0).contains(&session), "{session}");
+        let total = saved_minutes(&state).await;
+        assert!(total - after_checkpoint < 0.1, "{total}");
+
+        // Il checkpoint di una sessione che non c'è più non tocca niente.
+        checkpoint_session(&state, 7).await.unwrap();
+        assert_eq!(saved_minutes(&state).await, total);
+    }
+
+    /// Il caso della segnalazione: si gioca, si chiude Dolphin, e il tempo
+    /// deve finire nelle statistiche senza che la UI faccia niente.
+    #[tokio::test]
+    async fn closing_dolphin_ends_the_session_and_saves_the_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+
+        let (_fake, mut child) = crate::testkit::spawn_fake_dolphin(dir.path());
+        let pid = child.id();
+        let started = crate::platform::process_start_time(pid);
+        assert!(started.is_some());
+
+        let mut session = session_started_ago(pid, 12);
+        session.process_started = started;
+        *state.game_session.write().await = Some(session);
+        state.preferences.write().await.stats.open_session = Some(OpenSession {
+            pid,
+            process_started: started.unwrap(),
+            counted_until: unix_now() - 12 * 60,
+        });
+
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        let timing = WatchTiming {
+            poll: Duration::from_millis(50),
+            checkpoint: Duration::ZERO,
+        };
+        let watcher = tokio::spawn(watch_session(state.clone(), pid, timing, move |minutes| {
+            let _ = sender.send(minutes);
+        }));
+
+        // Mentre Dolphin è aperto il tempo viene già salvato.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while saved_minutes(&state).await < 12.0 {
+            assert!(Instant::now() < deadline, "nessun salvataggio intermedio");
+            tokio::time::sleep(Duration::from_millis(50)).await;
+        }
+        assert!(state.game_session.read().await.is_some());
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+
+        let minutes = tokio::time::timeout(Duration::from_secs(10), receiver)
+            .await
+            .expect("il watcher non si è accorto della chiusura")
+            .unwrap();
+        watcher.await.unwrap();
+
+        assert!((12.0..13.0).contains(&minutes), "{minutes}");
+        assert!(state.game_session.read().await.is_none());
+
+        let saved = crate::storage::preferences::load(&state.paths)
+            .await
+            .unwrap();
+        assert!(
+            (12.0..13.0).contains(&saved.stats.total_play_time_minutes),
+            "{}",
+            saved.stats.total_play_time_minutes
+        );
+        assert_eq!(saved.stats.open_session, None);
+    }
+
+    #[tokio::test]
+    async fn a_watcher_leaves_alone_a_session_it_does_not_own() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+
+        // La sessione è di un altro processo: quella del watcher è già stata
+        // chiusa da un nuovo avvio.
+        *state.game_session.write().await = Some(GameSession::starting_now(42, None));
+
+        let timing = WatchTiming {
+            poll: Duration::from_millis(10),
+            checkpoint: Duration::ZERO,
+        };
+        watch_session(state.clone(), 7, timing, |_| {
+            panic!("non è la sua sessione")
+        })
+        .await;
+
+        assert_eq!(state.game_session.read().await.as_ref().unwrap().pid, 42);
+        assert_eq!(saved_minutes(&state).await, 0.0);
+    }
+
+    /// Launcher chiuso a metà partita e riaperto con Dolphin ancora acceso.
+    #[tokio::test]
+    async fn a_session_left_open_is_resumed_with_the_pause_counted() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+
+        let (_fake, mut child) = crate::testkit::spawn_fake_dolphin(dir.path());
+        let pid = child.id();
+        let started = crate::platform::process_start_time(pid).unwrap();
+
+        state.preferences.write().await.stats.open_session = Some(OpenSession {
+            pid,
+            process_started: started,
+            counted_until: unix_now() - 20 * 60,
+        });
+
+        resume_session(&state, |_| {}).await.unwrap();
+
+        let saved = saved_minutes(&state).await;
+        assert!((20.0..21.0).contains(&saved), "{saved}");
+        assert_eq!(state.game_session.read().await.as_ref().unwrap().pid, pid);
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+        finish_session(&state).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_session_whose_dolphin_is_gone_is_just_closed() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = state_with(dir.path()).await;
+
+        let own = std::process::id();
+        let own_start = crate::platform::process_start_time(own).unwrap();
+
+        // Il PID è vivo — è la suite stessa — ma non è quel Dolphin: con
+        // un'ora di avvio diversa, o senza, non si riprende niente.
+        for process_started in [own_start - 3600, 0] {
+            state.preferences.write().await.stats.open_session = Some(OpenSession {
+                pid: own,
+                process_started,
+                counted_until: unix_now() - 20 * 60,
+            });
+            resume_session(&state, |_| {}).await.unwrap();
+            assert!(state.game_session.read().await.is_none());
+            assert_eq!(saved_minutes(&state).await, 0.0);
+            assert_eq!(state.preferences.read().await.stats.open_session, None);
+        }
     }
 }

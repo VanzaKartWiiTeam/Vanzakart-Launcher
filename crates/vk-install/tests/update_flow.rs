@@ -41,6 +41,9 @@ fn installer(version: &str) -> Installer {
                 .expect("client")
                 .with_loopback_http(true),
         )
+        // Come in `install_flow.rs`: il launcher vero aperto sulla macchina
+        // fermerebbe ogni installazione con `LauncherRunning` (§D-105).
+        .with_running_probe(|_| false)
 }
 
 /// Pacchetto ZIP con dentro l'eseguibile atteso dalla piattaforma corrente e

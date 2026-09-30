@@ -89,6 +89,22 @@ pub fn is_executable_running(executable: &Path) -> bool {
         .any(|process| target.matches(process))
 }
 
+/// Avvio del processo `pid` in secondi Unix, o `None` se non è vivo.
+///
+/// Serve al tempo di gioco: con il PID riconosce *quel* processo anche dopo
+/// un riavvio, quando i numeri si riciclano e un PID da solo potrebbe essere
+/// tutt'altro programma (§D-106). Guarda un processo solo: si può chiamare
+/// ogni pochi secondi senza fotografare tutto il sistema.
+pub fn process_start_time(pid: u32) -> Option<u64> {
+    let pid = sysinfo::Pid::from_u32(pid);
+    let mut system = sysinfo::System::new();
+    system.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+    system
+        .process(pid)
+        .filter(|process| is_alive(process.status()))
+        .map(sysinfo::Process::start_time)
+}
+
 /// Un processo, ridotto a ciò che serve per riconoscerlo.
 #[derive(Debug, Clone)]
 struct ProcessInfo {
@@ -588,6 +604,27 @@ mod tests {
             "altro-programma",
             "vanzakart-launcher.AppImage"
         ));
+    }
+
+    #[test]
+    fn the_start_time_of_a_live_process_is_stable() {
+        let own = std::process::id();
+        let first = process_start_time(own).expect("il processo corrente è vivo");
+        assert!(first > 0);
+        assert!(first <= crate::state::unix_now() + 1);
+        assert_eq!(process_start_time(own), Some(first));
+    }
+
+    #[test]
+    fn a_closed_process_has_no_start_time() {
+        let dir = tempfile::tempdir().unwrap();
+        let (_copy, mut child) = crate::testkit::spawn_fake_dolphin(dir.path());
+        let pid = child.id();
+        assert!(process_start_time(pid).is_some());
+
+        child.kill().unwrap();
+        child.wait().unwrap();
+        assert_eq!(process_start_time(pid), None);
     }
 
     #[test]

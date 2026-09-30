@@ -27,7 +27,7 @@
 </script>
 
 {#if alive}
-  <span class="streak {size}" class:vacation {title} aria-label={title} role="img">
+  <span class="streak {size}" class:vacation {@attach tooltip(title)} aria-label={title} role="img">
     <Icon name={vacation ? 'umbrella' : 'fire'} size={iconSize} />
     <span class="days">{formatNumber(days)}</span>
     {#if withLabel}

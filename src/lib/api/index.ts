@@ -57,6 +57,7 @@ export * from './types';
 
 /** Evento con cui il backend spinge i progressi. */
 export const PROGRESS_EVENT = 'vk://progress';
+export const GAME_SESSION_EVENT = 'vk://game-session';
 
 /** `true` se l'errore ha la forma prodotta dal backend. */
 export function isApiError(value: unknown): value is ApiError {
@@ -125,7 +126,6 @@ export const uninstallMusicPack = () => call<MusicPackStatus>('music_pack_uninst
 
 export const launchPreflight = () => call<LaunchBlocker | null>('launch_preflight');
 export const launchGame = () => call<LaunchResult>('launch_game');
-export const finishSession = () => call<number>('launch_session_finished');
 
 // --- Impostazioni ---------------------------------------------------------
 
@@ -409,4 +409,12 @@ export const openExternal = (url: string) => call<void>('open_external', { url }
 /** Si iscrive agli eventi di progresso. Restituisce la funzione di rimozione. */
 export function onProgress(handler: (event: ProgressEvent) => void): Promise<UnlistenFn> {
   return listen<ProgressEvent>(PROGRESS_EVENT, (event) => handler(event.payload));
+}
+
+/**
+ * Si iscrive alla fine delle sessioni di gioco. Il backend segue Dolphin da
+ * sé e manda i minuti della sessione appena chiusa, già sommati al totale.
+ */
+export function onGameSessionEnd(handler: (minutes: number) => void): Promise<UnlistenFn> {
+  return listen<number>(GAME_SESSION_EVENT, (event) => handler(event.payload));
 }

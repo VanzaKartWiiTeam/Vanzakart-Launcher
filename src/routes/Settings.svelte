@@ -609,7 +609,7 @@
     <section class="vk-card">
       <div class="section-head">
         <p class="vk-eyebrow">{t('settings.pathsTitle')}</p>
-        <button class="vk-btn" onclick={autoDetect} {@attach tooltip(t('settings.pathsSubtitle'))}>
+        <button class="vk-btn" onclick={autoDetect} {@attach tooltip(t('settings.autoDetectHint'))}>
           <Icon name="refresh" size={14} />
           {t('settings.autoDetect')}
         </button>

@@ -46,6 +46,21 @@ pub struct PlayStats {
     pub last_played_utc: Option<String>,
     pub launch_count: u64,
     pub total_play_time_minutes: f64,
+    /// Sessione ancora aperta. Se il launcher si chiude prima di Dolphin, al
+    /// riavvio la si ritrova e si riprende a contare (§D-106).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub open_session: Option<OpenSession>,
+}
+
+/// La parte di una sessione di gioco che deve sopravvivere al launcher.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct OpenSession {
+    pub pid: u32,
+    /// Avvio del processo in secondi Unix, 0 se il sistema non l'ha detto.
+    pub process_started: u64,
+    /// Fin dove i minuti sono già nel totale, in secondi Unix.
+    pub counted_until: u64,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]

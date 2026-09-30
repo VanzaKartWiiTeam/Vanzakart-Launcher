@@ -32,14 +32,20 @@
 
   onMount(() => {
     let disposed = false;
-    let unlisten: (() => void) | undefined;
+    const unlisteners: (() => void)[] = [];
+    const keep = (stop: () => void) => {
+      if (disposed) stop();
+      else unlisteners.push(stop);
+    };
 
     void (async () => {
       // I progressi li ascolta lo store delle operazioni, che vive fuori dalle
       // pagine: un download continua a vedersi anche cambiando pagina.
-      const stop = await operations.listen();
-      if (disposed) stop();
-      else unlisten = stop;
+      keep(await operations.listen());
+
+      // Chiuso Dolphin, il backend ha già sommato i minuti: la home li deve
+      // mostrare senza aspettare il prossimo giro di stato (§D-106).
+      keep(await api.onGameSessionEnd(() => void app.refresh().catch(() => {})));
 
       try {
         await app.refresh();
@@ -56,7 +62,7 @@
 
     return () => {
       disposed = true;
-      unlisten?.();
+      for (const stop of unlisteners) stop();
     };
   });
 
@@ -186,11 +192,23 @@
   }
 
   .content {
+    display: flex;
+    flex-direction: column;
     flex: 1;
     min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
+  }
+
+  /*
+   * Il contenitore della pagina è alto almeno quanto l'area visibile: una
+   * pagina che vuole riempire lo spazio — la home a finestra massimizzata —
+   * lo fa con `min-height: 100%`, senza calcolare altezze (§D-108). Resta un
+   * blocco: le pagine centrate con `max-width` e `margin: auto` non cambiano.
+   */
+  .content > :global(.vk-view-enter) {
+    flex: 1 0 auto;
   }
 
   /* Sotto i 1320 px il layout si stringe invece di tagliare (ui-parity U-07). */

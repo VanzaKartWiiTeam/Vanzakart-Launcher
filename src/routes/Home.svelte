@@ -265,15 +265,19 @@
     display: flex;
     flex-direction: column;
     gap: 14px;
+    min-height: 100%;
     padding-bottom: 8px;
   }
 
   /* --- Hero --- */
 
+  /* L'eroe prende l'altezza che avanza: a finestra grande niente vuoto sotto
+     le statistiche (§D-108). */
   .hero {
     position: relative;
     display: grid;
     grid-template-columns: 1.18fr 0.82fr;
+    flex: 1;
     min-height: 380px;
     isolation: isolate;
   }

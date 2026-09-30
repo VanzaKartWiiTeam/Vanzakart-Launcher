@@ -231,6 +231,8 @@ pub struct LeaderboardEntry {
     pub name: String,
     pub points: i32,
     pub friend_code: String,
+    /// BR del giocatore; 0 finché il server non lo manda (§D-107).
+    pub br: i32,
     pub prestige_rank: i32,
     pub wins: i32,
     pub games: i32,
@@ -333,6 +335,8 @@ pub struct PlayerStatsView {
     pub position: i32,
     pub name: String,
     pub points: i32,
+    /// BR; 0 finché il server non lo manda (§D-107).
+    pub br: i32,
     pub wins: i32,
     pub games: i32,
     pub winrate: f64,

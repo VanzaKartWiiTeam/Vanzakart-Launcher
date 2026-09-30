@@ -412,6 +412,7 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
         position,
         points: loose::int(value, &["points", "vr", "ev"]),
         friend_code: loose::text(value, &["fc", "friendCode", "friend_code"]),
+        br: loose::int(value, &["br", "battle_rating", "battleRating", "eb"]),
         prestige_rank,
         wins,
         games,
@@ -920,6 +921,19 @@ impl PlayerIndex {
     pub fn is_empty(&self) -> bool {
         self.players.is_empty()
     }
+
+    /// Un indice già pronto, per i test di chi lo consulta.
+    #[cfg(test)]
+    pub(crate) fn with_players<'a>(
+        players: impl IntoIterator<Item = (&'a str, PlayerStatsView)>,
+    ) -> Self {
+        Self {
+            players: players
+                .into_iter()
+                .map(|(code, stats)| (digits(code), stats))
+                .collect(),
+        }
+    }
 }
 
 /// Statistiche dei giocatori dal server, per friend code.
@@ -1013,6 +1027,7 @@ fn stats_of(entry: LeaderboardEntry, badge: Option<&BadgeView>) -> PlayerStatsVi
         position: entry.position,
         name: entry.name,
         points: entry.points,
+        br: entry.br,
         wins: entry.wins,
         games: entry.games,
         winrate: entry.winrate,

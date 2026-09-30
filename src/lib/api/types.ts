@@ -203,6 +203,8 @@ export interface LeaderboardEntry {
   name: string;
   points: number;
   friendCode: string;
+  /** BR; 0 finché il server non lo manda. */
+  br: number;
   prestigeRank: number;
   wins: number;
   games: number;
@@ -381,6 +383,8 @@ export interface PlayerStatsView {
   position: number;
   name: string;
   points: number;
+  /** BR; 0 finché il server non lo manda. */
+  br: number;
   wins: number;
   games: number;
   winrate: number;

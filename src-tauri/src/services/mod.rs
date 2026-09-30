@@ -20,3 +20,4 @@ pub mod mods;
 pub mod music_pack;
 pub mod news;
 pub mod saves;
+pub mod ui_scale;
