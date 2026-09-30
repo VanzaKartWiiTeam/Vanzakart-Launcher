@@ -2,13 +2,19 @@
   /**
    * Home / Play.
    *
-   * Ricalca il `PlayView` del WPF: hero con gradiente prismatico e pulsante
-   * PLAY da 440×118, logo a destra, poi le due card "Game stats" e
-   * "MOD UPDATE" affiancate.
+   * Ricalca il `PlayView` del WPF: hero con gradiente e pulsante PLAY da
+   * 440×118, logo a destra. Sotto PLAY una frase sola dice come sta la
+   * modpack e, **solo quando serve**, un pulsante fa la cosa da fare:
+   * installare, aggiornare, riparare, finire le impostazioni (§D-100).
+   *
+   * Il resto della modpack — versioni, changelog, verifica, cartella — sta in
+   * Mods; l'aggiornamento del launcher nella barra del titolo e nell'avviso
+   * all'avvio. Qui ripeterli era rumore.
    */
   import * as api from '$lib/api';
-  import Icon from '$lib/components/Icon.svelte';
+  import Icon, { type IconName } from '$lib/components/Icon.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
   import logo from '$lib/assets/logo.png';
   import { app, formatDate, formatPlayTime } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
@@ -16,15 +22,7 @@
   import { formatRemaining } from '$lib/stores/transfer';
 
   let launching = $state(false);
-  let checking = $state(false);
-  let verifying = $state(false);
   let confirmOutdated = $state(false);
-
-  /**
-   * Aggiornamento del launcher: lo stato sta nello store, perché lo guardano
-   * anche l'avviso d'avvio e la finestra che scarica (§D-075).
-   */
-  const launcherUpdate = $derived(app.launcherUpdate);
 
   $effect(() => {
     void app.refreshLauncherUpdate();
@@ -49,27 +47,44 @@
     Boolean(app.status?.dolphinRunning && app.settings?.closeRunningDolphin)
   );
 
-  const badgeTone = $derived(
-    !mod?.checked
-      ? ''
-      : !mod.installed || mod.needsRepair
-        ? 'vk-badge--danger'
-        : mod.updateAvailable
-          ? 'vk-badge--warning'
-          : 'vk-badge--success'
-  );
+  interface HomeAction {
+    label: string;
+    icon: IconName;
+    hint?: string;
+    run: () => void;
+  }
 
-  const badgeText = $derived(
-    !mod?.checked
-      ? t('home.badge.idle')
-      : !mod.installed
-        ? t('home.badge.notInstalled')
-        : mod.needsRepair
-          ? t('home.badge.needsRepair')
-          : mod.updateAvailable
-            ? t('home.badge.update')
-            : t('home.badge.upToDate')
-  );
+  /** La cosa da fare prima di giocare, se ce n'è una. */
+  const action = $derived.by((): HomeAction | null => {
+    const status = app.status;
+    if (!status || !mod) return null;
+    if (!status.settingsComplete) {
+      return {
+        label: t('home.action.settings'),
+        icon: 'settings',
+        run: () => app.navigate('settings')
+      };
+    }
+    if (!mod.installed) {
+      return { label: t('home.installMods'), icon: 'download', run: () => void install() };
+    }
+    if (mod.needsRepair) {
+      return {
+        label: t('home.action.repair'),
+        icon: 'repair',
+        hint: mod.repairReason || t('home.action.repairHint'),
+        run: () => void install('repair')
+      };
+    }
+    if (mod.updateAvailable) {
+      return {
+        label: t('home.action.update', { version: mod.latestVersion }),
+        icon: 'download',
+        run: () => void install()
+      };
+    }
+    return null;
+  });
 
   async function play() {
     if (launching) return;
@@ -109,26 +124,18 @@
     }
   }
 
-  async function checkUpdates() {
-    checking = true;
-    try {
-      await api.checkUpdates();
-      await app.refresh();
-    } catch (error) {
-      app.toast(t('home.checkFailed'), api.errorMessage(error), 'warning');
-    } finally {
-      checking = false;
-      void app.refreshLauncherUpdate();
-    }
-  }
-
-  async function install() {
+  /** Installa, aggiorna o ripara la modpack: la barra la mostra l'eroe. */
+  async function install(kind: 'install' | 'repair' = 'install') {
     if (operations.busy) return;
     try {
-      const outcome = await operations.run('mods', () => api.installMods(), {
-        title: 'VanzaKart Modpack',
-        describe: (result) => result.summary
-      });
+      const outcome = await operations.run(
+        'mods',
+        () => (kind === 'repair' ? api.repairMods() : api.installMods()),
+        {
+          title: 'VanzaKart Modpack',
+          describe: (result) => result.summary
+        }
+      );
       app.toast(
         outcome.wasUpdate ? t('home.updateDone') : t('home.installDone'),
         outcome.summary,
@@ -143,34 +150,14 @@
     }
   }
 
-  /**
-   * Verifica i file installati contro il manifest.
-   *
-   * È il controllo che si fa prima di riparare: dice se manca davvero
-   * qualcosa. Riparare — che riscarica — resta in Mods, dove c'è anche il
-   * dettaglio dei file che non tornano.
-   */
-  async function verify() {
-    if (verifying || installing) return;
-    verifying = true;
-    try {
-      const report = await api.verifyMods();
-      const broken = report.mismatched.length > 0;
-      app.toast(
-        broken ? t('home.verifyBroken') : t('home.verifyDone'),
-        report.message,
-        broken ? 'warning' : 'success'
-      );
-    } catch (error) {
-      app.toast(t('home.verifyFailed'), api.errorMessage(error), 'warning');
-    } finally {
-      verifying = false;
-    }
+  /** Dal dialogo "versione vecchia": prima si aggiorna, poi si gioca. */
+  function updateFirst() {
+    confirmOutdated = false;
+    void install();
   }
 </script>
 
 <div class="page">
-  <!-- HERO -->
   <section class="vk-card vk-card--flush hero">
     <div class="hero-wash" aria-hidden="true"></div>
 
@@ -184,8 +171,6 @@
             : t('home.launching')
           : t('home.play')}
       </button>
-
-      <p class="status-line" data-tone={app.statusTone}>{app.statusLine}</p>
 
       {#if active}
         <div
@@ -211,8 +196,27 @@
             <span class="speed">{t('ops.remaining', { time: remaining })}</span>
           {/if}
         </p>
-      {:else if willCloseDolphin}
-        <p class="progress-line vk-faint">{t('home.dolphinWillClose')}</p>
+      {:else}
+        <div class="state">
+          <p class="status-line" data-tone={app.statusTone}>
+            <span class="status-dot" aria-hidden="true"></span>
+            {app.statusLine}
+          </p>
+          {#if action}
+            <button
+              class="vk-btn action"
+              onclick={action.run}
+              disabled={operations.busy || launching}
+              {@attach tooltip(action.hint)}
+            >
+              <Icon name={action.icon} size={14} />
+              {action.label}
+            </button>
+          {/if}
+        </div>
+        {#if willCloseDolphin}
+          <p class="progress-line vk-faint">{t('home.dolphinWillClose')}</p>
+        {/if}
       {/if}
     </div>
 
@@ -221,138 +225,25 @@
     </div>
   </section>
 
-  <!-- CARD AFFIANCATE -->
-  <section class="cards">
-    <div class="vk-card stats-card">
-      <p class="vk-eyebrow">{t('home.stats')}</p>
-
-      <!--
-        Tre dati, tre colonne: etichetta sopra e numero sotto, come nella card
-        accanto. Su una riga sola le etichette e i valori si alternavano e le
-        distanze cambiavano a ogni partita giocata.
-      -->
-      <div class="stats">
-        <div class="stat">
-          <p class="vk-faint label">{t('home.lastPlayed')}</p>
-          <p class="value">{formatDate(stats?.lastPlayedUtc ?? null)}</p>
-        </div>
-        <div class="stat">
-          <p class="vk-faint label">{t('home.playTime')}</p>
-          <p class="value">{formatPlayTime(stats?.totalPlayTimeMinutes ?? 0)}</p>
-        </div>
-        <div class="stat">
-          <p class="vk-faint label">{t('home.launches')}</p>
-          <p class="value">{stats?.launchCount ?? 0}</p>
-        </div>
-      </div>
-
-      <div class="folder">
-        <p class="vk-faint label">{t('home.modFolder')}</p>
-        <p class="vk-faint path" title={mod?.modFolder ?? ''}>{mod?.modFolder || '—'}</p>
-      </div>
-
-      <button class="vk-btn" onclick={() => app.navigate('mods')}>
-        <Icon name="package" size={14} />
-        {t('home.openMods')}
-      </button>
+  <!--
+    Tre dati, tre colonne: etichetta sopra e numero sotto. Su una riga sola
+    le etichette e i valori si alternavano e le distanze cambiavano a ogni
+    partita giocata.
+  -->
+  <section class="vk-card stats">
+    <div class="stat">
+      <p class="label">{t('home.lastPlayed')}</p>
+      <p class="value">{formatDate(stats?.lastPlayedUtc ?? null)}</p>
     </div>
-
-    <div class="vk-card update-card">
-      <div class="update-head">
-        <div>
-          <p class="vk-eyebrow">{t('home.modUpdate')}</p>
-          <h3 class="update-title">
-            {#if !mod?.checked}
-              {t('home.state.checking')}
-            {:else if !mod.installed}
-              {t('home.state.notInstalled')}
-            {:else if mod.needsRepair}
-              {t('home.state.needsRepair')}
-            {:else if mod.updateAvailable}
-              {t('home.state.update')}
-            {:else}
-              {t('home.state.upToDate')}
-            {/if}
-          </h3>
-        </div>
-        <span class="vk-badge {badgeTone}">{badgeText}</span>
-      </div>
-
-      <div class="versions">
-        <div>
-          <p class="vk-faint label">{t('home.installedLabel')}</p>
-          <p class="version">{mod?.installedVersion || t('common.none')}</p>
-        </div>
-        <div>
-          <p class="vk-faint label">{t('home.availableLabel')}</p>
-          <p class="version">{mod?.latestVersion || t('common.unknown')}</p>
-        </div>
-      </div>
-
-      {#if mod?.needsRepair}
-        <p class="repair">{t('home.repairNotice', { reason: mod.repairReason })}</p>
-      {/if}
-
-      <p class="check vk-muted">{mod?.checkMessage || t('home.noCheck')}</p>
-
-      <div class="actions">
-        <button
-          class="vk-btn"
-          onclick={checkUpdates}
-          disabled={checking || operations.busy || verifying}
-        >
-          <Icon name="refresh" size={14} />
-          {checking ? t('home.checking') : t('home.checkUpdates')}
-        </button>
-        <button
-          class="vk-btn vk-btn--primary"
-          onclick={install}
-          disabled={operations.busy || verifying}
-          title={operations.blockedBy('mods') && active
-            ? t('ops.waiting', { operation: operationLabel(active) })
-            : undefined}
-        >
-          <Icon name="download" size={14} />
-          {installing
-            ? t('common.working')
-            : mod?.installed
-              ? t('home.updateMods')
-              : t('home.installMods')}
-        </button>
-        <button
-          class="vk-btn"
-          onclick={verify}
-          disabled={verifying || operations.busy || !mod?.installed}
-        >
-          <Icon name="check" size={14} />
-          {verifying ? t('home.verifying') : t('home.verify')}
-        </button>
-      </div>
+    <div class="stat">
+      <p class="label">{t('home.playTime')}</p>
+      <p class="value">{formatPlayTime(stats?.totalPlayTimeMinutes ?? 0)}</p>
+    </div>
+    <div class="stat">
+      <p class="label">{t('home.launches')}</p>
+      <p class="value">{stats?.launchCount ?? 0}</p>
     </div>
   </section>
-
-  {#if launcherUpdate?.available}
-    <section class="vk-card launcher-update">
-      <div>
-        <p class="vk-eyebrow">{t('home.launcherUpdate')}</p>
-        <p class="vk-subtitle">
-          {t('home.launcherUpdateBody', {
-            latest: launcherUpdate.latest,
-            current: launcherUpdate.current
-          })}
-          {#if launcherUpdate.changelog.filter((line) => line.trim()).length > 0}
-            {launcherUpdate.changelog.filter((line) => line.trim()).join(' · ')}
-          {/if}
-        </p>
-      </div>
-      {#if launcherUpdate.downloadPage}
-        <button class="vk-btn vk-btn--primary" onclick={() => (app.updaterOpen = true)}>
-          <Icon name="download" size={14} />
-          {t('home.launcherUpdateAction')}
-        </button>
-      {/if}
-    </section>
-  {/if}
 </div>
 
 <Modal
@@ -361,10 +252,7 @@
   confirmLabel={t('home.outdatedConfirm')}
   cancelLabel={t('home.outdatedCancel')}
   onconfirm={doLaunch}
-  oncancel={() => {
-    confirmOutdated = false;
-    app.navigate('mods');
-  }}
+  oncancel={updateFirst}
 >
   {t('home.outdatedBody', {
     installed: mod?.installedVersion ?? '',
@@ -373,15 +261,6 @@
 </Modal>
 
 <style>
-  .launcher-update {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-    border-color: color-mix(in srgb, var(--vk-cyan) 35%, var(--vk-stroke));
-  }
-
   .page {
     display: flex;
     flex-direction: column;
@@ -395,16 +274,32 @@
     position: relative;
     display: grid;
     grid-template-columns: 1.18fr 0.82fr;
-    min-height: 350px;
+    min-height: 380px;
     isolation: isolate;
   }
 
+  /*
+   * Un velo dell'arcobaleno intero, in diagonale e appena accennato. Il WPF
+   * usava rosa → ciano → viola: proprio i due colori che il tema non vuole
+   * da soli (§D-099).
+   */
   .hero-wash {
     position: absolute;
     inset: 0;
-    background: var(--vk-hero-gradient);
-    opacity: 0.18;
     z-index: -1;
+    background:
+      radial-gradient(ellipse at 20% 0%, transparent 30%, var(--vk-panel) 85%),
+      linear-gradient(
+        120deg,
+        #ff0066 0%,
+        #ff8800 18%,
+        #ffea00 34%,
+        #00ff66 50%,
+        #00f2ff 67%,
+        #3300ff 84%,
+        #b000ff 100%
+      );
+    opacity: 0.16;
   }
 
   .hero-main {
@@ -423,30 +318,51 @@
     line-height: 1;
   }
 
+  .state {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 14px;
+    margin: 22px 0 0 2px;
+  }
+
   .status-line {
-    margin: 24px 0 10px 2px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+    margin: 0;
     font-size: var(--vk-fs-body);
     font-weight: 600;
+    --tone: var(--vk-text-secondary);
   }
 
   .status-line[data-tone='success'] {
-    color: var(--vk-success);
+    --tone: var(--vk-success);
   }
   .status-line[data-tone='warning'] {
-    color: var(--vk-warning);
+    --tone: var(--vk-warning);
   }
   .status-line[data-tone='danger'] {
-    color: var(--vk-danger);
+    --tone: var(--vk-danger);
   }
 
-  .repair {
-    margin: 14px 0 0;
+  .status-dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tone);
+    box-shadow: 0 0 10px var(--tone);
+  }
+
+  .action {
+    padding: 8px 14px;
     font-size: var(--vk-fs-small);
-    color: var(--vk-danger);
   }
 
   .progress {
     width: min(440px, 100%);
+    margin-top: 22px;
   }
 
   .progress-line {
@@ -503,104 +419,37 @@
     }
   }
 
-  /* --- Card --- */
-
-  .cards {
-    display: grid;
-    grid-template-columns: 1.05fr 0.95fr;
-    gap: 20px;
-    align-items: start;
-  }
-
-  .stats-card {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
+  /* --- Statistiche --- */
 
   .stats {
     display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-    margin-top: 14px;
+    padding: 16px 0;
   }
 
   .stat {
     min-width: 0;
+    padding: 0 26px;
   }
 
-  .stat .value {
-    margin: 2px 0 0;
-    font-size: 15px;
-    font-weight: 900;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .folder {
-    margin-top: auto;
-  }
-
-  /* Il percorso è lungo per natura: una riga sola, e per esteso nel tooltip. */
-  .folder .path {
-    margin: 2px 0 0;
-    font-size: var(--vk-fs-micro);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .stats-card .vk-btn {
-    align-self: flex-start;
-  }
-
-  @media (max-width: 1320px) {
-    .stats {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-
-  .update-head {
-    display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 12px;
-  }
-
-  .update-title {
-    margin: 5px 0 0;
-    font-size: var(--vk-fs-card-title);
-    font-weight: 900;
-  }
-
-  .versions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-top: 14px;
+  .stat + .stat {
+    border-left: 1px solid var(--vk-stroke);
   }
 
   .label {
     margin: 0;
+    color: var(--vk-text-secondary);
     font-size: var(--vk-fs-eyebrow);
-    font-weight: 700;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
   }
 
-  .version {
-    margin: 2px 0 0;
-    font-size: 15px;
+  .value {
+    margin: 4px 0 0;
+    font-size: 18px;
     font-weight: 900;
-  }
-
-  .check {
-    margin: 12px 0 0;
-    font-size: var(--vk-fs-micro);
-  }
-
-  .actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    margin-top: 14px;
+    font-variant-numeric: tabular-nums;
   }
 
   @media (max-width: 1100px) {
@@ -609,9 +458,6 @@
     }
     .hero-art {
       display: none;
-    }
-    .cards {
-      grid-template-columns: 1fr;
     }
   }
 </style>

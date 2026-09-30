@@ -27,6 +27,7 @@
     GhostLeaderboardView,
     GhostTrackView
   } from '$lib/api/types';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   let catalog = $state<GhostCatalogView | null>(null);
   let loading = $state(true);
@@ -271,7 +272,7 @@
     {@const track = selected}
     <!-- ── CLASSIFICA DI UNA PISTA ───────────────────────────────────── -->
     <section class="vk-card vk-rainbow-top track-head">
-      <button class="vk-btn back" onclick={closeTrack} title={t('ghosts.backHint')}>
+      <button class="vk-btn back" onclick={closeTrack} {@attach tooltip(t('ghosts.backHint'))}>
         <span class="back-arrow" aria-hidden="true"><Icon name="chevron" size={14} /></span>
         {t('ghosts.back')}
       </button>
@@ -298,7 +299,7 @@
         <button
           class="vk-btn folder"
           onclick={() => openFolder(track.id)}
-          title={t('ghosts.whereHint')}
+          {@attach tooltip(t('ghosts.whereHint'))}
         >
           <Icon name="folder" size={14} />
           {t('ghosts.folder')}
@@ -360,17 +361,19 @@
                 <button
                   class="player"
                   aria-expanded={open}
-                  title={t('ghosts.details')}
+                  {@attach tooltip(t('ghosts.details'))}
                   onclick={() => toggle(entry)}
                 >
                   {#if entry.country}
-                    <span class="flag" title={entry.countryName || entry.country}>
+                    <span class="flag" {@attach tooltip(entry.countryName || entry.country)}>
                       {entry.country}
                     </span>
                   {/if}
                   <strong class="player-name">{playerName(entry.playerName)}</strong>
                   {#if entry.profileName}
-                    <span class="profile" title={entry.profileName}>{entry.profileName}</span>
+                    <span class="profile" {@attach tooltip(entry.profileName)}
+                      >{entry.profileName}</span
+                    >
                   {/if}
                   <span class="caret" class:up={open} aria-hidden="true">
                     <Icon name="chevron" size={12} />
@@ -397,7 +400,7 @@
                     </span>
                     <button
                       class="vk-btn vk-btn--danger icon-btn"
-                      title={t('ghosts.remove')}
+                      {@attach tooltip(t('ghosts.remove'))}
                       aria-label={t('ghosts.remove')}
                       onclick={() => remove(entry)}
                       disabled={busy}
@@ -410,9 +413,9 @@
                       onclick={() =>
                         download(track, entry.submissionId, entry.playerName, entry.finishTime)}
                       disabled={busy || !track.installable}
-                      title={track.installable
-                        ? t('ghosts.downloadHint')
-                        : blockerText(track.blocker)}
+                      {@attach tooltip(
+                        track.installable ? t('ghosts.downloadHint') : blockerText(track.blocker)
+                      )}
                     >
                       <Icon name="download" size={13} />
                       {busy ? t('ghosts.downloading') : t('ghosts.download')}
@@ -530,7 +533,7 @@
         class="vk-btn icon-btn"
         onclick={() => load(true)}
         disabled={loading}
-        title={t('common.refreshAction')}
+        {@attach tooltip(t('common.refreshAction'))}
         aria-label={t('common.refreshAction')}
       >
         <span class:spinning={loading}><Icon name="refresh" size={15} /></span>
@@ -539,7 +542,7 @@
         <button
           class="vk-btn icon-btn"
           onclick={() => openFolder()}
-          title={t('ghosts.allFoldersHint')}
+          {@attach tooltip(t('ghosts.allFoldersHint'))}
           aria-label={t('ghosts.allFolders')}
         >
           <Icon name="folder" size={15} />
@@ -593,7 +596,7 @@
             class="track"
             class:has-record={record !== null}
             class:unavailable={!track.installable && track.blocker === 'track-not-in-modpack'}
-            title={track.installable ? undefined : blockerText(track.blocker)}
+            {@attach tooltip(track.installable ? undefined : blockerText(track.blocker))}
           >
             <!-- Il pulsante copre tutta la card; l'azione sul record sta sopra. -->
             <button class="track-open" onclick={() => openTrack(track)}>
@@ -605,7 +608,7 @@
                 {#if track.installedCount > 0}
                   <span
                     class="vk-badge vk-badge--success ghosts-count"
-                    title={t('ghosts.installedCount', { count: track.installedCount })}
+                    {@attach tooltip(t('ghosts.installedCount', { count: track.installedCount }))}
                   >
                     <Icon name="stopwatch" size={11} />
                     {track.installedCount}
@@ -624,13 +627,13 @@
                 </span>
                 {#if track.installable}
                   {#if record.installed}
-                    <span class="record-done" title={t('ghosts.recordInstalled')}>
+                    <span class="record-done" {@attach tooltip(t('ghosts.recordInstalled'))}>
                       <Icon name="check" size={13} label={t('ghosts.recordInstalled')} />
                     </span>
                   {:else}
                     <button
                       class="vk-btn icon-btn record-get"
-                      title={t('ghosts.downloadRecord')}
+                      {@attach tooltip(t('ghosts.downloadRecord'))}
                       aria-label={t('ghosts.downloadRecord')}
                       disabled={working.includes(record.submissionId)}
                       onclick={() =>
@@ -683,7 +686,7 @@
 
   .segmented button {
     padding: 5px 14px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 999px;
     background: transparent;
     color: var(--vk-text-secondary);
@@ -693,9 +696,10 @@
   }
 
   .segmented button.active {
-    background: var(--vk-active-surface);
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
     color: var(--vk-text);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vk-cyan) 40%, transparent);
   }
 
   .chip {
@@ -795,8 +799,12 @@
     border-color: #3a4c74;
   }
 
-  .track:focus-within {
-    border-color: var(--vk-cyan);
+  /* Raggiunta da tastiera, la pista prende il bordo arcobaleno. */
+  .track:has(:focus-visible) {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-panel-soft), var(--vk-panel-soft)) padding-box,
+      var(--vk-rainbow) border-box;
   }
 
   /* Una pista con un record ha qualcosa da battere: si accende. */

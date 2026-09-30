@@ -446,6 +446,15 @@ pub async fn dolphin_settings_optimize(
     services::dolphin::optimize(&state.inner().clone(), screen_width).await
 }
 
+/// I valori del preset consigliato, per segnare in UI le opzioni diverse.
+/// Non legge né scrive niente: il preset dipende solo dallo schermo.
+#[tauri::command]
+pub fn dolphin_settings_recommended(
+    screen_width: u32,
+) -> serde_json::Map<String, serde_json::Value> {
+    vk_dolphin::settings::DolphinSettings::recommended(screen_width)
+}
+
 #[tauri::command]
 pub async fn dolphin_settings_reset(
     state: Shared<'_>,

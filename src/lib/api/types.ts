@@ -154,7 +154,22 @@ export interface RoomPlayerView {
   prestigeRank: number;
   rankImage: string | null;
   rankLabel: string;
+  /** Stemma dello staff, dal friend code come nel gioco. */
+  staff: StaffBadgeView | null;
 }
+
+/**
+ * Lo stemma di un membro dello staff. Non è un grado: chi ha entrambi li
+ * mostra tutti e due, prima lo stemma.
+ */
+export interface StaffBadgeView {
+  role: StaffRole;
+  /** Miniatura PNG come data URI. */
+  image: string;
+}
+
+export type StaffRole =
+  'moderator' | 'leader' | 'staff_ghost' | 'developer' | 'creative_director' | 'translator';
 
 export interface RoomView {
   id: string;
@@ -203,6 +218,8 @@ export interface LeaderboardEntry {
   streakVacation: boolean;
   /** Chiave dell'immagine del rank in `LeaderboardPage.badges`; vuota se non c'è. */
   badge: string;
+  /** Chiave dello stemma dello staff in `LeaderboardPage.badges`; vuota se non è dello staff. */
+  staffBadge: string;
   /** Payload di render del Mii; vuoto quando il server non ne manda uno valido. */
   studioData: string;
   avatarInitial: string;
@@ -219,8 +236,10 @@ export interface LeaderboardEntry {
 export interface BadgeView {
   /** Miniatura PNG come data URI. */
   image: string;
-  /** Nome di un rank speciale (staff); vuoto per i gradi del gioco. */
+  /** Nome di un rank assegnato dal server; vuoto per i gradi del gioco. */
   label: string;
+  /** Ruolo dello staff quando l'immagine è uno stemma; vuoto per i gradi. */
+  role: StaffRole | '';
 }
 
 export interface LeaderboardPage {
@@ -391,6 +410,8 @@ export interface FriendView {
   accentColor: string;
   /** `null` se non è in classifica o se il server non risponde. */
   stats: PlayerStatsView | null;
+  /** Stemma dello staff: dipende solo dal friend code, c'è anche fuori classifica. */
+  staff: StaffBadgeView | null;
 }
 
 export interface SaveOverview {

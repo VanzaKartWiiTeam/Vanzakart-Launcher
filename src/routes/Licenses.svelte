@@ -3,17 +3,19 @@
    * Mii & Licenze.
    *
    * Due elenchi e basta: le licenze trovate nei salvataggi e i Mii del
-   * database di Dolphin. Le azioni sui Mii non stanno su ogni card — si
-   * seleziona un Mii e si agisce dalla barra, come faceva il `MiiCardsListBox`
-   * del WPF. Backup, import/export e render dei Mii vivono in due modali:
-   * servono di rado e in pagina rubavano solo spazio (§D-044).
+   * database di Dolphin. Un clic su un Mii lo apre nell'editor; duplicarlo,
+   * esportarlo ed eliminarlo stanno nel `⋯` della sua tessera. Backup,
+   * import/export dei salvataggi e render dei Mii vivono in due modali,
+   * aperte dal `⋯` in alto: servono di rado (§D-044, §D-101).
    */
   import { onMount } from 'svelte';
   import { open as openDialog, save as saveDialog } from '@tauri-apps/plugin-dialog';
 
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import MenuButton, { type MenuItem } from '$lib/components/MenuButton.svelte';
   import Modal from '$lib/components/Modal.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
   import MiiEditor from './MiiEditor.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
@@ -34,9 +36,6 @@
   let miiBusy = $state('');
   let rendererBusy = $state('');
 
-  /** Il Mii su cui agisce la barra delle azioni. */
-  let selectedId = $state<string | null>(null);
-
   /** `null` quando si crea un Mii nuovo, altrimenti l'id da modificare. */
   let editing = $state<string | null>(null);
   let editorOpen = $state(false);
@@ -54,7 +53,6 @@
   const canWrite = $derived(app.status?.saveWritesEnabled ?? false);
   const ready = $derived(overview?.userFolderConfigured ?? false);
   const filled = $derived(licenses.filter((license) => !license.isEmpty));
-  const selected = $derived(miis.find((mii) => mii.id === selectedId) ?? null);
 
   /** I Mii che una licenza sta usando: si dice sulla tile, prima di eliminarli. */
   const inUse = $derived(
@@ -73,7 +71,6 @@
         api.listMiis(),
         api.getMiiRendererStatus()
       ]);
-      if (!miis.some((mii) => mii.id === selectedId)) selectedId = null;
     } catch (error) {
       app.toast(t('lic.savesUnreadable'), api.errorMessage(error), 'warning');
     } finally {
@@ -84,7 +81,6 @@
   async function reloadMiis() {
     try {
       miis = await api.listMiis();
-      if (!miis.some((mii) => mii.id === selectedId)) selectedId = null;
     } catch (error) {
       app.toast(t('lic.miisUnreadable'), api.errorMessage(error), 'warning');
     }
@@ -131,7 +127,6 @@
     try {
       const imported = await api.importMii(source);
       await reloadMiis();
-      selectedId = imported.id;
       app.toast(t('lic.miiImported'), t('lic.miiImportedBody', { name: imported.name }), 'success');
     } catch (error) {
       app.toast(t('lic.importFailed'), api.errorMessage(error), 'warning');
@@ -208,6 +203,49 @@
       app.toast(t('debug.copyFailed'), t('debug.copyFailedBody'), 'warning');
     }
   }
+
+  /** Le azioni rare su un Mii: nel `⋯` della sua tessera. */
+  function miiActions(mii: MiiView): MenuItem[] {
+    const idle = miiBusy === '';
+    return [
+      { label: t('lic.edit'), icon: 'edit', disabled: !idle, onselect: () => openEditor(mii.id) },
+      {
+        label: t('lic.duplicate'),
+        icon: 'copy',
+        disabled: !idle,
+        onselect: () =>
+          void withMii(
+            mii.id,
+            () => api.duplicateMii(mii.id),
+            t('lic.duplicated', { name: mii.name })
+          )
+      },
+      {
+        label: t('lic.export'),
+        icon: 'external',
+        disabled: !idle,
+        onselect: () => void exportMii(mii)
+      },
+      {
+        label: t('lic.delete'),
+        icon: 'trash',
+        danger: true,
+        disabled: !idle,
+        onselect: () => (pendingDelete = mii)
+      }
+    ];
+  }
+
+  /** Il `⋯` della pagina: le due modali delle cose rare. */
+  const pageActions = $derived<MenuItem[]>([
+    {
+      label: t('lic.savesMenu'),
+      icon: 'save',
+      disabled: !ready,
+      onselect: () => (savesOpen = true)
+    },
+    { label: t('lic.rendererMenu'), icon: 'settings', onselect: () => (advancedOpen = true) }
+  ]);
 
   // --- Salvataggi -----------------------------------------------------------
 
@@ -318,33 +356,6 @@
 </script>
 
 <div class="page">
-  <div class="bar">
-    <div class="counts">
-      <span><strong>{overview?.licenseCount ?? 0}</strong> {t('lic.countLicenses')}</span>
-      <span><strong>{miis.length}</strong> {t('lic.countMiis')}</span>
-      <span><strong>{backups.length}</strong> {t('lic.countBackups')}</span>
-    </div>
-
-    <div class="vk-row">
-      <button class="vk-btn" onclick={load} disabled={loading || busy}>
-        <Icon name="refresh" size={14} />
-        {t('common.refresh')}
-      </button>
-      <button class="vk-btn" onclick={() => (savesOpen = true)} disabled={!ready}>
-        <Icon name="save" size={14} />
-        {t('lic.saves')}
-      </button>
-      <button
-        class="vk-btn icon-only"
-        title={t('lic.renderer')}
-        aria-label={t('lic.renderer')}
-        onclick={() => (advancedOpen = true)}
-      >
-        <Icon name="settings" size={16} />
-      </button>
-    </div>
-  </div>
-
   {#if loading}
     <div class="vk-card"><div class="vk-skeleton skeleton"></div></div>
   {:else if !ready}
@@ -357,7 +368,21 @@
     </div>
   {:else}
     <section class="block">
-      <p class="vk-eyebrow">{t('lic.licenses')}</p>
+      <div class="block-head">
+        <p class="vk-eyebrow">{t('lic.licenses')}</p>
+        <div class="vk-row">
+          <button
+            class="vk-btn icon-only"
+            onclick={load}
+            disabled={loading || busy}
+            aria-label={t('common.refresh')}
+            {@attach tooltip(t('common.refresh'))}
+          >
+            <Icon name="refresh" size={15} />
+          </button>
+          <MenuButton items={pageActions} label={t('common.more')} />
+        </div>
+      </div>
 
       {#if filled.length === 0}
         <div class="vk-card vk-empty">
@@ -377,7 +402,6 @@
                   name={license.miiName || license.name}
                   size={48}
                 />
-
                 <div class="lic-id">
                   <h3 class="lic-name">{license.name}</h3>
                   <p class="lic-meta">
@@ -386,7 +410,6 @@
                     {#if license.miiName}<span class="mii-of">{license.miiName}</span>{/if}
                   </p>
                 </div>
-
                 {#if canWrite}
                   <!--
                     L'icona da sola non diceva a cosa serviva: la scritta sì
@@ -394,9 +417,9 @@
                   -->
                   <button
                     class="swap-btn"
-                    title={t('lic.swapMiiTitle')}
                     onclick={() => (miiTarget = license)}
                     disabled={miis.length === 0 || applyingMii !== ''}
+                    {@attach tooltip(t('lic.swapMiiTitle'))}
                   >
                     <Icon name="swap" size={14} />
                     {t('lic.swapMii')}
@@ -404,40 +427,25 @@
                 {/if}
               </header>
 
-              <dl class="stats">
-                <div>
-                  <dt>VR</dt>
-                  <dd>{license.vr}</dd>
-                </div>
-                <div>
-                  <dt>BR</dt>
-                  <dd>{license.br}</dd>
-                </div>
-                <div>
-                  <dt>{t('lic.wins')}</dt>
-                  <dd>{license.wins}</dd>
-                </div>
-                <div>
-                  <dt>{t('lic.races')}</dt>
-                  <dd>{license.races}</dd>
-                </div>
-                <div>
-                  <dt>{t('lic.winRate')}</dt>
-                  <dd>{(license.winRate * 100).toFixed(0)}%</dd>
-                </div>
-              </dl>
-
-              {#if license.friendCode}
-                <button
-                  class="fc"
-                  title={t('lic.copyFc')}
-                  onclick={() => copyFriendCode(license.friendCode)}
-                >
-                  <span class="fc-tag">FC</span>
-                  <span class="vk-mono fc-code">{license.friendCode}</span>
-                  <Icon name="copy" size={13} />
-                </button>
-              {/if}
+              <!--
+                Solo i due punteggi: vittorie, gare e percentuale sono in
+                Leaderboard, con i numeri veri del server (§D-101).
+              -->
+              <div class="lic-foot">
+                <span class="rating"><span class="rating-tag">VR</span>{license.vr}</span>
+                <span class="rating"><span class="rating-tag">BR</span>{license.br}</span>
+                {#if license.friendCode}
+                  <button
+                    class="fc"
+                    onclick={() => copyFriendCode(license.friendCode)}
+                    {@attach tooltip(t('lic.copyFc'))}
+                  >
+                    <span class="fc-tag">FC</span>
+                    <span class="vk-mono fc-code">{license.friendCode}</span>
+                    <Icon name="copy" size={13} />
+                  </button>
+                {/if}
+              </div>
             </article>
           {/each}
         </div>
@@ -466,92 +474,39 @@
           <p class="vk-faint">{t('lic.noMiisHint')}</p>
         </div>
       {:else}
-        <div class="actions" class:idle={!selected}>
-          {#if selected}
-            <div class="picked">
-              <MiiAvatar
-                studioData={selected.studioData}
-                initial={selected.avatarInitial}
-                accent={selected.favoriteColor}
-                name={selected.name}
-                size={28}
-              />
-              <span class="picked-name">{selected.name}</span>
-              {#if selected.creatorName}
-                <span class="vk-faint picked-by">
-                  {t('lic.by', { name: selected.creatorName })}
-                </span>
-              {/if}
-            </div>
-
-            <div class="vk-row">
-              <button
-                class="vk-btn compact"
-                onclick={() => openEditor(selected.id)}
-                disabled={miiBusy !== ''}
-              >
-                <Icon name="edit" size={13} />
-                {t('lic.edit')}
-              </button>
-              <button
-                class="vk-btn compact"
-                onclick={() =>
-                  withMii(
-                    selected.id,
-                    () => api.duplicateMii(selected.id),
-                    t('lic.duplicated', { name: selected.name })
-                  )}
-                disabled={miiBusy !== ''}
-              >
-                <Icon name="copy" size={13} />
-                {t('lic.duplicate')}
-              </button>
-              <button
-                class="vk-btn compact"
-                onclick={() => exportMii(selected)}
-                disabled={miiBusy !== ''}
-              >
-                <Icon name="external" size={13} />
-                {t('lic.export')}
-              </button>
-              <button
-                class="vk-btn vk-btn--danger compact"
-                onclick={() => (pendingDelete = selected)}
-                disabled={miiBusy !== ''}
-              >
-                <Icon name="trash" size={13} />
-                {t('lic.delete')}
-              </button>
-            </div>
-          {:else}
-            <p class="hint">{t('lic.selectHint')}</p>
-          {/if}
-        </div>
-
         <div class="miis">
           {#each miis as mii (mii.id)}
-            <button
-              class="tile"
-              class:selected={mii.id === selectedId}
-              style="--accent: {mii.favoriteColor}"
-              aria-pressed={mii.id === selectedId}
-              title={mii.creatorName
-                ? t('lic.tileTitle', { name: mii.name, creator: mii.creatorName })
-                : mii.name}
-              onclick={() => (selectedId = mii.id === selectedId ? null : mii.id)}
-              ondblclick={() => openEditor(mii.id)}
-            >
-              <MiiAvatar
-                studioData={mii.studioData}
-                initial={mii.avatarInitial}
-                accent={mii.favoriteColor}
-                name={mii.name}
-                size={64}
-                shape="rounded"
-              />
-              <span class="tile-name">{mii.name}</span>
+            <div class="tile" class:busy={miiBusy === mii.id} style="--accent: {mii.favoriteColor}">
+              <button
+                class="tile-open"
+                aria-label={t('lic.editMii', { name: mii.name })}
+                disabled={miiBusy !== ''}
+                {@attach tooltip(
+                  mii.creatorName
+                    ? t('lic.tileTitle', { name: mii.name, creator: mii.creatorName })
+                    : undefined
+                )}
+                onclick={() => openEditor(mii.id)}
+              >
+                <MiiAvatar
+                  studioData={mii.studioData}
+                  initial={mii.avatarInitial}
+                  accent={mii.favoriteColor}
+                  name={mii.name}
+                  size={64}
+                  shape="rounded"
+                />
+                <span class="tile-name">{mii.name}</span>
+              </button>
               {#if inUse.has(mii.miiId)}<span class="tile-tag">{t('lic.inUse')}</span>{/if}
-            </button>
+              <div class="tile-more">
+                <MenuButton
+                  compact
+                  items={miiActions(mii)}
+                  label={t('lic.moreFor', { name: mii.name })}
+                />
+              </div>
+            </div>
           {/each}
         </div>
       {/if}
@@ -576,7 +531,12 @@
     </button>
     <button class="vk-btn" onclick={exportSave} disabled={busy}>{t('lic.export')}</button>
     {#if canWrite}
-      <button class="vk-btn" title={t('lic.importSaveTitle')} onclick={importSave} disabled={busy}>
+      <button
+        class="vk-btn"
+        onclick={importSave}
+        disabled={busy}
+        {@attach tooltip(t('lic.importSaveTitle'))}
+      >
         {t('lic.import')}
       </button>
     {/if}
@@ -759,28 +719,6 @@
     padding-bottom: 12px;
   }
 
-  /* Barra di pagina: nessuna card, il titolo lo dà già l'header dell'app. */
-  .bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
-  }
-
-  .counts {
-    display: flex;
-    gap: 18px;
-    font-size: var(--vk-fs-micro);
-    color: var(--vk-text-secondary);
-  }
-
-  .counts strong {
-    font-size: 15px;
-    font-weight: 900;
-    color: var(--vk-text);
-  }
-
   .icon-only {
     padding: 9px 10px;
   }
@@ -899,44 +837,35 @@
     cursor: not-allowed;
   }
 
-  /* Cinque numeri allineati: prima il valore, l'etichetta sotto in piccolo. */
-  .stats {
-    display: grid;
-    grid-template-columns: repeat(5, 1fr);
-    gap: 2px;
-    margin: 0;
-    padding: 10px 0;
-    border-top: 1px solid var(--vk-stroke);
-    border-bottom: 1px solid var(--vk-stroke);
-    text-align: center;
-  }
-
-  .stats div {
+  .lic-foot {
     display: flex;
-    flex-direction: column-reverse;
-    gap: 2px;
-    min-width: 0;
+    align-items: center;
+    gap: 16px;
+    padding-top: 12px;
+    border-top: 1px solid var(--vk-stroke);
   }
 
-  .stats dt {
-    font-size: 9px;
-    font-weight: 700;
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    color: var(--vk-text-faint);
-  }
-
-  .stats dd {
-    margin: 0;
-    font-size: 15px;
+  .rating {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 6px;
+    font-size: 16px;
     font-weight: 900;
-    color: var(--vk-text);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .rating-tag {
+    color: var(--vk-text-faint);
+    font-size: var(--vk-fs-eyebrow);
+    font-weight: 800;
+    letter-spacing: 0.06em;
   }
 
   .fc {
     display: flex;
     align-items: center;
     gap: 8px;
+    margin-left: auto;
     padding: 6px 10px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
@@ -945,7 +874,7 @@
   }
 
   .fc:hover {
-    border-color: var(--vk-cyan);
+    border-color: #4c5c8c;
     color: var(--vk-text);
   }
 
@@ -965,53 +894,6 @@
 
   /* ---- Mii ---- */
 
-  /* Una barra sola per tutte le azioni: le tile restano pulite. */
-  .actions {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-    min-height: 52px;
-    padding: 8px 12px;
-    border: 1px solid var(--vk-stroke);
-    border-radius: var(--vk-radius-badge);
-    background: var(--vk-panel-soft);
-  }
-
-  .actions.idle {
-    border-style: dashed;
-    background: transparent;
-  }
-
-  .hint {
-    margin: 0;
-    font-size: var(--vk-fs-micro);
-    color: var(--vk-text-faint);
-  }
-
-  .picked {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    min-width: 0;
-  }
-
-  .picked-name {
-    font-weight: 800;
-    overflow-wrap: anywhere;
-  }
-
-  .picked-by {
-    font-size: var(--vk-fs-eyebrow);
-  }
-
-  .compact {
-    padding: 7px 11px;
-    font-size: var(--vk-fs-micro);
-    gap: 6px;
-  }
-
   .miis {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(104px, 1fr));
@@ -1020,20 +902,12 @@
 
   .tile {
     position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 8px;
     border: 1.5px solid color-mix(in srgb, var(--accent) 32%, var(--vk-stroke));
     border-radius: 14px;
     background: var(--vk-panel-soft);
-    color: inherit;
-    cursor: pointer;
     transition:
       border-color var(--vk-dur-fast) var(--vk-ease),
-      transform var(--vk-dur-fast) var(--vk-ease),
-      box-shadow var(--vk-dur-fast) var(--vk-ease);
+      transform var(--vk-dur-fast) var(--vk-ease);
   }
 
   .tile:hover {
@@ -1041,11 +915,29 @@
     border-color: var(--accent);
   }
 
-  .tile.selected {
-    border-color: var(--accent);
-    box-shadow:
-      0 0 0 1px var(--accent) inset,
-      0 0 20px color-mix(in srgb, var(--accent) 35%, transparent);
+  /* Col menu aperto la tessera passa sopra le vicine, o il menu ci finirebbe
+     sotto. */
+  .tile:focus-within {
+    z-index: 2;
+  }
+
+  .tile.busy {
+    opacity: 0.6;
+  }
+
+  /* Tutta la tessera apre l'editor; il `⋯` sta sopra, nell'angolo. */
+  .tile-open {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 12px 8px 10px;
+    border: none;
+    border-radius: 13px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
   }
 
   .tile-name {
@@ -1060,7 +952,7 @@
   .tile-tag {
     position: absolute;
     top: 6px;
-    right: 6px;
+    left: 6px;
     padding: 1px 6px;
     border-radius: var(--vk-radius-pill);
     background: color-mix(in srgb, var(--accent) 30%, var(--vk-input));
@@ -1069,6 +961,20 @@
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: var(--vk-text);
+    pointer-events: none;
+  }
+
+  .tile-more {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    opacity: 0.55;
+    transition: opacity var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .tile:hover .tile-more,
+  .tile:focus-within .tile-more {
+    opacity: 1;
   }
 
   /* ---- Modali ---- */

@@ -10,6 +10,7 @@
   import { app, PAGE_META, TEAM_LINKS, type Route } from '$lib/stores/app.svelte';
   import { t, type TranslationKey } from '$lib/stores/i18n.svelte';
   import { operationLabel, operations, type OperationKind } from '$lib/stores/operations.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   interface Group {
     label: TranslationKey;
@@ -89,7 +90,7 @@
     <button
       class="activity"
       onclick={() => app.navigate(OPERATION_ROUTES[kind])}
-      title={t('ops.openPage')}
+      {@attach tooltip(t('ops.openPage'))}
     >
       <span class="activity-head">
         <Icon name="download" size={14} />
@@ -204,16 +205,15 @@
     flex: none;
     margin-top: auto;
     padding: 10px 12px;
-    border: 1px solid color-mix(in srgb, var(--vk-cyan) 35%, var(--vk-stroke));
+    border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-input);
     background: var(--vk-panel-soft);
     color: var(--vk-text);
     text-align: left;
-    box-shadow: 0 0 14px rgb(0 242 255 / 0.12);
   }
 
   .activity:hover {
-    border-color: var(--vk-cyan);
+    border-color: #4c5c8c;
   }
 
   .activity-head {

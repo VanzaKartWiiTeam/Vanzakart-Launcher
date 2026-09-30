@@ -19,7 +19,7 @@ use serde_json::Value;
 use crate::domain::wii_text::humanize;
 use crate::domain::{
     BadgeView, LeaderboardEntry, LeaderboardPage, PlayerStatsView, RoomPlayerView, RoomView,
-    RoomsSummary,
+    RoomsSummary, StaffBadgeView,
 };
 use crate::error::{AppError, AppResult};
 use crate::state::AppState;
@@ -236,6 +236,21 @@ pub async fn rooms(state: &Arc<AppState>) -> AppResult<RoomsSummary> {
         }
     }
 
+    // Lo stemma dello staff non passa dalla classifica: dipende solo dal
+    // friend code, e c'è anche prima che l'indice sia pronto.
+    let codes: Vec<String> = rooms
+        .iter()
+        .flat_map(|room| room.players.iter().map(|player| player.friend_code.clone()))
+        .collect();
+    let staff = staff_badges(state, codes.iter().map(String::as_str)).await;
+    for (player, badge) in rooms
+        .iter_mut()
+        .flat_map(|room| room.players.iter_mut())
+        .zip(staff)
+    {
+        player.staff = badge;
+    }
+
     let declared_players = loose::count(&meta, &["total_players", "totalPlayers"]);
     let declared_rooms = loose::count(&meta, &["total_rooms", "totalRooms"]);
 
@@ -411,8 +426,9 @@ fn entry(value: &Value, index: usize, offset: u32) -> LeaderboardEntry {
         vr_last_month: loose::int(value, &["vr_gain_month", "vrLastMonth", "vr_last_month"]),
         streak: loose::count(value, &STREAK_KEYS),
         streak_vacation: loose::flag(value, &VACATION_KEYS),
-        // La riempie `attach_badges`, che prima deve scaricare il file.
+        // Le riempie `attach_badges`, che prima deve scaricare i file.
         badge: String::new(),
+        staff_badge: String::new(),
         rank_image_url: loose::text(value, &RANK_IMAGE_KEYS),
         name,
         studio_data: face.studio_data,
@@ -570,6 +586,8 @@ struct BadgeSource {
     /// Nome di un rank speciale, ricavato dal file; vuoto per i rank del
     /// gioco.
     label: String,
+    /// Ruolo dello staff, per uno stemma; vuoto per i gradi.
+    role: String,
 }
 
 /// L'immagine da mostrare accanto a un giocatore, se ne ha una.
@@ -591,6 +609,7 @@ fn badge_source(
                 key: format!("custom-{}", &digest[..16]),
                 urls,
                 label: badge_label(custom),
+                role: String::new(),
             });
         }
     }
@@ -598,21 +617,44 @@ fn badge_source(
     if prestige_rank < 1 {
         return None;
     }
-    let file = format!("rank-{prestige_rank}.png");
-    let urls = [
+    let urls = rank_image_urls(&format!("rank-{prestige_rank}.png"), endpoints);
+    (!urls.is_empty()).then(|| BadgeSource {
+        key: format!("rank-{prestige_rank}"),
+        urls,
+        label: String::new(),
+        role: String::new(),
+    })
+}
+
+/// Lo stemma di un ruolo dello staff: sta accanto ai gradi, sul sito.
+fn staff_source(
+    role: vk_core::staff::StaffRole,
+    endpoints: &vk_core::endpoints::EndpointsInfo,
+) -> Option<BadgeSource> {
+    let urls = rank_image_urls(role.image_file(), endpoints);
+    (!urls.is_empty()).then(|| BadgeSource {
+        key: staff_key(role),
+        urls,
+        label: String::new(),
+        role: role.id().to_string(),
+    })
+}
+
+fn staff_key(role: vk_core::staff::StaffRole) -> String {
+    format!("staff-{}", role.id())
+}
+
+/// Un file della cartella dei rank: prima sul sito, che ha tutti i disegni,
+/// poi sul server del gioco.
+fn rank_image_urls(file: &str, endpoints: &vk_core::endpoints::EndpointsInfo) -> Vec<String> {
+    [
         &endpoints.rank_images_site_url,
         &endpoints.rank_images_base_url,
     ]
     .into_iter()
     .filter(|base| !base.trim().is_empty())
-    .map(|base| join_url(base, &file))
-    .collect::<Vec<_>>();
-
-    (!urls.is_empty()).then(|| BadgeSource {
-        key: format!("rank-{prestige_rank}"),
-        urls,
-        label: String::new(),
-    })
+    .map(|base| join_url(base, file))
+    .collect()
 }
 
 /// Indirizzi di un'immagine assegnata dal server.
@@ -675,13 +717,11 @@ fn badge_label(raw: &str) -> String {
         .join(" ")
 }
 
-/// Assegna a ogni riga la chiave della sua immagine e restituisce le
-/// immagini, una per chiave.
+/// Assegna a ogni riga le chiavi delle sue immagini — grado e stemma dello
+/// staff — e restituisce le immagini, una per chiave.
 ///
 /// Il download avviene **prima** di comporre la pagina, altrimenti al primo
-/// avvio — con la cache vuota — nessuna riga avrebbe la sua immagine. Le
-/// immagini diverse si scaricano insieme: al primo avvio sono al massimo una
-/// dozzina.
+/// avvio — con la cache vuota — nessuna riga avrebbe la sua immagine.
 async fn attach_badges(
     state: &Arc<AppState>,
     entries: &mut [LeaderboardEntry],
@@ -691,19 +731,48 @@ async fn attach_badges(
     let mut sources: BTreeMap<String, BadgeSource> = BTreeMap::new();
     for entry in entries.iter_mut() {
         entry.badge.clear();
+        entry.staff_badge.clear();
         if let Some(source) = badge_source(entry.prestige_rank, &entry.rank_image_url, &endpoints) {
             entry.badge = source.key.clone();
             sources.entry(source.key.clone()).or_insert(source);
         }
+        let staff = vk_core::staff::role_of(&entry.friend_code)
+            .and_then(|role| staff_source(role, &endpoints));
+        if let Some(source) = staff {
+            entry.staff_badge = source.key.clone();
+            sources.entry(source.key.clone()).or_insert(source);
+        }
     }
 
+    let badges = fetch_badges(state, sources).await;
+
+    // Una chiave senza immagine non serve alla UI: il rank del gioco resta
+    // leggibile dal suo numero.
+    for entry in entries {
+        if !badges.contains_key(&entry.badge) {
+            entry.badge.clear();
+        }
+        if !badges.contains_key(&entry.staff_badge) {
+            entry.staff_badge.clear();
+        }
+    }
+    badges
+}
+
+/// Le immagini di più sorgenti, una per chiave; quelle che non si riescono a
+/// ottenere mancano. Si scaricano insieme: al primo avvio sono al massimo una
+/// quindicina, otto gradi e sei stemmi.
+async fn fetch_badges(
+    state: &Arc<AppState>,
+    sources: BTreeMap<String, BadgeSource>,
+) -> BTreeMap<String, BadgeView> {
     let fetched = futures_util::future::join_all(sources.into_values().map(|source| async move {
         let image = badge_image(state, &source).await;
         (source, image)
     }))
     .await;
 
-    let badges: BTreeMap<String, BadgeView> = fetched
+    fetched
         .into_iter()
         .filter_map(|(source, image)| {
             image.map(|image| {
@@ -712,20 +781,48 @@ async fn attach_badges(
                     BadgeView {
                         image,
                         label: source.label,
+                        role: source.role,
                     },
                 )
             })
         })
-        .collect();
+        .collect()
+}
 
-    // Una chiave senza immagine non serve alla UI: il rank del gioco resta
-    // leggibile dal suo numero.
-    for entry in entries {
-        if !badges.contains_key(&entry.badge) {
-            entry.badge.clear();
-        }
+/// Gli stemmi dello staff di più giocatori, nello stesso ordine dei friend
+/// code. Come nel gioco dipendono solo dal friend code: niente classifica e
+/// niente server, quindi nessuno può procurarsene uno (§D-097).
+pub(crate) async fn staff_badges<'a>(
+    state: &Arc<AppState>,
+    friend_codes: impl IntoIterator<Item = &'a str>,
+) -> Vec<Option<StaffBadgeView>> {
+    let roles: Vec<_> = friend_codes
+        .into_iter()
+        .map(vk_core::staff::role_of)
+        .collect();
+    if roles.iter().all(Option::is_none) {
+        return vec![None; roles.len()];
     }
-    badges
+
+    let endpoints = state.endpoints.read().await.clone();
+    let sources: BTreeMap<String, BadgeSource> = roles
+        .iter()
+        .flatten()
+        .filter_map(|role| staff_source(*role, &endpoints))
+        .map(|source| (source.key.clone(), source))
+        .collect();
+    let images = fetch_badges(state, sources).await;
+
+    roles
+        .into_iter()
+        .map(|role| {
+            let role = role?;
+            images.get(&staff_key(role)).map(|badge| StaffBadgeView {
+                role: role.id().to_string(),
+                image: badge.image.clone(),
+            })
+        })
+        .collect()
 }
 
 /// La miniatura di un rank come data URI, dalla cache o scaricandola.
@@ -1190,6 +1287,92 @@ mod tests {
             badge_source(4, "https://example.com/x.png", &endpoints()).map(|source| source.key),
             Some("rank-4".to_string())
         );
+    }
+
+    /// Gli stemmi stanno accanto ai gradi, sul sito, col nome del file del
+    /// ruolo.
+    #[test]
+    fn a_staff_badge_comes_from_the_site_with_its_role() {
+        let source = staff_source(vk_core::staff::StaffRole::CreativeDirector, &endpoints())
+            .expect("stemma");
+        assert_eq!(source.key, "staff-creative_director");
+        assert_eq!(source.role, "creative_director");
+        assert_eq!(
+            source.urls.first().map(String::as_str),
+            Some("https://vwfc.vanzakart.net/FOOTAGE/ranks/creative_director_full_00011.png")
+        );
+    }
+
+    /// Righe vere di `vk_leaderboard.php` (30/09/2026): lacly è dello staff,
+    /// sossio no. Il grado resta 0 per tutti finché nessuno arriva a 25.000
+    /// VR, la soglia del grado 1 nel gioco.
+    #[test]
+    fn staff_is_recognised_from_the_real_leaderboard_payload() {
+        let payload = json(
+            r#"{"success":true,"players":[
+                {"position":1,"name":"lacly","points":22123,"fc":"0000-0002-0202","prestigeRank":0,"rank":0,"rank_image_url":null,"rankImageUrl":null,"wins":366,"races":554},
+                {"position":4,"name":"sossio","points":10411,"fc":"5078-0614-0949","prestigeRank":0,"rank":0,"rank_image_url":null,"rankImageUrl":null}
+            ]}"#,
+        );
+        let players = loose::array(&payload, &["players"]);
+        let lacly = entry(&players[0], 0, 0);
+        let sossio = entry(&players[1], 1, 0);
+
+        assert_eq!(lacly.prestige_rank, 0);
+        assert!(badge_source(lacly.prestige_rank, &lacly.rank_image_url, &endpoints()).is_none());
+        assert_eq!(
+            vk_core::staff::role_of(&lacly.friend_code),
+            Some(vk_core::staff::StaffRole::CreativeDirector)
+        );
+        assert_eq!(vk_core::staff::role_of(&sossio.friend_code), None);
+    }
+
+    /// La classifica vera, con le immagini vere del sito.
+    ///
+    /// Gli altri test dimostrano che il parsing è coerente con se stesso;
+    /// questo che gli stemmi arrivano davvero fino alla pagina.
+    ///
+    /// ```bash
+    /// cargo test -p vanzakart-launcher community::tests::live -- --ignored --nocapture
+    /// ```
+    #[tokio::test]
+    #[ignore = "richiede la rete"]
+    async fn live_leaderboard_carries_the_staff_badges() {
+        let dir = tempfile::tempdir().unwrap();
+        let state = AppState::bootstrap_isolated(crate::storage::paths::AppPaths::at(
+            dir.path().join("VanzaKart"),
+        ))
+        .await
+        .unwrap();
+
+        let page = leaderboard(&state, 0).await.expect("classifica");
+        let staff: Vec<_> = page
+            .entries
+            .iter()
+            .filter(|entry| !entry.staff_badge.is_empty())
+            .collect();
+        for entry in &staff {
+            let badge = &page.badges[&entry.staff_badge];
+            println!(
+                "#{:<3} {:<16} {:<18} {} byte",
+                entry.position,
+                entry.friend_code,
+                badge.role,
+                badge.image.len()
+            );
+            assert!(badge.image.starts_with("data:image/png;base64,"));
+            assert!(badge.image.len() < 64 * 1024, "miniatura troppo grande");
+        }
+        assert!(!staff.is_empty(), "nessuno stemma nella prima pagina");
+
+        // Le stanze e gli amici passano da `staff_badges`: la cache è già
+        // calda, quindi deve rispondere senza rete.
+        let badges = staff_badges(&state, ["0000-0002-0202", "1234-5678-9012"]).await;
+        assert_eq!(
+            badges[0].as_ref().map(|badge| badge.role.as_str()),
+            Some("creative_director")
+        );
+        assert!(badges[1].is_none());
     }
 
     #[test]

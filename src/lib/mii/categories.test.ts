@@ -4,8 +4,10 @@ import {
   CATEGORIES,
   FACIAL_FEATURES,
   NAME_SYMBOLS,
+  changedFields,
   clampState,
   daysInMonth,
+  fieldsOf,
   rangeOf,
   sliderPosition,
   sliderValue,
@@ -253,5 +255,28 @@ describe('limiti dell’editor', () => {
     // Più in alto sul viso significa un valore più basso nel formato.
     expect(sliderPosition(range.min, range, true)).toBe(range.max);
     expect(sliderValue(99, range)).toBe(range.max);
+  });
+});
+
+describe('categorie modificate', () => {
+  const byKey = (key: string) => CATEGORIES.find((category) => category.key === key)!;
+
+  it('conta anche il giorno della data', () => {
+    expect(fieldsOf(byKey('base'))).toEqual(
+      expect.arrayContaining(['isFemale', 'height', 'birthMonth', 'birthDay'])
+    );
+  });
+
+  it('segna solo i campi della categoria che sono cambiati', () => {
+    const edited = { ...DEFAULT_STATE, eyeSize: 7, birthDay: 12, hairType: 2 };
+    expect(changedFields(byKey('base'), edited, DEFAULT_STATE)).toEqual(['birthDay']);
+    expect(changedFields(byKey('hair'), edited, DEFAULT_STATE)).toEqual(['hairType']);
+    expect(changedFields(byKey('face'), edited, DEFAULT_STATE)).toEqual([]);
+  });
+
+  it('non segna nulla sul Mii com’era', () => {
+    for (const category of CATEGORIES) {
+      expect(changedFields(category, DEFAULT_STATE, { ...DEFAULT_STATE })).toEqual([]);
+    }
   });
 });

@@ -21,6 +21,7 @@
   import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { LauncherUpdateOffer, LauncherUpdateStatus } from '$lib/api/types';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   interface Props {
     /** Ciò che `versions.json` dichiara: si vede finché il manifest arriva. */
@@ -193,7 +194,7 @@
         <dl class="facts">
           <div>
             <dt>{t('updater.installsInto')}</dt>
-            <dd class="vk-mono path" title={offer.installDir}>{offer.installDir}</dd>
+            <dd class="vk-mono path" {@attach tooltip(offer.installDir)}>{offer.installDir}</dd>
           </div>
           {#if offer.sizeBytes > 0}
             <div>
@@ -284,9 +285,7 @@
   .fill {
     height: 100%;
     background: var(--vk-progress-gradient);
-    box-shadow:
-      0 0 12px rgb(255 0 102 / 0.35),
-      0 0 12px rgb(0 242 255 / 0.35);
+    box-shadow: 0 0 12px rgb(255 255 255 / 0.18);
     transition: width var(--vk-dur-fast) linear;
   }
 

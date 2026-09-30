@@ -10,6 +10,8 @@
    * come un pulsante qualsiasi, e uno screen reader lo annuncia come acceso o
    * spento invece di leggerne l'etichetta.
    */
+  import { tooltip } from '$lib/attachments/tooltip';
+
   interface Props {
     checked: boolean;
     /** Descrizione per chi non vede la levetta. */
@@ -31,7 +33,7 @@
   class:busy
   aria-checked={checked}
   aria-label={label}
-  title={label}
+  {@attach tooltip(label)}
   disabled={disabled || busy}
   onclick={() => onchange(!checked)}
 >
@@ -81,9 +83,7 @@
     background:
       linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
       var(--vk-rainbow) border-box;
-    box-shadow:
-      0 0 9px rgb(255 0 102 / 0.22),
-      0 0 9px rgb(0 242 255 / 0.2);
+    box-shadow: 0 0 10px rgb(255 255 255 / 0.1);
   }
 
   .switch:hover:not(:disabled) .track {

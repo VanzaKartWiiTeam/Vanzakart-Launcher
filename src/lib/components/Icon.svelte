@@ -27,6 +27,8 @@
     | 'warning'
     | 'external'
     | 'plus'
+    | 'minus'
+    | 'info'
     | 'edit'
     | 'copy'
     | 'trash'
@@ -75,6 +77,8 @@
     warning: 'M12 3 1.5 21h21zm0 5 6.6 11H5.4zm-1 4v4h2v-4zm0 5v2h2v-2z',
     external: 'M14 3h7v7h-2V6.4l-8.3 8.3-1.4-1.4L17.6 5H14zM5 5h5v2H7v10h10v-3h2v5H5z',
     plus: 'M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z',
+    minus: 'M5 11h14v2H5z',
+    info: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20m0 2a8 8 0 1 1 0 16 8 8 0 0 1 0-16m-1 7v6h2v-6zm0-4v2h2V7z',
     edit: 'M3 17.3V21h3.7L17.8 9.9l-3.7-3.7zm17.7-10.3a1 1 0 0 0 0-1.4l-2.3-2.3a1 1 0 0 0-1.4 0l-1.8 1.8 3.7 3.7z',
     copy: 'M15 1H4a2 2 0 0 0-2 2v13h2V3h11zm4 4H8a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2m0 16H8V7h11z',
     trash:

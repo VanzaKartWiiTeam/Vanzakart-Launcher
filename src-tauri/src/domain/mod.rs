@@ -169,6 +169,22 @@ pub struct RoomPlayerView {
     /// Nome di un rank speciale (staff, sviluppatori…); vuoto per i rank
     /// del gioco, che la UI chiama con il loro numero.
     pub rank_label: String,
+    /// Stemma dello staff, dal friend code come nel gioco (§D-097).
+    pub staff: Option<StaffBadgeView>,
+}
+
+/// Lo stemma di un membro dello staff, pronto da mostrare.
+///
+/// Non è un grado: chi è anche di grado mostra tutti e due, prima lo stemma
+/// (§D-097).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", default)]
+pub struct StaffBadgeView {
+    /// `moderator`, `leader`, `staff_ghost`, `developer`,
+    /// `creative_director` o `translator`: la UI lo traduce.
+    pub role: String,
+    /// Miniatura PNG come data URI.
+    pub image: String,
 }
 
 /// Stanza online.
@@ -231,6 +247,9 @@ pub struct LeaderboardEntry {
     /// Chiave dell'immagine del rank in [`LeaderboardPage::badges`]; vuota
     /// quando il giocatore non ne ha una che si possa mostrare.
     pub badge: String,
+    /// Chiave dello stemma dello staff in [`LeaderboardPage::badges`]; vuota
+    /// per chi non è dello staff (§D-097).
+    pub staff_badge: String,
     /// Immagine che il server assegna al giocatore (`rank_image_url`): è la
     /// strada dei rank speciali dello staff. Resta nel backend.
     #[serde(skip)]
@@ -267,6 +286,8 @@ pub struct BadgeView {
     pub image: String,
     /// Nome di un rank speciale; vuoto per i rank del gioco.
     pub label: String,
+    /// Ruolo dello staff quando l'immagine è uno stemma; vuoto per i gradi.
+    pub role: String,
 }
 
 /// Licenza letta da `rksys.dat`.
@@ -346,6 +367,9 @@ pub struct FriendView {
     /// Come va questo giocatore secondo il server; `None` se non è in
     /// classifica o se il server non risponde.
     pub stats: Option<PlayerStatsView>,
+    /// Stemma dello staff: dipende solo dal friend code, quindi c'è anche
+    /// per chi non è in classifica (§D-097).
+    pub staff: Option<StaffBadgeView>,
 }
 
 /// Voce della pagina Debug.

@@ -28,6 +28,7 @@
   import { tick } from 'svelte';
 
   import Icon from '$lib/components/Icon.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
   import { t } from '$lib/stores/i18n.svelte';
 
   interface Props {
@@ -37,9 +38,11 @@
     /** Il menu si apre verso l'alto: per i pulsanti in fondo a una pagina. */
     up?: boolean;
     disabled?: boolean;
+    /** Pulsante piccolo, per stare sopra una tessera. */
+    compact?: boolean;
   }
 
-  const { items, label, up = false, disabled = false }: Props = $props();
+  const { items, label, up = false, disabled = false, compact = false }: Props = $props();
 
   let open = $state(false);
   let root = $state<HTMLElement | null>(null);
@@ -74,8 +77,12 @@
     const current = buttons.indexOf(document.activeElement as HTMLButtonElement);
     if (event.key === 'ArrowDown') focusItem(current + 1);
     else if (event.key === 'ArrowUp') focusItem(current - 1);
-    else if (event.key === 'Escape') close(true);
-    else if (event.key === 'Tab') close();
+    else if (event.key === 'Escape') {
+      // Esc chiude il menu e basta: non deve arrivare a un dialogo o
+      // all'editor Mii sotto e chiudere anche quelli.
+      event.stopPropagation();
+      close(true);
+    } else if (event.key === 'Tab') close();
     else return;
     event.preventDefault();
   }
@@ -96,14 +103,15 @@
   <button
     bind:this={trigger}
     class="vk-btn trigger"
+    class:compact
     aria-haspopup="menu"
     aria-expanded={open}
     aria-label={label ?? t('common.more')}
-    title={label ?? t('common.more')}
+    {@attach tooltip(open ? undefined : (label ?? t('common.more')))}
     {disabled}
     onclick={toggle}
   >
-    <Icon name="more" size={16} />
+    <Icon name="more" size={compact ? 14 : 16} />
   </button>
 
   {#if open}
@@ -113,7 +121,7 @@
           class="item"
           class:danger={item.danger}
           role="menuitem"
-          title={item.hint}
+          {@attach tooltip(item.hint)}
           disabled={item.disabled}
           onclick={() => select(item)}
         >
@@ -133,6 +141,15 @@
 
   .trigger {
     padding: 8px 10px;
+  }
+
+  .trigger.compact {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    border-radius: 8px;
   }
 
   .menu {

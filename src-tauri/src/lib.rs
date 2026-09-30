@@ -147,6 +147,7 @@ pub fn build(state: Arc<state::AppState>) -> tauri::Builder<tauri::Wry> {
             commands::dolphin_settings_get,
             commands::dolphin_settings_save,
             commands::dolphin_settings_optimize,
+            commands::dolphin_settings_recommended,
             commands::dolphin_settings_reset,
             commands::dolphin_config_backup,
             commands::dolphin_config_restore,

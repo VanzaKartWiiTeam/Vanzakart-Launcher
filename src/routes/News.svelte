@@ -5,13 +5,18 @@
    * Le voci arrivano da `news.json` (comando `news_fetch`) e il testo è
    * markdown, reso da `Markdown.svelte`. Filtro per categoria, "in evidenza" e
    * ricerca testuale ricalcano `ApplyNewsFilter` del launcher WPF.
+   *
+   * Sulle card si vede l'eccezione, non il default: la categoria che hanno
+   * quasi tutte non si ripete su ognuna, "in evidenza" si segna solo quando è
+   * una minoranza, e la data compare solo se il server ne manda una (§D-104).
    */
   import { onMount } from 'svelte';
 
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import Markdown from '$lib/components/Markdown.svelte';
-  import { app } from '$lib/stores/app.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
+  import { app, formatDate, formatRelative } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { NewsItem } from '$lib/api/types';
 
@@ -36,10 +41,32 @@
   /** Media che il server non ha servito: la card resta, senza il riquadro rotto. */
   let broken = $state<string[]>([]);
 
+  const categories = $derived(
+    items
+      .map((item) => item.category)
+      .filter((category, index, all) => {
+        return category !== '' && all.indexOf(category) === index;
+      })
+  );
+
+  /** La categoria di quasi tutte: su ogni card sarebbe solo ripetuta. */
+  const usual = $derived.by(() => {
+    let best = '';
+    let most = 0;
+    for (const category of categories) {
+      const count = items.filter((item) => item.category === category).length;
+      if (count > most) [best, most] = [category, count];
+    }
+    return most > items.length / 2 ? best : '';
+  });
+
+  /** "In evidenza" dice qualcosa solo se lo è una parte delle notizie. */
+  const pinnedIsRare = $derived(items.filter((item) => item.isPinned).length <= items.length / 2);
+
   const filters = $derived([
     ALL,
-    ...(items.some((item) => item.isPinned) ? [PINNED] : []),
-    ...Array.from(new Set(items.map((item) => item.category).filter(Boolean)))
+    ...(pinnedIsRare && items.some((item) => item.isPinned) ? [PINNED] : []),
+    ...(categories.length > 1 ? categories : [])
   ]);
 
   const filtered = $derived(
@@ -73,6 +100,22 @@
     }
   }
 
+  /**
+   * La data di una notizia, se ne ha una. `news.json` porta un'etichetta
+   * libera: una data vera diventa "3 giorni fa" con la data intera nel
+   * suggerimento; un testo senza cifre ("Live", "Local") non dice niente a
+   * chi legge e non si mostra.
+   */
+  function when(label: string): { text: string; full: string | undefined } | null {
+    const trimmed = label.trim();
+    const time = Date.parse(trimmed);
+    if (/\d{4}/.test(trimmed) && !Number.isNaN(time)) {
+      const iso = new Date(time).toISOString();
+      return { text: formatRelative(iso), full: formatDate(iso) };
+    }
+    return /\d/.test(trimmed) ? { text: trimmed, full: undefined } : null;
+  }
+
   function markBroken(path: string) {
     if (!broken.includes(path)) broken = [...broken, path];
   }
@@ -82,17 +125,25 @@
   <div class="toolbar">
     <input class="vk-input search" bind:value={query} placeholder={t('news.search')} />
 
-    <div class="chips">
-      {#each filters as item (item)}
-        <button class="chip" class:active={filter === item} onclick={() => (filter = item)}>
-          {filterLabel(item)}
-        </button>
-      {/each}
-    </div>
+    {#if filters.length > 1}
+      <div class="chips">
+        {#each filters as item (item)}
+          <button class="chip" class:active={filter === item} onclick={() => (filter = item)}>
+            {filterLabel(item)}
+          </button>
+        {/each}
+      </div>
+    {/if}
 
-    <button class="vk-btn" onclick={load} disabled={loading}>
-      <Icon name="refresh" size={14} />
-      {loading ? t('common.refreshing') : t('common.refreshAction')}
+    <button
+      class="vk-btn icon-only"
+      class:spinning={loading}
+      onclick={load}
+      disabled={loading}
+      aria-label={t('common.refresh')}
+      {@attach tooltip(t('common.refresh'))}
+    >
+      <Icon name="refresh" size={15} />
     </button>
   </div>
 
@@ -108,16 +159,22 @@
     </div>
   {:else}
     {#each filtered as item, index (index)}
-      <article class="vk-card news" class:pinned={item.isPinned}>
+      {@const date = when(item.dateLabel)}
+      {@const pinned = item.isPinned && pinnedIsRare}
+      <article class="vk-card news" class:pinned>
         <header class="news-head">
           <div class="labels">
-            {#if item.category}<span class="vk-badge">{item.category}</span>{/if}
-            {#if item.isPinned}
+            {#if item.category && item.category !== usual}
+              <span class="vk-badge">{item.category}</span>
+            {/if}
+            {#if pinned}
               <span class="vk-badge vk-badge--warning">{t('news.pinned')}</span>
             {/if}
             {#if item.version}<span class="vk-faint version">{item.version}</span>{/if}
           </div>
-          {#if item.dateLabel}<span class="vk-faint date">{item.dateLabel}</span>{/if}
+          {#if date}
+            <span class="vk-faint date" {@attach tooltip(date.full)}>{date.text}</span>
+          {/if}
         </header>
 
         {#if item.title}<h2 class="news-title">{item.title}</h2>{/if}
@@ -194,10 +251,36 @@
     font-weight: 700;
   }
 
-  .chip.active {
-    background: var(--vk-tab-active);
-    border-color: #3a4c74;
+  .chip:hover {
     color: var(--vk-text);
+  }
+
+  .chip.active {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
+    color: var(--vk-text);
+  }
+
+  .icon-only {
+    padding: 9px 10px;
+  }
+
+  .spinning :global(.vk-icon) {
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinning :global(.vk-icon) {
+      animation: none;
+    }
   }
 
   .news {

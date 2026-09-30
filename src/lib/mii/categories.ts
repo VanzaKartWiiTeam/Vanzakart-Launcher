@@ -290,6 +290,25 @@ export function sliderValue(position: number, range: Range, invert = false): num
   return invert ? range.min + range.max - clamped : clamped;
 }
 
+/** I campi che i controlli di una categoria modificano. */
+export function fieldsOf(category: Category): (MiiNumericField | MiiBooleanField)[] {
+  return category.controls.flatMap((control) =>
+    control.kind === 'date' ? [control.field, control.dayField] : [control.field]
+  );
+}
+
+/**
+ * I campi della categoria che differiscono fra due stati: segna le categorie
+ * toccate e dice cosa rimettere com'era per ripristinarne una sola.
+ */
+export function changedFields(
+  category: Category,
+  state: MiiEditorState,
+  original: MiiEditorState
+): (MiiNumericField | MiiBooleanField)[] {
+  return fieldsOf(category).filter((field) => state[field] !== original[field]);
+}
+
 /**
  * Simboli inseribili nel nome, da `BuildNameSymbolButtons`.
  *

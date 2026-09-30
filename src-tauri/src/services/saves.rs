@@ -248,11 +248,7 @@ pub async fn list_friends(
         .await
         .map_err(|error| AppError::io(&path, error))?;
 
-    let index = crate::services::community::player_index(state).await;
-    Ok(to_views(
-        vk_save::rksys::read_friends(&bytes, license),
-        &index,
-    ))
+    friend_views(state, vk_save::rksys::read_friends(&bytes, license)).await
 }
 
 /// Aggiunge un amico a una licenza a partire dal suo friend code.
@@ -272,11 +268,7 @@ pub async fn add_friend(
     write_save(state, &path, &bytes).await?;
 
     tracing::info!(license, slot, "amico aggiunto alla licenza");
-    let index = crate::services::community::player_index(state).await;
-    Ok(to_views(
-        vk_save::rksys::read_friends(&bytes, license),
-        &index,
-    ))
+    friend_views(state, vk_save::rksys::read_friends(&bytes, license)).await
 }
 
 /// Rimuove l'amico che occupa uno slot.
@@ -295,11 +287,7 @@ pub async fn remove_friend(
     write_save(state, &path, &bytes).await?;
 
     tracing::info!(license, slot, "amico rimosso dalla licenza");
-    let index = crate::services::community::player_index(state).await;
-    Ok(to_views(
-        vk_save::rksys::read_friends(&bytes, license),
-        &index,
-    ))
+    friend_views(state, vk_save::rksys::read_friends(&bytes, license)).await
 }
 
 // ---------------------------------------------------------------------------
@@ -338,6 +326,23 @@ pub async fn set_license_mii(
 /// I numeri dentro `rksys.dat` li aggiorna il gioco solo quando incontra
 /// quell'amico online: sono fermi all'ultima volta che vi siete visti. Quelli
 /// del server sono gli stessi della classifica (§D-064).
+/// Gli amici come li vede la UI: numeri del server e stemma dello staff.
+async fn friend_views(
+    state: &Arc<AppState>,
+    friends: Vec<vk_save::rksys::SaveFriend>,
+) -> AppResult<Vec<FriendView>> {
+    let index = crate::services::community::player_index(state).await;
+    let mut views = to_views(friends, &index);
+
+    let codes: Vec<String> = views.iter().map(|view| view.friend_code.clone()).collect();
+    let staff =
+        crate::services::community::staff_badges(state, codes.iter().map(String::as_str)).await;
+    for (view, badge) in views.iter_mut().zip(staff) {
+        view.staff = badge;
+    }
+    Ok(views)
+}
+
 fn to_views(
     friends: Vec<vk_save::rksys::SaveFriend>,
     index: &crate::services::community::PlayerIndex,
@@ -357,6 +362,7 @@ fn to_views(
             race_rating: u32::from(friend.race_rating),
             battle_rating: u32::from(friend.battle_rating),
             is_pending: friend.is_pending,
+            staff: None,
         })
         .collect()
 }

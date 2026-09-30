@@ -22,6 +22,7 @@
   } from '$lib/stores/operations.svelte';
   import { formatRemaining } from '$lib/stores/transfer';
   import * as api from '$lib/api';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   interface Props {
     kind: OperationKind;
@@ -117,7 +118,7 @@
     <button
       class="vk-btn vk-btn--ghost small dismiss"
       aria-label={t('common.hide')}
-      title={t('common.hide')}
+      {@attach tooltip(t('common.hide'))}
       onclick={() => operations.clearOutcome(kind)}
     >
       <Icon name="close" size={12} />
@@ -132,7 +133,7 @@
     gap: 8px;
     margin-top: 16px;
     padding: 12px 14px;
-    border: 1px solid color-mix(in srgb, var(--vk-cyan) 30%, var(--vk-stroke));
+    border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
     background: var(--vk-panel-soft);
   }
@@ -201,7 +202,7 @@
     height: 8px;
     flex: none;
     border-radius: 50%;
-    background: var(--vk-cyan);
+    background: var(--vk-rainbow-conic);
     animation: pulse 1.1s var(--vk-ease) infinite;
   }
 

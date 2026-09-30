@@ -21,11 +21,12 @@
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
-  import RankBadge from '$lib/components/RankBadge.svelte';
+  import RankBadge, { staffKey } from '$lib/components/RankBadge.svelte';
   import StreakBadge from '$lib/components/StreakBadge.svelte';
   import { formatRelative } from '$lib/stores/app.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
-  import type { BadgeView, LeaderboardEntry } from '$lib/api/types';
+  import type { BadgeView, LeaderboardEntry, StaffBadgeView } from '$lib/api/types';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   let entries = $state<LeaderboardEntry[]>([]);
   /** Immagini dei rank, per chiave: arrivano una volta per pagina. */
@@ -96,6 +97,21 @@
     return entry.badge ? badges[entry.badge] : undefined;
   }
 
+  /** Lo stemma dello staff di un giocatore, se ne fa parte. */
+  function staffOf(entry: LeaderboardEntry): StaffBadgeView | null {
+    const badge = entry.staffBadge ? badges[entry.staffBadge] : undefined;
+    return badge?.role ? { role: badge.role, image: badge.image } : null;
+  }
+
+  /** Stemma e grado a parole, per il pannello del giocatore. */
+  function rankText(entry: LeaderboardEntry): string {
+    const staff = staffOf(entry);
+    const rank =
+      badgeOf(entry)?.label ||
+      (entry.prestigeRank > 0 ? t('board.rankShort', { rank: entry.prestigeRank }) : '');
+    return [staff ? t(staffKey(staff.role)) : '', rank].filter(Boolean).join(' · ');
+  }
+
   /** Oro, argento e bronzo: la classe porta il colore a tutto il gradino. */
   function medal(position: number): string {
     return position === 1 ? 'gold' : position === 2 ? 'silver' : 'bronze';
@@ -161,6 +177,7 @@
                 image={badgeOf(entry)?.image}
                 rank={entry.prestigeRank}
                 label={badgeOf(entry)?.label}
+                staff={staffOf(entry)}
                 size={entry.position === 1 ? 30 : 26}
               />
             </span>
@@ -210,6 +227,7 @@
                   image={badgeOf(entry)?.image}
                   rank={entry.prestigeRank}
                   label={badgeOf(entry)?.label}
+                  staff={staffOf(entry)}
                 />
                 {#if entry.isSuspicious}
                   <span class="vk-badge vk-badge--warning">{t('board.suspicious')}</span>
@@ -265,22 +283,23 @@
             <div class="details-id">
               <p class="vk-eyebrow">{t('board.position', { position: player.position })}</p>
               <h3 class="details-name">{player.name}</h3>
-              {#if badgeOf(player) || player.prestigeRank > 0}
+              {#if rankText(player)}
                 <p class="details-rank">
                   <RankBadge
                     image={badgeOf(player)?.image}
                     rank={player.prestigeRank}
                     label={badgeOf(player)?.label}
+                    staff={staffOf(player)}
                     size={24}
                   />
-                  {badgeOf(player)?.label || t('board.rankShort', { rank: player.prestigeRank })}
+                  {rankText(player)}
                 </p>
               {/if}
             </div>
             <button
               class="close"
               onclick={() => (selected = null)}
-              title={t('board.closeDetailsHint')}
+              {@attach tooltip(t('board.closeDetailsHint'))}
               aria-label={t('board.closeDetails')}
             >
               <Icon name="close" size={14} />
@@ -527,13 +546,28 @@
     overflow-y: auto;
   }
 
+  .entry {
+    position: relative;
+  }
+
   .entry:hover {
     background: rgb(255 255 255 / 0.04);
   }
 
+  /* La riga aperta nel pannello: una barra arcobaleno sul bordo sinistro. */
   .entry.selected {
-    background: rgb(0 242 255 / 0.1);
-    box-shadow: inset 2px 0 0 var(--vk-cyan);
+    background: rgb(255 255 255 / 0.06);
+  }
+
+  .entry.selected::before {
+    content: '';
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    left: 0;
+    width: 3px;
+    border-radius: 0 3px 3px 0;
+    background: var(--vk-rainbow-vertical);
   }
 
   .entry.suspicious {

@@ -19,10 +19,12 @@
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import MenuButton, { type MenuItem } from '$lib/components/MenuButton.svelte';
   import StreakBadge from '$lib/components/StreakBadge.svelte';
   import Modal from '$lib/components/Modal.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import RankBadge from '$lib/components/RankBadge.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
   import { app } from '$lib/stores/app.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
   import type { FriendView, LicenseView } from '$lib/api/types';
@@ -110,6 +112,19 @@
     }
   }
 
+  /** Togliere un amico è raro e non si annulla: sta nel `⋯` della riga. */
+  function friendActions(friend: FriendView): MenuItem[] {
+    return [
+      {
+        label: t('friends.removeAction'),
+        icon: 'trash',
+        danger: true,
+        disabled: busy,
+        onselect: () => (pendingRemoval = friend)
+      }
+    ];
+  }
+
   async function confirmRemoval() {
     const target = pendingRemoval;
     pendingRemoval = null;
@@ -164,7 +179,11 @@
         </p>
       </div>
 
-      <button class="code" onclick={() => copy(license.friendCode)} title={t('friends.copyMine')}>
+      <button
+        class="code"
+        onclick={() => copy(license.friendCode)}
+        {@attach tooltip(t('friends.copyMine'))}
+      >
         <span class="vk-mono">{license.friendCode}</span>
         <Icon name={copiedCode === license.friendCode ? 'check' : 'copy'} size={14} />
         <span class="vk-visually-hidden">
@@ -172,9 +191,14 @@
         </span>
       </button>
 
-      <button class="icon-btn" onclick={load} disabled={busy} title={t('friends.reload')}>
+      <button
+        class="icon-btn"
+        onclick={load}
+        disabled={busy}
+        aria-label={t('friends.reload')}
+        {@attach tooltip(t('friends.reload'))}
+      >
         <Icon name="refresh" size={15} />
-        <span class="vk-visually-hidden">{t('common.refresh')}</span>
       </button>
 
       {#if withCode.length > 1}
@@ -270,14 +294,13 @@
                 -->
                 <p class="friend-name">
                   <span class="friend-name-text">{friend.miiName}</span>
-                  {#if friend.stats}
-                    <RankBadge
-                      image={friend.stats.rankImage}
-                      rank={friend.stats.prestigeRank}
-                      label={friend.stats.rankLabel}
-                      size={20}
-                    />
-                  {/if}
+                  <RankBadge
+                    image={friend.stats?.rankImage}
+                    rank={friend.stats?.prestigeRank}
+                    label={friend.stats?.rankLabel}
+                    staff={friend.staff}
+                    size={20}
+                  />
                 </p>
                 <p class="vk-mono friend-code">{friend.friendCode}</p>
               </div>
@@ -301,22 +324,18 @@
                 <button
                   class="icon-btn"
                   onclick={() => copy(friend.friendCode)}
-                  title={t('friends.copyCodeOf', { name: friend.miiName })}
+                  aria-label={t('friends.copyCodeOf', { name: friend.miiName })}
+                  {@attach tooltip(t('friends.copyCodeOf', { name: friend.miiName }))}
                 >
                   <Icon name={copiedCode === friend.friendCode ? 'check' : 'copy'} size={15} />
-                  <span class="vk-visually-hidden">{t('friends.copyCode')}</span>
                 </button>
 
                 {#if canWrite}
-                  <button
-                    class="icon-btn danger"
-                    onclick={() => (pendingRemoval = friend)}
-                    disabled={busy}
-                    title={t('friends.removeOf', { name: friend.miiName })}
-                  >
-                    <Icon name="trash" size={15} />
-                    <span class="vk-visually-hidden">{t('common.remove')}</span>
-                  </button>
+                  <MenuButton
+                    compact
+                    items={friendActions(friend)}
+                    label={t('friends.moreFor', { name: friend.miiName })}
+                  />
                 {/if}
               </div>
             </li>
@@ -405,8 +424,8 @@
   }
 
   .code:hover {
-    border-color: var(--vk-cyan);
-    color: var(--vk-cyan-soft);
+    border-color: #4c5c8c;
+    color: var(--vk-text);
   }
 
   .icon-btn {
@@ -425,13 +444,8 @@
   }
 
   .icon-btn:hover:not(:disabled) {
-    border-color: var(--vk-cyan);
-    color: var(--vk-cyan-soft);
-  }
-
-  .icon-btn.danger:hover:not(:disabled) {
-    border-color: var(--vk-danger);
-    color: var(--vk-danger);
+    border-color: #4c5c8c;
+    color: var(--vk-text);
   }
 
   .icon-btn:disabled {
@@ -494,16 +508,17 @@
   }
 
   .lic-tab.active {
-    background: var(--vk-tab-active);
-    border-color: var(--vk-cyan);
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
     color: var(--vk-text);
-    box-shadow: 0 0 14px rgb(0 242 255 / 0.16);
     cursor: default;
   }
 
   .lic-tab.active .lic-tab-count {
-    background: rgb(0 242 255 / 0.18);
-    color: var(--vk-cyan-soft);
+    background: rgb(255 255 255 / 0.16);
+    color: var(--vk-text);
   }
 
   .lic-tab:disabled {
@@ -633,16 +648,17 @@
     white-space: nowrap;
   }
 
-  /* Copia e cestino, in quest'ordine: si preme molto più spesso la prima. */
+  /* La copia a vista, perché si usa; il resto nel `⋯`. */
   .friend-actions {
     display: flex;
+    align-items: center;
     gap: 6px;
     flex: none;
   }
 
   .friend-actions .icon-btn {
-    width: 30px;
-    height: 30px;
+    width: 28px;
+    height: 28px;
   }
 
   .skeleton {

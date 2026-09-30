@@ -8,6 +8,8 @@
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import Slider from '$lib/components/Slider.svelte';
+  import Switch from '$lib/components/Switch.svelte';
   import { app } from '$lib/stores/app.svelte';
   import { t, type TranslationKey } from '$lib/stores/i18n.svelte';
   import type {
@@ -280,20 +282,30 @@
     <section class="section">
       <p class="vk-eyebrow">{t('controller.steering')}</p>
       <div class="sliders">
-        <label>
-          <span>{t('controller.deadzone')}: <strong>{profile.deadzone.toFixed(0)}%</strong></span>
-          <input type="range" min="0" max="50" bind:value={profile.deadzone} />
-        </label>
-        <label>
-          <span>
-            {t('controller.sensitivity')}: <strong>{profile.sensitivity.toFixed(0)}%</strong>
-          </span>
-          <input type="range" min="50" max="150" bind:value={profile.sensitivity} />
-        </label>
-        <label class="check">
-          <input type="checkbox" bind:checked={profile.vibration} />
-          {t('controller.vibration')}
-        </label>
+        <Slider
+          label={t('controller.deadzone')}
+          value={profile.deadzone}
+          min={0}
+          max={50}
+          format={(value) => `${value.toFixed(0)}%`}
+          oninput={(value) => profile && (profile.deadzone = value)}
+        />
+        <Slider
+          label={t('controller.sensitivity')}
+          value={profile.sensitivity}
+          min={50}
+          max={150}
+          format={(value) => `${value.toFixed(0)}%`}
+          oninput={(value) => profile && (profile.sensitivity = value)}
+        />
+        <div class="check">
+          <span>{t('controller.vibration')}</span>
+          <Switch
+            checked={profile.vibration}
+            label={t('controller.vibration')}
+            onchange={(next) => profile && (profile.vibration = next)}
+          />
+        </div>
       </div>
     </section>
 
@@ -450,7 +462,7 @@
   }
 
   .assign:hover:not(:disabled) {
-    border-color: var(--vk-cyan);
+    border-color: #4c5c8c;
   }
 
   .assign.listening {
@@ -479,27 +491,16 @@
     align-items: end;
   }
 
-  .sliders label {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    font-size: var(--vk-fs-small);
-  }
-
   .check {
-    flex-direction: row !important;
+    display: flex;
     align-items: center;
-    gap: 10px;
-  }
-
-  input[type='range'] {
-    accent-color: var(--vk-cyan);
-  }
-
-  input[type='checkbox'] {
-    accent-color: var(--vk-cyan);
-    width: 16px;
-    height: 16px;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--vk-stroke);
+    border-radius: var(--vk-radius-badge);
+    font-size: var(--vk-fs-small);
+    font-weight: 700;
   }
 
   .actions-row {

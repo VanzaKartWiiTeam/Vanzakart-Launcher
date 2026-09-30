@@ -10,6 +10,7 @@
   import logo from '$lib/assets/logo.png';
   import { app } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   const window = getCurrentWindow();
 
@@ -88,7 +89,7 @@
         class="chrome"
         onclick={toggleMaximize}
         aria-label={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
-        title={maximized ? t('titlebar.restore') : t('titlebar.maximize')}
+        {@attach tooltip(maximized ? t('titlebar.restore') : t('titlebar.maximize'))}
       >
         <Icon name={maximized ? 'restore' : 'maximize'} size={13} />
       </button>

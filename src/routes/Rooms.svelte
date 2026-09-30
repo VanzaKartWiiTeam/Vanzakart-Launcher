@@ -2,9 +2,10 @@
   /**
    * Rooms.
    *
-   * Ricalca il `RoomsView` del WPF: card riepilogativa in alto con le
-   * statistiche globali, poi l'elenco delle stanze con skeleton, stato vuoto
-   * e stato di errore distinti.
+   * Ricalca il `RoomsView` del WPF: l'elenco delle stanze con skeleton,
+   * stato vuoto e stato di errore distinti. Le quattro statistiche globali in
+   * cima sono diventate una frase — «4 giocatori in 1 stanza» — col pallino
+   * dello stato del server (§D-103).
    *
    * Una cosa che il WPF non mostrava e che qui serve: **chi c'è dentro** una
    * stanza. Il server manda l'elenco insieme alla stanza, prima veniva buttato.
@@ -15,6 +16,8 @@
   import Icon from '$lib/components/Icon.svelte';
   import MiiAvatar from '$lib/components/MiiAvatar.svelte';
   import RankBadge from '$lib/components/RankBadge.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
+  import { formatRelative } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import type { RoomsSummary, RoomView } from '$lib/api/types';
 
@@ -56,6 +59,53 @@
     }
   }
 
+  /** «Online» è il caso normale; qualunque altra cosa va segnalata. */
+  const online = $derived(summary !== null && /^online$/i.test(summary.status.trim() || 'online'));
+
+  const tone = $derived(
+    loading ? 'idle' : error ? 'danger' : online ? 'success' : summary ? 'warning' : 'idle'
+  );
+
+  /** Lo stato in una frase: chi c'è, in quante stanze, e le private solo se ci sono. */
+  const headline = $derived.by(() => {
+    if (loading) return t('rooms.checking');
+    if (error || !summary) return t('rooms.offline');
+    if (summary.rooms.length === 0) return online ? t('rooms.serverOnline') : summary.status;
+    const players =
+      summary.totalPlayers === 1
+        ? t('rooms.playersOne')
+        : t('rooms.playersMany', { count: summary.totalPlayers });
+    const rooms =
+      summary.totalRooms === 1
+        ? t('rooms.inRoomsOne')
+        : t('rooms.inRoomsMany', { count: summary.totalRooms });
+    const hidden =
+      summary.privateRooms === 0
+        ? ''
+        : summary.privateRooms === 1
+          ? ` · ${t('rooms.privateOne')}`
+          : ` · ${t('rooms.privateMany', { count: summary.privateRooms })}`;
+    return `${players} ${rooms}${hidden}`;
+  });
+
+  /** Quanto è vecchio l'elenco: se il server smette di scriverlo, lo si vede qui (§D-057). */
+  const updated = $derived(
+    summary?.lastUpdated
+      ? t('rooms.updated', { time: formatRelative(summary.lastUpdated) })
+      : undefined
+  );
+
+  /** La pista, più modalità e regione solo quando non sono quelle di sempre. */
+  function detail(room: RoomView): string {
+    return [
+      room.track,
+      room.mode !== 'Versus' ? room.mode : '',
+      room.region !== 'Worldwide' ? room.region : ''
+    ]
+      .filter(Boolean)
+      .join(' · ');
+  }
+
   function toggle(room: RoomView) {
     expanded = expanded.includes(room.id)
       ? expanded.filter((id) => id !== room.id)
@@ -64,31 +114,22 @@
 </script>
 
 <div class="page">
-  <section class="vk-card hero vk-rainbow-top">
-    <div class="stats">
-      <div class="stat">
-        <span class="value">{summary?.totalPlayers ?? 0}</span>
-        <span class="vk-eyebrow">{t('rooms.playersOnline')}</span>
-      </div>
-      <div class="stat">
-        <span class="value">{summary?.totalRooms ?? 0}</span>
-        <span class="vk-eyebrow">{t('rooms.activeRooms')}</span>
-      </div>
-      <div class="stat">
-        <span class="value">{summary?.publicRooms ?? 0}</span>
-        <span class="vk-eyebrow">{t('rooms.public')}</span>
-      </div>
-      <div class="stat">
-        <span class="value">{summary?.privateRooms ?? 0}</span>
-        <span class="vk-eyebrow">{t('rooms.private')}</span>
-      </div>
-    </div>
-
-    <button class="vk-btn refresh" onclick={() => load(false)} disabled={refreshing}>
-      <Icon name="refresh" size={14} />
-      {refreshing ? t('common.refreshing') : t('common.refreshAction')}
+  <div class="bar">
+    <p class="status" data-tone={tone} {@attach tooltip(updated)}>
+      <span class="status-dot" aria-hidden="true"></span>
+      {headline}
+    </p>
+    <button
+      class="vk-btn icon-only"
+      class:spinning={refreshing}
+      onclick={() => load(false)}
+      disabled={refreshing}
+      aria-label={t('common.refresh')}
+      {@attach tooltip(t('rooms.refreshHint'))}
+    >
+      <Icon name="refresh" size={15} />
     </button>
-  </section>
+  </div>
 
   {#if summary?.notice}
     <p class="vk-faint notice">{summary.notice}</p>
@@ -115,12 +156,12 @@
         {@const open = expanded.includes(room.id)}
         <article class="vk-card room" class:racing={room.status.toLowerCase() === 'racing'}>
           <header class="room-head">
-            <div class="room-id">
-              <h3 class="room-name">{room.name}</h3>
-              <p class="vk-faint host">
-                {t('rooms.host', { name: room.host || t('common.dash') })}
-              </p>
-            </div>
+            <h3
+              class="room-name"
+              {@attach tooltip(room.host ? t('rooms.host', { name: room.host }) : undefined)}
+            >
+              {room.name}
+            </h3>
             <span
               class="vk-badge {room.status.toLowerCase() === 'racing' ? 'vk-badge--success' : ''}"
             >
@@ -128,7 +169,7 @@
             </span>
           </header>
 
-          <p class="track" title={room.track}>{room.track}</p>
+          <p class="track" {@attach tooltip(room.track)}>{detail(room)}</p>
 
           <div class="fill">
             <div class="fill-track">
@@ -184,6 +225,7 @@
                           image={player.rankImage}
                           rank={player.prestigeRank}
                           label={player.rankLabel}
+                          staff={player.staff}
                           size={18}
                         />
                         {#if player.isHost}
@@ -200,12 +242,6 @@
               </ul>
             {/if}
           {/if}
-
-          <footer class="room-foot vk-faint">
-            <span>{room.region}</span>
-            <span>·</span>
-            <span>{room.mode}</span>
-          </footer>
         </article>
       {/each}
     </div>
@@ -220,40 +256,60 @@
     padding-bottom: 12px;
   }
 
-  .hero {
-    position: relative;
+  .bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 24px;
-    overflow: hidden;
+    gap: 16px;
   }
 
-  .stats {
+  .status {
     display: flex;
     align-items: center;
-    gap: 40px;
+    gap: 10px;
+    margin: 0;
+    font-size: var(--vk-fs-body);
+    font-weight: 700;
+    --tone: var(--vk-text-faint);
   }
 
-  .stat {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .status[data-tone='success'] {
+    --tone: var(--vk-success);
+  }
+  .status[data-tone='warning'] {
+    --tone: var(--vk-warning);
+  }
+  .status[data-tone='danger'] {
+    --tone: var(--vk-danger);
   }
 
-  .value {
-    font-size: 32px;
-    font-weight: 900;
-    line-height: 1;
-    background: var(--vk-rainbow);
-    background-size: 220% 100%;
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-  }
-
-  .refresh {
+  .status-dot {
     flex: none;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--tone);
+    box-shadow: 0 0 10px var(--tone);
+  }
+
+  .icon-only {
+    padding: 9px 10px;
+  }
+
+  .spinning :global(.vk-icon) {
+    animation: spin 0.9s linear infinite;
+  }
+
+  @keyframes spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .spinning :global(.vk-icon) {
+      animation: none;
+    }
   }
 
   .notice {
@@ -285,27 +341,19 @@
 
   .room-head {
     display: flex;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: 10px;
-  }
-
-  .room-id {
-    min-width: 0;
+    align-items: center;
+    gap: 6px;
   }
 
   .room-name {
+    flex: 1;
+    min-width: 0;
     margin: 0;
     font-size: 15px;
     font-weight: 800;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
-  }
-
-  .host {
-    margin: 2px 0 0;
-    font-size: var(--vk-fs-micro);
   }
 
   .track {
@@ -443,26 +491,7 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .room-foot {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: auto;
-    font-size: var(--vk-fs-micro);
-  }
-
   .skeleton {
     height: 64px;
-  }
-
-  @media (max-width: 900px) {
-    .hero {
-      flex-wrap: wrap;
-      gap: 20px;
-    }
-
-    .stats {
-      gap: 24px;
-    }
   }
 </style>

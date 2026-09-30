@@ -23,6 +23,7 @@ pub mod net;
 pub mod progress;
 pub mod protect;
 pub mod redact;
+pub mod staff;
 pub mod thumbnail;
 pub mod update;
 pub mod versions;

@@ -154,6 +154,9 @@ export const saveDolphinSettings = (settings: DolphinSettings) =>
   call<void>('dolphin_settings_save', { settings });
 export const optimizeDolphin = (screenWidth: number) =>
   call<DolphinSettings>('dolphin_settings_optimize', { screenWidth });
+/** Solo i campi che il preset consigliato imposta, con il loro valore. */
+export const recommendedDolphin = (screenWidth: number) =>
+  call<Partial<DolphinSettings>>('dolphin_settings_recommended', { screenWidth });
 export const resetDolphinCategory = (category: string) =>
   call<DolphinSettings>('dolphin_settings_reset', { category });
 export const backupDolphinConfig = () => call<string>('dolphin_config_backup');

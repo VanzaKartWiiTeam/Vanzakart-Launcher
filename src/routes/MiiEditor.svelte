@@ -32,6 +32,7 @@
     CATEGORIES,
     FACIAL_FEATURES,
     NAME_SYMBOLS,
+    changedFields,
     clampState,
     daysInMonth,
     rangeOf,
@@ -39,15 +40,19 @@
     sliderValue,
     toLimits
   } from '$lib/mii/categories';
-  import type { Category, Control, Limits } from '$lib/mii/categories';
+  import type { Category, Limits } from '$lib/mii/categories';
   import { EditHistory } from '$lib/mii/history';
   import { PALETTES, iconColors, loadIcons } from '$lib/mii/icons';
   import type { IconSet, PaletteName, PartIconKind } from '$lib/mii/icons';
   import { appearanceKey, forget as forgetRenders, renderSize, renderState } from '$lib/mii/render';
   import Icon from '$lib/components/Icon.svelte';
   import MenuButton, { type MenuItem } from '$lib/components/MenuButton.svelte';
+  import MiiExpressionIcon from '$lib/components/MiiExpressionIcon.svelte';
   import MiiPartIcon from '$lib/components/MiiPartIcon.svelte';
+  import Select from '$lib/components/Select.svelte';
+  import Slider from '$lib/components/Slider.svelte';
   import Switch from '$lib/components/Switch.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
   import miiSilhouette from '$lib/assets/mii_silhouette.png';
   import { app } from '$lib/stores/app.svelte';
   import { operations } from '$lib/stores/operations.svelte';
@@ -88,6 +93,17 @@
 
   const current = $derived(CATEGORIES[category] ?? CATEGORIES[0]);
   const dirty = $derived(editor !== null && JSON.stringify(editor) !== original);
+  /** Il Mii com'era all'apertura: per confrontare e ripristinare. */
+  const initial = $derived(original ? (JSON.parse(original) as MiiEditorState) : null);
+  /** Le categorie in cui qualcosa è diverso dal Mii di partenza. */
+  const modified = $derived.by(() => {
+    const state = editor;
+    const start = initial;
+    if (!state || !start) return [] as string[];
+    return CATEGORIES.filter((item) => changedFields(item, state, start).length > 0).map(
+      (item) => item.key
+    );
+  });
   const native = $derived(renderer?.nativeReady === true);
   const accent = $derived(editor ? (favorites[editor.favoriteColorIndex] ?? '#00f2ff') : '#00f2ff');
 
@@ -179,18 +195,23 @@
     commit();
   }
 
-  function step(control: Extract<Control, { kind: 'slider' }>, delta: number) {
-    if (!editor) return;
-    const range = rangeOf(control.field, editor, limits);
-    const position = sliderPosition(editor[control.field], range, control.invert);
-    setNumber(control.field, sliderValue(position + delta, range, control.invert));
-  }
-
   /** Doppio clic su un cursore: torna al valore con cui il Mii si è aperto. */
   function resetField(field: MiiNumericField) {
-    if (!original) return;
-    const initial = (JSON.parse(original) as MiiEditorState)[field];
-    setNumber(field, initial);
+    if (initial) setNumber(field, initial[field]);
+  }
+
+  /**
+   * Rimette la categoria aperta com'era all'apertura, lasciando le altre
+   * come sono: un passo solo nella cronologia.
+   */
+  function resetCategory() {
+    if (!editor || !initial) return;
+    const start = initial;
+    const fields = changedFields(current, editor, start);
+    if (fields.length === 0) return;
+    const restored = Object.fromEntries(fields.map((field) => [field, start[field]]));
+    editor = clampState({ ...editor, ...restored }, limits);
+    commit();
   }
 
   /** Le scelte di una griglia: ogni valore fra i limiti del campo. */
@@ -656,11 +677,43 @@
     Array.from({ length: editor ? daysInMonth(editor.birthMonth) : 31 }, (_, index) => index + 1)
   );
 
-  const months = $derived(
-    Array.from({ length: 12 }, (_, index) =>
-      new Intl.DateTimeFormat(i18n.tag, { month: 'long' }).format(new Date(2024, index, 1))
-    )
+  const monthOptions = $derived(
+    Array.from({ length: 12 }, (_, index) => {
+      const name = new Intl.DateTimeFormat(i18n.tag, { month: 'long' }).format(
+        new Date(2024, index, 1)
+      );
+      return { value: index + 1, label: name.charAt(0).toUpperCase() + name.slice(1) };
+    })
   );
+
+  const dayOptions = $derived(days.map((day) => ({ value: day, label: String(day) })));
+
+  // -------------------------------------------------------------------------
+  // Espressione e simboli
+  // -------------------------------------------------------------------------
+
+  /** Frecce nella fila delle espressioni, come in ogni gruppo di scelte. */
+  async function onExpressionKey(event: KeyboardEvent) {
+    const move = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
+    if (!move) return;
+    event.preventDefault();
+    const index = EXPRESSIONS.findIndex((item) => item.value === expression);
+    const next = EXPRESSIONS[(index + move + EXPRESSIONS.length) % EXPRESSIONS.length];
+    if (next) expression = next.value;
+    await tick();
+    (event.currentTarget as HTMLElement)
+      .querySelector<HTMLElement>('[aria-checked="true"]')
+      ?.focus();
+  }
+
+  let symbolsRoot = $state<HTMLElement | null>(null);
+
+  /** Il pannello dei simboli si chiude cliccando fuori, come un menu. */
+  function onWindowPointer(event: PointerEvent) {
+    if (symbolsOpen && symbolsRoot && !symbolsRoot.contains(event.target as Node)) {
+      symbolsOpen = false;
+    }
+  }
 
   // -------------------------------------------------------------------------
   // Azioni
@@ -794,7 +847,7 @@
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onpointerdown={onWindowPointer} />
 
 <div class="overlay">
   <button class="backdrop" aria-label={t('editor.close')} onclick={close} disabled={busy}></button>
@@ -816,8 +869,8 @@
           class="vk-btn icon-btn"
           onclick={undo}
           disabled={!canUndo || busy}
-          title={t('editor.undo')}
           aria-label={t('editor.undo')}
+          {@attach tooltip(t('editor.undo'))}
         >
           <Icon name="undo" size={16} />
         </button>
@@ -825,8 +878,8 @@
           class="vk-btn icon-btn"
           onclick={redo}
           disabled={!canRedo || busy}
-          title={t('editor.redo')}
           aria-label={t('editor.redo')}
+          {@attach tooltip(t('editor.redo'))}
         >
           <Icon name="redo" size={16} />
         </button>
@@ -837,7 +890,7 @@
           class="vk-btn vk-btn--primary save"
           onclick={persist}
           disabled={busy || !dirty || !editor}
-          title={t('editor.saveHint')}
+          {@attach tooltip(t('editor.saveHint'))}
         >
           <Icon name="save" size={15} />
           {busy ? t('common.saving') : t('common.save')}
@@ -872,9 +925,13 @@
               role="tab"
               aria-selected={category === index}
               tabindex={category === index ? 0 : -1}
-              title={t(item.hint)}
+              {@attach tooltip(t(item.hint))}
               onclick={() => selectCategory(index)}
             >
+              {#if modified.includes(item.key)}
+                <span class="rail-dot" aria-hidden="true"></span>
+                <span class="vk-visually-hidden">{t('editor.modified')}</span>
+              {/if}
               <span class="rail-tile">
                 {#if glyph}
                   <MiiPartIcon icon={glyph} colors={iconPalette[item.icon!.kind] ?? []} />
@@ -907,8 +964,8 @@
             aria-valuenow={Math.round(yaw)}
             aria-valuetext={`${Math.round(yaw)}°`}
             aria-disabled={!native}
-            title={native ? t('editor.stageHint') : undefined}
             tabindex="0"
+            {@attach tooltip(native ? t('editor.stageHint') : undefined)}
             use:wheelZoom
             onpointerdown={onPointerDown}
             onpointermove={onPointerMove}
@@ -959,23 +1016,14 @@
               </button>
             </div>
 
+            <span class="vk-spacer"></span>
             {#if native}
-              <select
-                class="vk-input expression"
-                bind:value={expression}
-                aria-label={t('editor.expression')}
-                title={t('editor.expressionHint')}
-              >
-                {#each EXPRESSIONS as item (item.value)}
-                  <option value={item.value}>{t(item.label)}</option>
-                {/each}
-              </select>
               <button
                 class="vk-btn icon-btn"
                 onclick={faceFront}
                 disabled={yaw === 0 && pitch === 0 && zoom === 1}
-                title={t('editor.resetView')}
                 aria-label={t('editor.resetView')}
+                {@attach tooltip(t('editor.resetView'))}
               >
                 <Icon name="refresh" size={14} />
               </button>
@@ -984,8 +1032,8 @@
               class="vk-btn icon-btn"
               class:active={comparing}
               disabled={!dirty}
-              title={t('editor.compare')}
               aria-label={t('editor.compare')}
+              {@attach tooltip(t('editor.compare'))}
               aria-pressed={comparing}
               onpointerdown={() => (comparing = true)}
               onpointerup={() => (comparing = false)}
@@ -998,6 +1046,32 @@
               <Icon name="swap" size={14} />
             </button>
           </div>
+
+          {#if native}
+            <!-- L'espressione si vede solo qui: il formato Wii non la salva. -->
+            <div
+              class="expressions"
+              role="radiogroup"
+              aria-label={t('editor.expression')}
+              tabindex="-1"
+              onkeydown={onExpressionKey}
+            >
+              {#each EXPRESSIONS as item (item.value)}
+                <button
+                  class="expression"
+                  class:active={expression === item.value}
+                  role="radio"
+                  aria-checked={expression === item.value}
+                  aria-label={t(item.label)}
+                  tabindex={expression === item.value ? 0 : -1}
+                  {@attach tooltip(`${t(item.label)}\n${t('editor.expressionHint')}`)}
+                  onclick={() => (expression = item.value)}
+                >
+                  <MiiExpressionIcon expression={item.value} size={20} />
+                </button>
+              {/each}
+            </div>
+          {/if}
 
           {#if previewStatus}
             <p class="vk-faint status">{previewStatus}</p>
@@ -1021,7 +1095,7 @@
           {/if}
 
           <div class="identity">
-            <div class="field">
+            <div class="field name-field" bind:this={symbolsRoot}>
               <span class="field-head">
                 <span class="vk-eyebrow">{t('editor.name')}</span>
                 <span class="counter" class:full={nameLength >= 10}>{nameLength}/10</span>
@@ -1036,16 +1110,17 @@
                 />
                 <button
                   class="vk-btn symbol-btn"
-                  title={t('editor.insertSymbol')}
+                  class:open={symbolsOpen}
                   aria-label={t('editor.insertSymbol')}
                   aria-expanded={symbolsOpen}
+                  {@attach tooltip(symbolsOpen ? undefined : t('editor.insertSymbol'))}
                   onclick={() => (symbolsOpen = !symbolsOpen)}
                 >
                   ★
                 </button>
               </div>
               {#if symbolsOpen}
-                <div class="symbols">
+                <div class="symbols" role="group" aria-label={t('editor.insertSymbol')}>
                   {#each NAME_SYMBOLS as symbol (symbol)}
                     <button class="symbol" onclick={() => insertSymbol(symbol)}>{symbol}</button>
                   {/each}
@@ -1068,8 +1143,20 @@
         <!-- ── Controlli della categoria ─────────────────────────────── -->
         <div class="panel vk-card" role="tabpanel" aria-label={t(current.label)}>
           <header class="panel-head">
-            <h3 class="panel-title">{t(current.label)}</h3>
-            <p class="vk-faint panel-hint">{t(current.hint)}</p>
+            <div class="panel-id">
+              <h3 class="panel-title">{t(current.label)}</h3>
+              <p class="vk-faint panel-hint">{t(current.hint)}</p>
+            </div>
+            {#if modified.includes(current.key)}
+              <button
+                class="vk-btn vk-btn--ghost reset-category"
+                onclick={resetCategory}
+                {@attach tooltip(t('editor.resetCategoryHint'))}
+              >
+                <Icon name="undo" size={14} />
+                {t('editor.resetCategory')}
+              </button>
+            {/if}
           </header>
 
           {#each current.controls as control (control.field)}
@@ -1093,7 +1180,7 @@
                       role="radio"
                       aria-checked={selected}
                       tabindex={selected ? 0 : -1}
-                      title={`${t(control.label)} ${value + 1}`}
+                      aria-label={`${t(control.label)} ${value + 1}`}
                       onclick={() => setNumber(control.field, value)}
                       onpointerenter={() => (hover = { field: control.field, value })}
                       onpointerleave={() => (hover = null)}
@@ -1130,7 +1217,6 @@
                       aria-checked={selected}
                       tabindex={selected ? 0 : -1}
                       aria-label={`${t(control.label)} ${value + 1}`}
-                      title={`${t(control.label)} ${value + 1}`}
                       style="--swatch: {palette[value] ?? '#000'}"
                       onclick={() => setNumber(control.field, value)}
                       onpointerenter={() => (hover = { field: control.field, value })}
@@ -1194,73 +1280,40 @@
               <section class="group">
                 <p class="group-title vk-eyebrow">{t(control.label)}</p>
                 <div class="date">
-                  <select
-                    class="vk-input"
-                    aria-label={t('miicat.birthMonth')}
-                    value={editor.birthMonth}
-                    onchange={(event) => setNumber('birthMonth', Number(event.currentTarget.value))}
-                  >
-                    {#each months as month, index (index)}
-                      <option value={index + 1}>{month}</option>
-                    {/each}
-                  </select>
-                  <select
-                    class="vk-input day"
-                    aria-label={t('miicat.birthDay')}
-                    value={editor.birthDay}
-                    onchange={(event) => setNumber('birthDay', Number(event.currentTarget.value))}
-                  >
-                    {#each days as day (day)}
-                      <option value={day}>{day}</option>
-                    {/each}
-                  </select>
+                  <div class="month">
+                    <Select
+                      block
+                      label={t('miicat.birthMonth')}
+                      value={editor.birthMonth}
+                      options={monthOptions}
+                      onchange={(month) => setNumber('birthMonth', month)}
+                    />
+                  </div>
+                  <div class="day">
+                    <Select
+                      block
+                      label={t('miicat.birthDay')}
+                      value={editor.birthDay}
+                      options={dayOptions}
+                      onchange={(day) => setNumber('birthDay', day)}
+                    />
+                  </div>
                 </div>
               </section>
             {:else if control.kind === 'slider'}
               {@const range = rangeOf(control.field, editor, limits)}
-              {@const position = sliderPosition(editor[control.field], range, control.invert)}
               <div class="slider">
-                <span class="slider-head">
-                  <span>{t(control.label)}</span>
-                  <strong>{position}</strong>
-                </span>
-                <div class="slider-row">
-                  <button
-                    class="vk-btn step"
-                    aria-label={`${t('editor.decrease')}: ${t(control.label)}`}
-                    disabled={position <= range.min}
-                    onclick={() => step(control, -1)}
-                  >
-                    −
-                  </button>
-                  <input
-                    type="range"
-                    min={range.min}
-                    max={range.max}
-                    step="1"
-                    value={position}
-                    aria-label={t(control.label)}
-                    title={t('editor.sliderHint')}
-                    style="--fill: {((position - range.min) / Math.max(1, range.max - range.min)) *
-                      100}%"
-                    oninput={(event) =>
-                      setNumber(
-                        control.field,
-                        sliderValue(Number(event.currentTarget.value), range, control.invert),
-                        false
-                      )}
-                    onchange={commit}
-                    ondblclick={() => resetField(control.field)}
-                  />
-                  <button
-                    class="vk-btn step"
-                    aria-label={`${t('editor.increase')}: ${t(control.label)}`}
-                    disabled={position >= range.max}
-                    onclick={() => step(control, 1)}
-                  >
-                    +
-                  </button>
-                </div>
+                <Slider
+                  label={t(control.label)}
+                  value={sliderPosition(editor[control.field], range, control.invert)}
+                  min={range.min}
+                  max={range.max}
+                  hint={t('editor.sliderHint')}
+                  oninput={(position) =>
+                    setNumber(control.field, sliderValue(position, range, control.invert), false)}
+                  onchange={commit}
+                  onreset={() => resetField(control.field)}
+                />
               </div>
             {/if}
           {/each}
@@ -1377,8 +1430,11 @@
   }
 
   .icon-btn.active {
-    border-color: var(--vk-cyan);
-    color: var(--vk-cyan-soft);
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
+    color: var(--vk-text);
   }
 
   .save {
@@ -1415,6 +1471,7 @@
   }
 
   .rail-item {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -1481,6 +1538,18 @@
     background: #3b2a24;
   }
 
+  /* Categoria toccata: un puntino arcobaleno sull'angolo della tessera. */
+  .rail-dot {
+    position: absolute;
+    top: 4px;
+    right: 12px;
+    width: 9px;
+    height: 9px;
+    border: 2px solid var(--vk-panel);
+    border-radius: 50%;
+    background: var(--vk-rainbow-conic);
+  }
+
   .rail-label {
     font-size: var(--vk-fs-eyebrow);
     font-weight: 800;
@@ -1534,8 +1603,19 @@
     border-color: var(--vk-warning);
   }
 
+  /* Col fuoco da tastiera il palco prende il bordo arcobaleno: è un
+     elemento solo, e non ha un contorno suo da colorare. */
   .stage:focus-visible {
-    box-shadow: 0 0 0 2px var(--vk-cyan);
+    border-color: transparent;
+    background:
+      radial-gradient(
+          circle at 50% 38%,
+          color-mix(in srgb, var(--accent) 26%, transparent),
+          transparent 62%
+        )
+        padding-box,
+      linear-gradient(180deg, #16223a, #0c1322) padding-box,
+      var(--vk-rainbow) border-box;
   }
 
   .floor {
@@ -1600,7 +1680,7 @@
 
   .segmented button {
     padding: 5px 12px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 999px;
     background: transparent;
     color: var(--vk-text-secondary);
@@ -1611,19 +1691,50 @@
   }
 
   .segmented button.active {
-    background: var(--vk-active-surface);
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
     color: var(--vk-text);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vk-cyan) 40%, transparent);
   }
 
   .segmented.wide button {
     padding: 7px 22px;
   }
 
+  .expressions {
+    display: flex;
+    justify-content: center;
+    gap: 4px;
+    outline: none;
+  }
+
   .expression {
-    width: auto;
-    padding: 6px 8px;
-    font-size: var(--vk-fs-micro);
+    display: grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--vk-text-secondary);
+    cursor: pointer;
+    transition:
+      color var(--vk-dur-fast) var(--vk-ease),
+      background var(--vk-dur-fast) var(--vk-ease);
+  }
+
+  .expression:hover {
+    background: rgb(255 255 255 / 0.05);
+    color: var(--vk-text);
+  }
+
+  .expression.active {
+    border-color: transparent;
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow-conic) border-box;
+    color: var(--vk-text);
   }
 
   .status {
@@ -1637,9 +1748,9 @@
     flex-direction: column;
     gap: 8px;
     padding: 12px;
-    border: 1px solid color-mix(in srgb, var(--vk-cyan) 45%, transparent);
+    border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
-    background: color-mix(in srgb, var(--vk-cyan) 8%, transparent);
+    background: var(--vk-panel-soft);
   }
 
   .native-title {
@@ -1693,34 +1804,52 @@
     min-width: 0;
   }
 
+  .name-field {
+    position: relative;
+  }
+
   .symbol-btn {
     padding: 0 12px;
     font-size: 15px;
   }
 
+  .symbol-btn.open {
+    border-color: #4c5c8c;
+  }
+
+  /* Il pannello dei simboli galleggia sotto il nome, come un menu: aperto non
+     spinge giù il campo del creatore. */
   .symbols {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    left: 0;
+    z-index: 20;
     display: grid;
     grid-template-columns: repeat(9, 1fr);
     gap: 4px;
     padding: 8px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
-    background: #111a2c;
+    background: var(--vk-panel);
+    box-shadow: var(--vk-shadow-modal);
+    animation: fade var(--vk-dur-fast) var(--vk-ease);
   }
 
   .symbol {
-    height: 26px;
+    height: 30px;
     border: 1px solid transparent;
-    border-radius: 6px;
+    border-radius: 8px;
     background: transparent;
     color: inherit;
-    font-size: 14px;
+    font-size: 15px;
     font-weight: 900;
     cursor: pointer;
   }
 
   .symbol:hover {
-    border-color: #3a4c74;
+    background: rgb(255 255 255 / 0.06);
+    border-color: var(--vk-stroke);
   }
 
   /* ---- Controlli ---- */
@@ -1731,7 +1860,21 @@
   }
 
   .panel-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
     margin-bottom: 4px;
+  }
+
+  .panel-id {
+    min-width: 0;
+  }
+
+  .reset-category {
+    flex: none;
+    padding: 6px 12px;
+    font-size: var(--vk-fs-micro);
   }
 
   .panel-title {
@@ -1778,20 +1921,17 @@
 
   .part:hover {
     transform: translateY(-1px);
-    border-color: #8fb6ff;
+    border-color: #8d9ab8;
   }
 
-  .part:focus-visible {
-    outline: 2px solid var(--vk-cyan);
-    outline-offset: 2px;
-  }
-
+  /* Scelta: bordo arcobaleno fermo. Animato, ogni tessera partirebbe da un
+     colore diverso (§D-048). */
   .part.selected {
-    border-color: var(--vk-cyan);
-    background: #f4f8ff;
-    box-shadow:
-      0 0 0 2px rgb(0 242 255 / 0.25),
-      0 0 16px rgb(0 242 255 / 0.3);
+    border-color: transparent;
+    background:
+      linear-gradient(#f4f8ff, #f4f8ff) padding-box,
+      var(--vk-rainbow) border-box;
+    box-shadow: 0 0 14px rgb(255 255 255 / 0.16);
   }
 
   /* L'icona sta dentro la tessera invece di dimensionarla: un'acconciatura
@@ -1814,6 +1954,7 @@
   }
 
   .swatch {
+    position: relative;
     width: 38px;
     height: 38px;
     border: 2px solid rgb(255 255 255 / 0.18);
@@ -1828,16 +1969,22 @@
     transform: scale(1.08);
   }
 
-  .swatch:focus-visible {
-    outline: 2px solid var(--vk-cyan);
-    outline-offset: 2px;
-  }
-
+  /* Scelto: un anello arcobaleno attorno, staccato dal colore da un filo
+     scuro. */
   .swatch.selected {
     border-color: var(--vk-text);
-    box-shadow:
-      0 0 0 3px var(--vk-cyan),
-      inset 0 0 0 1px rgb(0 0 0 / 0.35);
+  }
+
+  .swatch.selected::after {
+    content: '';
+    position: absolute;
+    inset: -6px;
+    padding: 3px;
+    border-radius: 50%;
+    background: var(--vk-rainbow-conic);
+    mask:
+      linear-gradient(#000 0 0) content-box exclude,
+      linear-gradient(#000 0 0);
   }
 
   .features {
@@ -1864,8 +2011,10 @@
   }
 
   .feature.selected {
-    border-color: var(--vk-cyan);
-    box-shadow: 0 0 14px rgb(0 242 255 / 0.25);
+    border-color: transparent;
+    background:
+      linear-gradient(#111a2c, #111a2c) padding-box,
+      var(--vk-rainbow) border-box;
   }
 
   .feature img,
@@ -1908,72 +2057,18 @@
     max-width: 360px;
   }
 
-  .date select {
+  .month {
     flex: 1;
+    min-width: 0;
   }
 
-  .date .day {
+  .day {
     flex: 0 0 90px;
   }
 
   .slider {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
     max-width: 520px;
-    margin-top: 14px;
-  }
-
-  .slider-head {
-    display: flex;
-    justify-content: space-between;
-    font-size: var(--vk-fs-micro);
-    color: var(--vk-text-secondary);
-  }
-
-  .slider-head strong {
-    color: var(--vk-cyan-soft);
-    font-weight: 900;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .slider-row {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
-    align-items: center;
-    gap: 10px;
-  }
-
-  .step {
-    width: 30px;
-    height: 30px;
-    padding: 0;
-    font-size: 16px;
-    font-weight: 900;
-    line-height: 1;
-  }
-
-  /* Il cursore si riempie di arcobaleno fino al valore scelto. */
-  .slider input {
-    width: 100%;
-    height: 6px;
-    border-radius: 999px;
-    background:
-      linear-gradient(90deg, var(--vk-cyan), #ff0066) 0 0 / var(--fill) 100% no-repeat,
-      var(--vk-input);
-    accent-color: var(--vk-cyan);
-    appearance: none;
-    cursor: pointer;
-  }
-
-  .slider input::-webkit-slider-thumb {
-    width: 16px;
-    height: 16px;
-    border: 2px solid #fff;
-    border-radius: 50%;
-    background: var(--vk-cyan);
-    box-shadow: 0 0 10px rgb(0 242 255 / 0.5);
-    appearance: none;
+    margin-top: 16px;
   }
 
   /* ---- Chiusura con modifiche ---- */

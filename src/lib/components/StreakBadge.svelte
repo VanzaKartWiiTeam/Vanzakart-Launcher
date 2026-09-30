@@ -7,6 +7,7 @@
    */
   import Icon from '$lib/components/Icon.svelte';
   import { formatNumber, t } from '$lib/stores/i18n.svelte';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   interface Props {
     days: number;
@@ -34,7 +35,7 @@
     {/if}
   </span>
 {:else}
-  <span class="streak none {size}" title={t('streak.none')}>{t('common.dash')}</span>
+  <span class="streak none {size}" {@attach tooltip(t('streak.none'))}>{t('common.dash')}</span>
 {/if}
 
 <style>

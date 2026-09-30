@@ -35,6 +35,7 @@
   import { t } from '$lib/stores/i18n.svelte';
   import { operationLabel, operations } from '$lib/stores/operations.svelte';
   import type { AddonView, ConflictView, IntegrityReport, MusicPackStatus } from '$lib/api/types';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   type Tab = 'addons' | 'gamebanana';
 
@@ -478,7 +479,7 @@
             class="vk-btn vk-btn--primary main"
             onclick={() => run('install')}
             disabled={operations.busy || verifying}
-            title={operations.blockedBy('mods') ? waitingFor : undefined}
+            {@attach tooltip(operations.blockedBy('mods') ? waitingFor : undefined)}
           >
             <Icon name={modAction.icon} size={15} />
             {modRunning ? t('common.working') : modAction.label}
@@ -565,7 +566,7 @@
                 class="vk-btn vk-btn--primary"
                 onclick={installMusicPack}
                 disabled={operations.busy || musicBusy !== ''}
-                title={operations.blockedBy('music-pack') ? waitingFor : undefined}
+                {@attach tooltip(operations.blockedBy('music-pack') ? waitingFor : undefined)}
               >
                 <Icon name="download" size={14} />
                 {musicRunning
@@ -701,7 +702,9 @@
                     <span class="tag">GameBanana</span>
                   {/if}
                   {#if !addon.managed}
-                    <span class="tag warn" title={t('mods.manualHint')}>{t('mods.manual')}</span>
+                    <span class="tag warn" {@attach tooltip(t('mods.manualHint'))}
+                      >{t('mods.manual')}</span
+                    >
                   {/if}
                 </span>
               </div>
@@ -968,7 +971,7 @@
     border-radius: 12px;
     background: var(--vk-play-gradient);
     color: #fff;
-    box-shadow: 0 0 14px rgb(255 0 102 / 0.3);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.35);
     transition: filter var(--vk-dur-fast) var(--vk-ease);
   }
 
@@ -1023,7 +1026,7 @@
     align-items: center;
     gap: 7px;
     padding: 7px 16px;
-    border: none;
+    border: 1px solid transparent;
     border-radius: 999px;
     background: transparent;
     color: var(--vk-text-secondary);
@@ -1034,9 +1037,10 @@
   }
 
   .tabs button.active {
-    background: var(--vk-active-surface);
+    background:
+      linear-gradient(var(--vk-active-surface), var(--vk-active-surface)) padding-box,
+      var(--vk-rainbow) border-box;
     color: var(--vk-text);
-    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--vk-cyan) 40%, transparent);
   }
 
   .count {
@@ -1052,7 +1056,7 @@
   }
 
   .count.live {
-    background: color-mix(in srgb, var(--vk-cyan) 25%, transparent);
+    background: rgb(255 255 255 / 0.2);
   }
 
   .addons-actions {
@@ -1157,7 +1161,7 @@
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background: var(--vk-cyan);
+    background: var(--vk-rainbow-conic);
     animation: vk-pulse 1.1s var(--vk-ease) infinite;
   }
 
@@ -1193,7 +1197,7 @@
   }
 
   .dropzone:hover:not(:disabled) {
-    border-color: var(--vk-cyan);
+    border-color: #4c5c8c;
     color: var(--vk-text);
   }
 
@@ -1267,11 +1271,13 @@
     align-items: center;
     gap: 10px;
     padding: 36px 48px;
-    border: 2px dashed var(--vk-cyan);
+    border: 2px solid transparent;
     border-radius: var(--vk-radius-card);
-    background: var(--vk-panel);
-    color: var(--vk-cyan-soft);
-    box-shadow: 0 0 30px rgb(0 242 255 / 0.25);
+    background:
+      linear-gradient(var(--vk-panel), var(--vk-panel)) padding-box,
+      var(--vk-rainbow) border-box;
+    color: var(--vk-text);
+    box-shadow: var(--vk-shadow-modal);
   }
 
   .drop-card p {

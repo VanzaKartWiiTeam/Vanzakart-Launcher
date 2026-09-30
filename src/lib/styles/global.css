@@ -68,8 +68,10 @@ a:hover {
   text-decoration: underline;
 }
 
+/* Il fuoco da tastiera è bianco: un anello ciano era l'unico colore di uno
+   stato attivo, proprio ciò che il tema arcobaleno non vuole (§D-099). */
 :focus-visible {
-  outline: 2px solid var(--vk-cyan);
+  outline: 2px solid rgb(255 255 255 / 0.85);
   outline-offset: 2px;
   border-radius: 4px;
 }
@@ -583,15 +585,48 @@ a:hover {
 
 /* ---- Tooltip ---- */
 
+/*
+ * Il suggerimento di `attachments/tooltip.ts`: uno solo, in `body`, spostato
+ * con `transform`. Il colore lo porta la linea arcobaleno in alto, non il
+ * bordo: un bordo ciano era proprio il "blu" che il tema non vuole (§D-098).
+ */
 .vk-tooltip {
-  border: 1px solid var(--vk-cyan);
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 1000;
+  max-width: 280px;
+  padding: 7px 11px 8px;
+  border: 1px solid var(--vk-stroke);
   border-radius: var(--vk-radius-badge);
-  background: #151d2a;
-  box-shadow: 0 3px 12px rgb(0 0 0 / 0.5);
-  color: #f8fafc;
+  background: #121a2b;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.5);
+  color: var(--vk-text);
   font-size: var(--vk-fs-micro);
   font-weight: 600;
-  padding: 6px 10px;
+  line-height: 1.4;
+  white-space: pre-line;
+  pointer-events: none;
+  opacity: 0;
+  visibility: hidden;
+  transition:
+    opacity var(--vk-dur-fast) var(--vk-ease),
+    visibility 0s linear var(--vk-dur-fast);
+}
+
+.vk-tooltip::before {
+  content: '';
+  position: absolute;
+  inset: -1px 10px auto;
+  height: 2px;
+  border-radius: var(--vk-radius-pill);
+  background: var(--vk-rainbow);
+}
+
+.vk-tooltip[data-open='true'] {
+  opacity: 1;
+  visibility: visible;
+  transition: opacity var(--vk-dur-fast) var(--vk-ease);
 }
 
 /* ---- Accessibilità ---- */

@@ -534,6 +534,55 @@ impl DolphinSettings {
         self.performance_preset = "VanzaKart Recommended".into();
     }
 
+    /// Il preset "VanzaKart Recommended" come lo vede la UI: **solo** i campi
+    /// che imposta, con i nomi serializzati (`gfxBackend`, …) e i loro valori.
+    ///
+    /// Serve a segnare le opzioni diverse dal consigliato. I campi non si
+    /// elencano a mano, che dovrebbe restare allineato a
+    /// [`optimize_for_vanzakart`](Self::optimize_for_vanzakart): si applica il
+    /// preset a due modelli opposti — bool tutti veri e tutti falsi, numeri e
+    /// stringhe diversi — e i campi che finiscono uguali sono quelli che il
+    /// preset scrive.
+    pub fn recommended(screen_width: u32) -> serde_json::Map<String, serde_json::Value> {
+        let preset = |high: bool| -> serde_json::Map<String, serde_json::Value> {
+            let mut model = Self::extreme(high);
+            model.optimize_for_vanzakart(screen_width);
+            match serde_json::to_value(model) {
+                Ok(serde_json::Value::Object(fields)) => fields,
+                _ => serde_json::Map::new(),
+            }
+        };
+        let (low, high) = (preset(false), preset(true));
+        low.into_iter()
+            .filter(|(key, value)| high.get(key) == Some(value))
+            .collect()
+    }
+
+    /// Un modello con ogni campo portato a un estremo: nessun valore reale
+    /// coincide con questi per caso.
+    fn extreme(high: bool) -> Self {
+        let Ok(serde_json::Value::Object(fields)) = serde_json::to_value(Self::default()) else {
+            return Self::default();
+        };
+        let fields = fields
+            .into_iter()
+            .map(|(key, value)| {
+                let value = match value {
+                    serde_json::Value::Bool(_) => serde_json::Value::Bool(high),
+                    serde_json::Value::Number(_) => {
+                        serde_json::json!(if high { 1_000_000 } else { -1_000_000 })
+                    }
+                    serde_json::Value::String(_) => {
+                        serde_json::json!(if high { "extreme-high" } else { "extreme-low" })
+                    }
+                    other => other,
+                };
+                (key, value)
+            })
+            .collect();
+        serde_json::from_value(serde_json::Value::Object(fields)).unwrap_or_default()
+    }
+
     /// Ripristina i default di una categoria, lasciando intatte le altre.
     pub fn reset_category(&mut self, category: &str) {
         let defaults = Self::default();
@@ -813,6 +862,43 @@ mod tests {
             assert_eq!(model.performance_preset, "VanzaKart Recommended");
             assert!(model.widescreen_hack);
             assert_eq!(model.gfx_backend, "Vulkan");
+        }
+    }
+
+    /// Il consigliato contiene i campi del preset e solo quelli: una
+    /// preferenza che il preset non tocca non può risultare "diversa".
+    #[test]
+    fn the_recommended_values_are_exactly_the_preset_fields() {
+        let recommended = DolphinSettings::recommended(1920);
+        assert_eq!(recommended["gfxBackend"], "Vulkan");
+        assert_eq!(recommended["internalResolution"], 3);
+        assert_eq!(recommended["widescreenHack"], true);
+        assert_eq!(recommended["vsync"], false);
+        assert_eq!(recommended["audioLatency"], 20);
+        assert_eq!(recommended["wiiRegion"], 2);
+        for untouched in [
+            "showFps",
+            "enableCheats",
+            "logLevel",
+            "dolphinExecutablePath",
+        ] {
+            assert!(!recommended.contains_key(untouched), "{untouched}");
+        }
+
+        let mut preset = DolphinSettings::default();
+        preset.optimize_for_vanzakart(1920);
+        let json = serde_json::to_value(&preset).unwrap();
+        for (key, value) in &recommended {
+            assert_eq!(&json[key], value, "{key}");
+        }
+    }
+
+    #[test]
+    fn the_extreme_models_really_differ_everywhere() {
+        let low = serde_json::to_value(DolphinSettings::extreme(false)).unwrap();
+        let high = serde_json::to_value(DolphinSettings::extreme(true)).unwrap();
+        for (key, value) in low.as_object().unwrap() {
+            assert_ne!(Some(value), high.get(key), "{key}");
         }
     }
 

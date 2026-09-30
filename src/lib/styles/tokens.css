@@ -61,6 +61,32 @@
     #b000ff 100%
   );
 
+  /* L'arcobaleno su un cerchio: anelli e puntini, dove un gradiente lineare
+     lascerebbe un lato tutto rosa e l'altro tutto viola. */
+  --vk-rainbow-conic: conic-gradient(
+    from 90deg,
+    #ff0066,
+    #ff8800,
+    #ffea00,
+    #00ff66,
+    #00f2ff,
+    #3300ff,
+    #b000ff,
+    #ff0066
+  );
+
+  /* Lo stesso arcobaleno dall'alto in basso, per le barre verticali. */
+  --vk-rainbow-vertical: linear-gradient(
+    180deg,
+    #ff0066 0%,
+    #ff8800 18%,
+    #ffea00 34%,
+    #00ff66 50%,
+    #00f2ff 67%,
+    #3300ff 84%,
+    #b000ff 100%
+  );
+
   --vk-play-gradient: linear-gradient(135deg, #ff0066 0%, #ff8800 35%, #00f2ff 68%, #b000ff 100%);
 
   --vk-hero-gradient: linear-gradient(135deg, #ff3b7a -15%, #39e7ff 55%, #9d5cff 120%);

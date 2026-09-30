@@ -11,10 +11,12 @@
    */
   import * as api from '$lib/api';
   import Icon from '$lib/components/Icon.svelte';
+  import Select from '$lib/components/Select.svelte';
   import { app, formatBytes } from '$lib/stores/app.svelte';
   import { t } from '$lib/stores/i18n.svelte';
   import { operationLabel, operations } from '$lib/stores/operations.svelte';
   import type { GameBananaFile, GameBananaMod } from '$lib/api/types';
+  import { tooltip } from '$lib/attachments/tooltip';
 
   interface Props {
     /** Chiamata dopo un'installazione riuscita, per ricaricare gli addon. */
@@ -151,11 +153,19 @@
       onkeydown={onSearchKey}
       disabled={loading}
     />
-    <select class="vk-input sort" bind:value={sort} onchange={() => run(1)} disabled={loading}>
-      {#each SORTS as option (option.value)}
-        <option value={option.value}>{option.label}</option>
-      {/each}
-    </select>
+    <div class="sort">
+      <Select
+        block
+        label={t('gb.sortLabel')}
+        value={sort}
+        options={SORTS}
+        disabled={loading}
+        onchange={(next) => {
+          sort = next;
+          void run(1);
+        }}
+      />
+    </div>
     <button class="vk-btn" onclick={() => run(1)} disabled={loading}>
       <Icon name="refresh" size={14} />
       {t('gb.searchAction')}
@@ -203,12 +213,15 @@
               </p>
               <p class="vk-faint mod-meta">
                 <span>{item.author || t('gb.unknownAuthor')}</span>
-                <span class="stat" title={t('gb.likes', { count: item.likes })}>
+                <span class="stat" {@attach tooltip(t('gb.likes', { count: item.likes }))}>
                   <Icon name="heart" size={11} />
                   {compact.format(item.likes)}
                 </span>
                 {#if item.downloads > 0}
-                  <span class="stat" title={t('gb.downloads', { count: item.downloads })}>
+                  <span
+                    class="stat"
+                    {@attach tooltip(t('gb.downloads', { count: item.downloads }))}
+                  >
                     <Icon name="download" size={11} />
                     {compact.format(item.downloads)}
                   </span>
@@ -237,7 +250,7 @@
               {#if item.profileUrl}
                 <button
                   class="vk-btn act"
-                  title={t('mods.openOnGameBanana')}
+                  {@attach tooltip(t('mods.openOnGameBanana'))}
                   aria-label={t('mods.openOnGameBanana')}
                   onclick={() => api.openExternal(item.profileUrl)}
                 >
@@ -305,8 +318,8 @@
   }
 
   .sort {
-    width: auto;
-    min-width: 160px;
+    flex: none;
+    width: 190px;
   }
 
   .note {

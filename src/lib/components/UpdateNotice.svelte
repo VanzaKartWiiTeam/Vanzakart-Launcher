@@ -2,10 +2,10 @@
   /**
    * Avviso di aggiornamento all'avvio.
    *
-   * La home mostra già le due card — quella della modpack e quella del
-   * launcher — ma chi apre il launcher per giocare preme PLAY e non le guarda.
-   * Questo è lo stesso stato, detto una volta sola all'apertura e in un modo
-   * che non si può non vedere (§D-075).
+   * La home dice lo stato della modpack sotto PLAY e la barra del titolo
+   * quello del launcher, ma chi apre il launcher per giocare preme PLAY e non
+   * li guarda. Questo è lo stesso stato, detto una volta sola all'apertura e
+   * in un modo che non si può non vedere (§D-075, §D-100).
    *
    * Non si ripete: chiuso una volta, per quella sessione non torna.
    */
