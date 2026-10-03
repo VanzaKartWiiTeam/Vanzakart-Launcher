@@ -342,7 +342,9 @@ mod tests {
             &archive,
             PackageFormat::Zip,
             &destination,
-            "",
+            // Dichiarato: il ripiego per nome riconosce un `.exe` solo su
+            // Windows, e qui si prova lo srotolamento, non il ripiego.
+            "VanzaKart Launcher.exe",
             &sink(),
             &CancelToken::new(),
         )
