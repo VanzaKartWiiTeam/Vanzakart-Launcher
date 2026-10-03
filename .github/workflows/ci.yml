@@ -184,6 +184,13 @@ jobs:
         working-directory: ${{ steps.progetto.outputs.dir }}
         run: cargo clippy --workspace --all-targets -- -D warnings
 
+      # Linux esegue già la suite nel job quality. Le API native e i percorsi
+      # dei bundle vanno verificati anche sui sistemi che li usano davvero.
+      - name: Test della piattaforma
+        if: ${{ !startsWith(matrix.os, 'ubuntu') }}
+        working-directory: ${{ steps.progetto.outputs.dir }}
+        run: cargo test --workspace --locked
+
       # Niente chiavi di firma: la firma dei pacchetti è una faccenda del
       # rilascio (`release.yml`), non di un controllo. Qui si verifica che la
       # build funzioni, e il certificato Apple non serve per lo stesso motivo.

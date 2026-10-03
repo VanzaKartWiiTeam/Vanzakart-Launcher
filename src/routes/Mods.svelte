@@ -652,16 +652,14 @@
           <Icon name="plus" size={14} />
           {addonBusy === 'import' ? t('mods.importing') : t('mods.importZip')}
         </button>
-        <MenuButton
-          label={t('mods.addonFolder')}
-          items={[
-            {
-              label: t('mods.addonFolder'),
-              icon: 'folder',
-              onselect: () => void openFolder('addons')
-            }
-          ]}
-        />
+        <button
+          class="vk-btn"
+          aria-label={t('mods.addonFolder')}
+          {@attach tooltip(t('mods.addonFolder'))}
+          onclick={() => void openFolder('addons')}
+        >
+          <Icon name="folder" size={16} />
+        </button>
       </div>
     {/if}
   </div>

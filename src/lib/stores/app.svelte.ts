@@ -210,7 +210,7 @@ export const app = new AppStore();
  */
 export const TEAM_LINKS = {
   website: 'https://vwfc.vanzakart.net/',
-  discord: 'https://discord.gg/2UGhrCNV8t',
+  discord: 'https://discord.gg/vanzakartwii',
   paypal: 'https://www.paypal.com/paypalme/SossioStorto'
 } as const;
 

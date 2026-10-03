@@ -9,6 +9,8 @@ export default mergeConfig(
     // L'alias `$setup` non serve al launcher, ma i test dell'installer
     // stanno nello stesso progetto e lo usano.
     resolve: {
+      // I test DOM devono montare i componenti con il runtime client di Svelte.
+      conditions: ['browser'],
       alias: {
         $setup: fileURLToPath(new URL('./setup/src', import.meta.url))
       }

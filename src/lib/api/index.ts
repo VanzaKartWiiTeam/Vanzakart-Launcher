@@ -399,7 +399,7 @@ export const clearMiiAvatars = () => call<number>('mii_avatars_clear');
  * dal canale e le risolve il backend a partire dal layout della modpack.
  */
 export type KnownFolder =
-  'data' | 'logs' | 'backups' | 'cache' | 'mii' | 'downloads' | 'mod' | 'addons';
+  'data' | 'logs' | 'backups' | 'cache' | 'mii' | 'downloads' | 'mod' | 'addons' | 'launcher';
 
 export const openFolder = (key: KnownFolder) => call<string>('open_known_folder', { key });
 export const openExternal = (url: string) => call<void>('open_external', { url });

@@ -272,6 +272,7 @@ export const it = {
   'settings.backupConfig': 'Backup configurazione',
   'settings.removeGameSettings': 'Rimuovi GameSettings RMC*',
   'settings.openLogs': 'Apri cartella log',
+  'settings.openLauncherFolder': 'Apri cartella del launcher',
   'settings.betaTitle': 'Token di accesso Beta',
   'settings.betaVerify': 'Verifica',
   'settings.betaBody': 'Il canale Beta richiede un token fornito dallo staff VanzaKart.',

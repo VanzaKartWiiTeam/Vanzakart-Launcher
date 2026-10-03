@@ -540,6 +540,15 @@
             label: t('settings.openLogs'),
             icon: 'folder' as const,
             onselect: () => void api.openFolder('logs')
+          },
+          {
+            label: t('settings.openLauncherFolder'),
+            icon: 'folder' as const,
+            onselect: () => {
+              void api.openFolder('launcher').catch((error) => {
+                app.toast(t('settings.operationFailed'), api.errorMessage(error), 'warning');
+              });
+            }
           }
         ]
       : [])

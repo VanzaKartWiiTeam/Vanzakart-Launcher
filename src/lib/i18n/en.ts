@@ -275,6 +275,7 @@ export const en: Dictionary = {
   'settings.backupConfig': 'Back up configuration',
   'settings.removeGameSettings': 'Remove GameSettings RMC*',
   'settings.openLogs': 'Open the log folder',
+  'settings.openLauncherFolder': 'Open the launcher folder',
   'settings.betaTitle': 'Beta access token',
   'settings.betaVerify': 'Verify',
   'settings.betaBody': 'The Beta channel needs a token handed out by the VanzaKart staff.',

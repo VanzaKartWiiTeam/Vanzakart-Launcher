@@ -632,6 +632,15 @@ pub async fn open_known_folder(
     // `mod` e `addons` non stanno sotto la cartella dati: dipendono dal canale
     // e vivono nella cartella User di Dolphin, quindi li risolve il layout.
     let path = match key.as_str() {
+        "launcher" => {
+            let executable = vk_install::platform::self_bundle_path()?;
+            executable
+                .parent()
+                .ok_or_else(|| {
+                    AppError::Internal("launcher folder could not be determined".into())
+                })?
+                .to_path_buf()
+        }
         "mod" | "addons" => {
             let layout = state.layout(state.channel().await).await;
             if key == "mod" {
@@ -648,9 +657,13 @@ pub async fn open_known_folder(
 
     std::fs::create_dir_all(&path).map_err(|error| AppError::io(&path, error))?;
 
-    app.opener()
-        .open_path(path.to_string_lossy().to_string(), None::<&str>)
-        .map_err(|error| AppError::Internal(error.to_string()))?;
+    // Il file manager deve usare le librerie del sistema, non quelle
+    // impacchettate nel launcher AppImage (come già per gli URL esterni).
+    if !crate::platform::open_with_system_handler(&path.to_string_lossy()) {
+        app.opener()
+            .open_path(path.to_string_lossy().to_string(), None::<&str>)
+            .map_err(|error| AppError::Internal(error.to_string()))?;
+    }
 
     Ok(vk_core::redact::redact(&path.to_string_lossy()))
 }

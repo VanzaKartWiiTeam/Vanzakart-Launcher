@@ -49,6 +49,41 @@
   let trigger = $state<HTMLButtonElement | null>(null);
   let menu = $state<HTMLElement | null>(null);
 
+  // Fuori dai contenitori con overflow/transform, anche nelle tessere Mii.
+  function attachMenu(node: HTMLElement) {
+    document.body.append(node);
+
+    function place() {
+      if (!trigger) return;
+      const rect = trigger.getBoundingClientRect();
+      const margin = 8;
+      const gap = 6;
+      const { offsetWidth: width, offsetHeight: height } = node;
+      const below = window.innerHeight - rect.bottom - gap - margin;
+      const above = rect.top - gap - margin;
+      const opensUp = up ? above >= height || above > below : below < height && above > below;
+      const top = opensUp ? rect.top - gap - height : rect.bottom + gap;
+      node.style.left = `${Math.max(margin, Math.min(rect.right - width, window.innerWidth - width - margin))}px`;
+      node.style.top = `${Math.max(margin, Math.min(top, window.innerHeight - height - margin))}px`;
+    }
+
+    function onScroll(event: Event) {
+      if (!node.contains(event.target as Node)) close();
+    }
+
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(node);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', onScroll, true);
+      node.remove();
+    };
+  }
+
   async function toggle() {
     open = !open;
     if (open) {
@@ -93,7 +128,14 @@
   }
 
   function onWindowPointer(event: PointerEvent) {
-    if (open && root && !root.contains(event.target as Node)) close();
+    if (
+      open &&
+      root &&
+      !root.contains(event.target as Node) &&
+      !menu?.contains(event.target as Node)
+    ) {
+      close();
+    }
   }
 </script>
 
@@ -115,7 +157,14 @@
   </button>
 
   {#if open}
-    <div class="menu" class:up role="menu" tabindex="-1" bind:this={menu} onkeydown={onMenuKey}>
+    <div
+      class="menu"
+      role="menu"
+      tabindex="-1"
+      bind:this={menu}
+      {@attach attachMenu}
+      onkeydown={onMenuKey}
+    >
       {#each items as item (item.label)}
         <button
           class="item"
@@ -153,24 +202,21 @@
   }
 
   .menu {
-    position: absolute;
-    top: calc(100% + 6px);
-    right: 0;
-    z-index: 40;
+    position: fixed;
+    z-index: 100;
     display: flex;
     flex-direction: column;
     min-width: 220px;
+    max-width: calc(100vw - 16px);
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    box-sizing: border-box;
     padding: 6px;
     border: 1px solid var(--vk-stroke);
     border-radius: var(--vk-radius-badge);
     background: var(--vk-panel);
     box-shadow: var(--vk-shadow-modal);
     animation: pop var(--vk-dur-fast) var(--vk-ease);
-  }
-
-  .menu.up {
-    top: auto;
-    bottom: calc(100% + 6px);
   }
 
   .item {

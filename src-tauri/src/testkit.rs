@@ -54,15 +54,11 @@ pub fn install_modpack(layout: &ModLayout) {
 /// nome, in una CI o sul computer di chi sviluppa, chiuderebbe quello vero.
 /// Restituisce il percorso della copia e il processo avviato.
 pub fn spawn_fake_dolphin(dir: &std::path::Path) -> (std::path::PathBuf, std::process::Child) {
-    let unique = format!(
-        "vk-fake-dolphin-{}-{}{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |elapsed| elapsed.as_nanos()),
+    let copy = dir.join(format!(
+        "{}{}",
+        fake_dolphin_name(),
         std::env::consts::EXE_SUFFIX
-    );
-    let copy = dir.join(unique);
+    ));
     std::fs::copy(std::env::current_exe().unwrap(), &copy).unwrap();
 
     let child = std::process::Command::new(&copy)
@@ -91,10 +87,44 @@ pub fn spawn_fake_dolphin(dir: &std::path::Path) -> (std::path::PathBuf, std::pr
     (copy, child)
 }
 
+/// Nome di un Dolphin finto, diverso per ogni processo di prova.
+///
+/// Sta nei 15 caratteri che Linux tiene del nome di un processo. Con un nome
+/// più lungo tutte le copie si chiamerebbero `vk-fake-dolphin`, e il ripiego
+/// sul nome troncato di `terminate_executable` — giusto per gli AppImage —
+/// farebbe chiudere a un test i Dolphin finti degli altri che girano insieme.
+fn fake_dolphin_name() -> String {
+    use std::sync::atomic::{AtomicU32, Ordering};
+
+    static NEXT: AtomicU32 = AtomicU32::new(0);
+    // Il PID in esadecimale sta in 8 cifre qualunque sia, il contatore in 3:
+    // "vkd" + 8 + "-" + 3 = 15.
+    format!(
+        "vkd{:x}-{}",
+        std::process::id(),
+        NEXT.fetch_add(1, Ordering::Relaxed) % 1000
+    )
+}
+
 /// Sostituisce il descrittore con un `<wiidisc/>` vuoto: sintatticamente
 /// valido, completamente inerte. È il guasto osservato sul campo.
 pub fn break_modpack(layout: &ModLayout) {
     let xml = layout.riivolution_xml();
     std::fs::create_dir_all(xml.parent().expect("l'XML ha una directory padre")).unwrap();
     std::fs::write(xml, b"<wiidisc/>").unwrap();
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fake_dolphins_have_distinct_names_that_linux_does_not_truncate() {
+        let first = fake_dolphin_name();
+        let second = fake_dolphin_name();
+        assert_ne!(first, second);
+        for name in [&first, &second] {
+            assert!(name.len() <= 15, "{name} verrebbe troncato da Linux");
+        }
+    }
 }
